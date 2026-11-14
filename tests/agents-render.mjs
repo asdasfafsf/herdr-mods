@@ -317,7 +317,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.ok(output.includes('overview-t0') && output.includes('overview-t3'));
   assert.ok(output.includes('overview-t1'),'seen agents stay visible');
   assert.ok(!output.includes('overview-t2"'),'idle agents are absent until focused');
-  assert.equal(data.layout.theme,'paper');assert.equal(data.layout.colors.chrome,'#f4ecdb','the shared layout gets the same theme tokens');
+  assert.equal(data.layout.theme,'herdr-chiikawa');assert.equal(data.layout.colors.chrome,'#f4ecdb','the shared layout gets the same theme tokens');
   data.focused={terminal:'t2',pane:'p2',tab:'b2'};env.timers.get(250)();
   output=JSON.stringify(env.render());
   assert.ok(output.includes('overview-t2') && output.includes('village-message-t2'));
@@ -499,7 +499,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','agent-mode','village','village-chat']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','agent-mode','theme-contrast','village','village-chat']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);

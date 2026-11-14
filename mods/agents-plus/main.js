@@ -20,7 +20,8 @@ import { resumeArgv, AGENTS, runs } from "./resume.js";
 import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
 import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag } from "./ui.js";
-import { renderViewSwitch } from "./agent-mode.js";
+import { renderViewSwitch, applyModeTheme, workspaceTheme } from "./agent-mode.js";
+import { setThemeContrast } from "./theme-contrast.js";
 import { RenderProfile } from "./render-profile.js";
 import { openAgentView, initAgentView, renderAgentView } from "./overview.js";
 
@@ -95,7 +96,11 @@ function icon(p, size, color) {
 
 export default class Agents extends View {
   init(_props, cx) {
-    if (props()?.mode === "view-switch") return;
+    if (props()?.mode === "view-switch") {
+      applyModeTheme(workspaceTheme());
+      cx.spawn(async (cx) => { await setThemeContrast(workspaceTheme() === "chiikawa"); cx.notify(); });
+      return;
+    }
     if (props()?.sortMenu) return;
     // Themes share the same overview state: default cards or a Chiikawa village.
     if (props()?.mode === "overview") return initAgentView(this, cx);

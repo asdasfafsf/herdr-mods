@@ -77,6 +77,32 @@ def say(kind, text):
     print(f"{kind:<8}{text}")
 
 
+def install_theme(relative, dry):
+    source = Path(REPO, "mods", relative).resolve()
+    if not source.is_relative_to(Path(REPO, "mods").resolve()):
+        say("failed", "theme source must be inside mods")
+        return False
+    target = Path(HOME, "themes", source.name)
+    marker = target.with_suffix(".herdr-mods")
+    if target.is_symlink() or marker.is_symlink() or (target.exists() and not marker.exists()):
+        say("skip", f"theme {source.stem}: existing user theme is preserved")
+        return False
+    try:
+        content = source.read_bytes()
+        data = json.loads(content)
+        if not isinstance(data, dict):
+            raise ValueError("theme must be an object")
+    except (OSError, ValueError) as error:
+        say("failed", f"theme {source.stem}: {error}")
+        return False
+    if not dry:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        save(str(target), data, False)
+        marker.write_text(REPO + "\n")
+    say("theme", source.stem)
+    return True
+
+
 # 1. mods ------------------------------------------------------------------------------
 
 def install_mod(name, dry):
@@ -397,6 +423,8 @@ def main(argv):
     if "agents" in picked and "worktrees" not in picked and not os.path.exists(os.path.join(HOME, "mods", "spaces-plus", MARK)):
         say("note", "agents without worktrees: clicking an outside agent resumes it in a new tab or space, not in its worktree's")
 
+    if not all(install_theme(t, dry) for b in picked for t in bundles[b].get("themes", [])):
+        return 1
     results = [install_mod(m, dry) for m in dict.fromkeys(m for b in picked for m in bundles[b]["mods"])]
     if not all(results):
         say("failed", "one or more mods were not installed; layout, keys and commands were not changed")

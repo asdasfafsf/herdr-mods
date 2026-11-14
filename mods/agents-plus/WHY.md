@@ -36,3 +36,4 @@ Herdr 가 띄운 에이전트를 상태별·우선순위로 보여준다. 본 do
 없다(매번 프로세스에서 다시 찾는다).
 
 - 카드/마을은 `overview-header.js`의 동일한 헤더를 사용한다. `Cards / Village`는 공통 작업공간 상단 바에서 고정된 위치로 제공하고 `ag.presentation`을 공유한다. 전체 테마는 mod copy마다 다른 localStorage 대신 `ag.workspaceTheme`을 사용한다.
+- 치이카와의 크림색 배경·갈색 글자·터미널 ANSI는 하나의 팔레트에서 생성한다. 치이카와를 선택할 때 터미널 대비 보정을 켜서 이미 출력된 사용자 메시지와 Edit도 읽을 수 있게 하고, Default로 돌아가면 원래 설정을 복원한다. 프로그램이 직접 출력하는 RGB 배경을 변경할 mod API는 없다. Codex의 별도 테마는 자동 원복 조건을 충족하지 못해 설치·활성화하지 않으며 Claude 설정도 바꾸지 않는다. 적용 범위와 제한은 [테마 템플릿](themes/README.md).

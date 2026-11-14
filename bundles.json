@@ -30,6 +30,7 @@
     "mods": [
       "agents-plus"
     ],
+    "themes": ["agents-plus/themes/herdr-chiikawa.json"],
     "layout": [
       {
         "swap": {
