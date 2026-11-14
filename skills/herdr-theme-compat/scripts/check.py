@@ -35,7 +35,8 @@ def object_file(path):
 
 def check_installation(executable, manifest):
     report = {"status": "unavailable", "version": None,
-              "baseline_version_match": None, "runtime_surface_rules": "unknown"}
+              "baseline_version_match": None, "runtime_surface_rules": "unknown",
+              "runtime_codex_surfaces": "unknown"}
     if not executable:
         return report
     try:
@@ -50,6 +51,28 @@ def check_installation(executable, manifest):
         return report
     report.update(status="version_only", version=match[1],
                   baseline_version_match=match[1] == manifest["version"])
+    # Probe only an advertised read-only subcommand. Stock versions need no
+    # unknown-flag invocation, and source hashes never imply binary support.
+    try:
+        help_result = subprocess.run([str(executable), "--help"], capture_output=True,
+                                     text=True, timeout=5, stdin=subprocess.DEVNULL)
+        if help_result.returncode or not re.search(r"(?m)^\s*herdr-app --capabilities(?:\s|$)", help_result.stdout):
+            return report
+        result = subprocess.run([str(executable), "--capabilities"], capture_output=True,
+                                text=True, timeout=5, stdin=subprocess.DEVNULL)
+        if result.returncode or len(result.stdout) > 65536:
+            return report
+        caps = json.loads(result.stdout)
+        if not isinstance(caps, dict) or type(caps.get("schema")) is not int or caps["schema"] != 1 or caps.get("paint_only") is not True:
+            return report
+        for field, feature in [("runtime_surface_rules", "terminal_surface_rules"),
+                               ("runtime_codex_surfaces", "codex_semantic_surfaces")]:
+            if type(caps.get(feature)) is int and caps[feature] == 1:
+                report[field] = "supported"
+        if "supported" in (report["runtime_surface_rules"], report["runtime_codex_surfaces"]):
+            report["status"] = "capabilities_verified"
+    except (OSError, subprocess.TimeoutExpired, UnicodeError, ValueError):
+        pass
     return report
 
 
@@ -164,7 +187,7 @@ def main(argv=None):
         print(json.dumps(report, indent=2))
     else:
         installed = report["installation"]
-        print(f"Installed Herdr: {installed['version'] or installed['status']}; native surface rules: unknown")
+        print(f"Queried Herdr: {installed['version'] or installed['status']}; native surface rules: {installed['runtime_surface_rules']}; Codex surfaces: {installed['runtime_codex_surfaces']}")
         print(f"Source: {report['source']['status']}")
         for name in report["source"]["changed_files"]:
             print(f"  Check: {name}")
@@ -181,7 +204,7 @@ def main(argv=None):
             print("  Legacy Agent theme state differs from the native theme")
         if theme.get("legacy_palette_overlay"):
             print("  Legacy root colors may override native theme choices")
-        print("Read-only report; version/source checks do not prove installed renderer support.")
+        print("Read-only report; capabilities describe only the queried executable, not the currently running window.")
     return 0 if report["source"]["status"] in ("not_checked", "compatible", "already_applied") else 2
 
 

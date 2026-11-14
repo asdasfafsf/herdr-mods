@@ -56,8 +56,31 @@ both CLIs therefore need a host renderer extension; palette tokens alone cannot
 provide that behavior.
 
 An isolated [native renderer experiment](../../../skills/herdr-theme-compat/references/native-renderer.md)
-adds exact background replacement rules to theme data and redraws existing
-cells without restarting a CLI. It is not part of the normal installer and
-does not replace the official Herdr application. Its verification and upstream
-version are recorded separately so this optional extension does not become a
-dependency of the mods.
+supports live surface roles for known Codex backgrounds. The four optional
+colors in the standalone palette are:
+
+| Color | Surface |
+| --- | --- |
+| `terminal_codex_input` | Current prompt |
+| `terminal_codex_history` | Submitted messages |
+| `terminal_codex_add` | Added diff lines |
+| `terminal_codex_delete` | Deleted diff lines |
+
+All four opt in together on a host that reports the adapter capability. Stock
+Herdr ignores these names, so the same theme file remains compatible. The
+adapter preserves the underlying terminal cells and redraws existing output
+when theme data changes. It remembers the opt-in for that Codex process: after
+leaving Chiikawa, recognized surfaces follow the new native palette instead of
+retaining light fills in a dark theme. A different Codex process clears that
+opt-in; temporarily opening another program suspends the adapter until the same
+Codex process returns.
+This intentionally corrects stale surfaces after a theme switch; it does not
+change Codex preferences or rewrite terminal bytes. Other programs do not enter
+the Codex adapter. Unknown startup/custom syntax colors remain unchanged.
+
+Use the compatibility skill's read-only check to distinguish a source-tested
+patch from an executable that actually reports the capability. The extension
+is not part of the normal installer and does not replace or restart the official
+Herdr application. Its pinned source, tests and build remain separate from the
+mods' dependencies. Literal `terminal_bg_RRGGBB` rules remain available for
+explicit custom mappings; those rules are not provider-specific.

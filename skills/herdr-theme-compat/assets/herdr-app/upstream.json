@@ -8,12 +8,16 @@
   "files": {
     "src/main.rs": "7f43e0c50fb008dad2314467d84b05786a36ec4fb08161b8b3892c81f7c6f4bf",
     "src/vt.rs": "78f3b657496ef4bc9c960980ee5cde976f77eedf7f6222821665a6f0c8f74f91",
-    "defaults/AGENTS.md": "9098807bbab33350c02ce04d7e3270c9764c61382935ad7e4423d1a33af0c92d"
+    "defaults/AGENTS.md": "9098807bbab33350c02ce04d7e3270c9764c61382935ad7e4423d1a33af0c92d",
+    "src/terminal.rs": "ea75cecdb8c157a8b04e5d54e4e38635c6180c9f9ce931d0467704d7685ac1db",
+    "src/window.rs": "6ae511b857122f6d3bc928a83f635f9bb3d4812325e0be4b4bb5c652ca16d6f2"
   },
   "patched_files": {
-    "src/main.rs": "50a49e481a825282ead049c6c4a043cb2aeaeef23b65fd4546a029af2c1781b1",
-    "src/vt.rs": "f8b08ce7f9f63ce221a6a7ea0e6fcdba95f2c3d801ff2767a6c8c0f2a523ba2d",
-    "defaults/AGENTS.md": "23e407473579b864a02a5ec4ff87868bb84f597be09a029b739aa9ea262311e0"
+    "src/main.rs": "bbd1e82c3334bf9883c7cc721ccc7303002a1b16dbc6559af8334f290cfe592e",
+    "src/vt.rs": "b9c9ff70cb26151b5108b8e2c44662ef2e252a684ea9b7f0d5cb64069e1610ee",
+    "defaults/AGENTS.md": "569c7a633ee1844a489c09580f6894d09e6584e27ec2f7feffd017319f968659",
+    "src/terminal.rs": "b2cfe8e57f081d49988734d3ac8519432d4e14eb6cdbfd3df0fa6a70b670287c",
+    "src/window.rs": "9c93807625818813fc06790c993e809062f9db028b567dae25ab4256a2d9da84"
   },
-  "module_sha256": "8fca8baeb573779b9db38e42385b77495a7a6dde78228a54feeb4ecab8142e60"
+  "module_sha256": "95164efa0e95538ca9acee786554ff32b597b2e58f0f83bbf5a20fca66558d23"
 }

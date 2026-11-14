@@ -19,13 +19,17 @@ python3 scripts/check.py --source /path/to/isolated/herdr-app --json
 
 `--app-home` optionally inspects only theme-related fields in settings, shared
 state and the selected layout. `--layout NAME` selects another layout to inspect.
-`--executable PATH` selects the Herdr binary queried with `--version`.
+`--executable PATH` selects the Herdr binary. The checker reads `--version`
+and `--help`; only when help advertises it does it query `--capabilities`.
+These subcommands do not open a window or connect to a core.
 
 Distinguish the report's three kinds of evidence:
 
-- `installation`: the installed executable's version. A matching version does
-  **not** establish that the optional renderer feature is installed. Its runtime
-  support remains `unknown`; do not treat source verification as a binary probe.
+- `installation`: the queried executable's version and advertised capabilities.
+  A matching version alone leaves support `unknown`. `capabilities_verified`
+  with `runtime_surface_rules: supported` and `runtime_codex_surfaces: supported`
+  proves those contracts in that executable. It does **not** prove the running
+  window uses it; an isolated build can be queried without installing it.
 - `source`: complete hashes of affected upstream files and the bundled module.
   `compatible` means the pinned patch can be prepared; `already_applied` means
   those source files exactly match the packaged patch. Neither proves a build

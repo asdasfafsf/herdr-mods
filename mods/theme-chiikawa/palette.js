@@ -25,6 +25,11 @@ export const CHIIKAWA_THEME = {
     "done": "#488aa0",
     "idle": "#a09680",
     "unknown": "#a09680",
+    // Optional native renderer roles; stock Herdr ignores these color names.
+    "terminal_codex_input": "#f1dfbd",
+    "terminal_codex_history": "#f4ecdb",
+    "terminal_codex_add": "#e6efd9",
+    "terminal_codex_delete": "#f9e2d9",
     "ansi0": "#44362b",
     "ansi1": "#a34845",
     "ansi2": "#48683c",

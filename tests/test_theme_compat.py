@@ -48,9 +48,42 @@ class ThemeCompatibilityTests(unittest.TestCase):
             self.assertEqual(report["baseline_version_match"], same)
             self.assertEqual(report["runtime_surface_rules"], "unknown")
             self.assertNotIn("private", json.dumps(report))
-            self.assertEqual(run.call_args.args[0], ["fixture", "--version"])
+            self.assertEqual(run.call_args_list[0].args[0], ["fixture", "--version"])
+            self.assertEqual(run.call_args.args[0], ["fixture", "--help"])
+            self.assertEqual(run.call_count, 2, "never send unknown capability flags to stock binaries")
         with patch.object(checker.subprocess, "run", side_effect=subprocess.TimeoutExpired("fixture", 5)):
             self.assertEqual(checker.check_installation("fixture", manifest)["status"], "probe_failed")
+
+    def test_advertised_capabilities_are_verified_without_configuration_or_gui(self):
+        version = subprocess.CompletedProcess([], 0, "herdr-app 0.1.15\n", "")
+        help_result = subprocess.CompletedProcess([], 0, "  herdr-app --capabilities  read-only JSON\n", "")
+        capabilities = {"schema": 1, "paint_only": True, "terminal_surface_rules": 1, "codex_semantic_surfaces": 1}
+        result = subprocess.CompletedProcess([], 0, json.dumps(capabilities), "private diagnostic")
+        with patch.object(checker.subprocess, "run", side_effect=[version, help_result, result]) as run:
+            report = checker.check_installation("fixture", {"version": "0.1.15"})
+        self.assertEqual(report["status"], "capabilities_verified")
+        self.assertEqual(report["runtime_surface_rules"], "supported")
+        self.assertEqual(report["runtime_codex_surfaces"], "supported")
+        self.assertNotIn("private", json.dumps(report))
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [["fixture", "--version"], ["fixture", "--help"], ["fixture", "--capabilities"]])
+        for call in run.call_args_list:
+            self.assertEqual(call.kwargs["stdin"], subprocess.DEVNULL)
+            self.assertEqual(call.kwargs["timeout"], 5)
+
+    def test_malformed_or_failed_capability_probe_remains_unknown(self):
+        version = subprocess.CompletedProcess([], 0, "herdr-app 0.1.15\n", "")
+        help_result = subprocess.CompletedProcess([], 0, "  herdr-app --capabilities\n", "")
+        for payload in ["not json", "[]", '{"schema":true}',
+                        '{"schema":1,"paint_only":true,"terminal_surface_rules":true}',
+                        '{"schema":2,"paint_only":true,"terminal_surface_rules":1}']:
+            result = subprocess.CompletedProcess([], 0, payload, "private diagnostic")
+            with patch.object(checker.subprocess, "run", side_effect=[version, help_result, result]):
+                report = checker.check_installation("fixture", {"version": "0.1.15"})
+            self.assertEqual(report["status"], "version_only")
+            self.assertEqual(report["runtime_surface_rules"], "unknown")
+        with patch.object(checker.subprocess, "run", side_effect=[version, help_result, subprocess.TimeoutExpired("fixture", 5)]):
+            self.assertEqual(checker.check_installation("fixture", {"version": "0.1.15"})["runtime_codex_surfaces"], "unknown")
 
     def fixture(self, root):
         assets, source = root / "assets", root / "source"

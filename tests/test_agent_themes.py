@@ -30,6 +30,17 @@ class AgentThemesTests(unittest.TestCase):
             ratio = (luminance(native["background"]) + .05) / (luminance(foreground) + .05)
             self.assertGreaterEqual(ratio, 4.5, foreground)
 
+    def test_optional_terminal_surfaces_preserve_palette_and_contrast(self):
+        native = json.loads((THEMES / "herdr-chiikawa.json").read_text())
+        colors = native["colors"]
+        self.assertEqual(colors["terminal_codex_input"], colors["selected"])
+        self.assertEqual(colors["terminal_codex_history"], colors["canvas"])
+        for role in ("input", "history", "add", "delete"):
+            background = colors[f"terminal_codex_{role}"]
+            self.assertGreater(luminance(background), .65, role)
+            ratio = (luminance(background) + .05) / (luminance(native["foreground"]) + .05)
+            self.assertGreaterEqual(ratio, 4.5, role)
+
     def test_install_preserves_user_file_config_and_backs_up_owned_theme(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)

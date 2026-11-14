@@ -8,30 +8,112 @@
  mod update;
  mod update_notes;
  mod vt;
+@@ -56,6 +57,7 @@
+   herdr-app check <mod folder>     load a mod once and report what's wrong
+   herdr-app --skill                Agent Skill: driving the window, and where hc fits
+   herdr-app --version
++  herdr-app --capabilities          print renderer capabilities as JSON; no window or core
+
+ The terminals run in herdr-core (`hc`), which keeps them alive when the
+ window closes. `hc --help`: start, read, wait on and talk to terminals and
+@@ -107,6 +109,10 @@
+         None => {}
+         Some("-h" | "--help" | "help") => return print!("{HELP}"),
+         Some("--skill") => return print!("{}", include_str!("SKILL.md")),
++        Some("--capabilities") => return println!("{}", serde_json::json!({
++            "schema": 1, "terminal_surface_rules": 1, "codex_semantic_surfaces": 1,
++            "paint_only": true, "codex_style_version": "0.169.0"
++        })),
+         Some("-V" | "--version" | "version") => return println!("herdr-app {}", env!("CARGO_PKG_VERSION")),
+         Some(other) => {
+             eprint!("herdr-app: unknown argument {other:?}\n\n{HELP}");
 --- a/src/vt.rs
 +++ b/src/vt.rs
-@@ -70,6 +70,7 @@
+@@ -70,6 +70,8 @@
      pub selection_bg: Rgb,
      pub palette16: [Rgb; 16],
      pub minimum_contrast: f32,
 +    pub background_overrides: Vec<crate::terminal_surfaces::Rule>,
++    pub codex_colors: Option<crate::terminal_surfaces::CodexColors>,
  }
 
  /// The terminal colors from settings.json's theme.
-@@ -81,7 +82,7 @@
+@@ -81,7 +83,7 @@
      for (i, c) in palette16.iter_mut().enumerate() {
          *c = get(&format!("ansi{i}"));
      }
 -    Theme { fg: get("terminal_foreground"), bg: get("background"), cursor: get("cursor"), selection_bg: get("selection"), palette16, minimum_contrast: crate::settings::get().minimum_contrast }
-+    Theme { fg: get("terminal_foreground"), bg: get("background"), cursor: get("cursor"), selection_bg: get("selection"), palette16, minimum_contrast: crate::settings::get().minimum_contrast, background_overrides: t.iter().filter_map(|(key, value)| crate::terminal_surfaces::parse_rule(key, value)).collect() }
++    Theme { fg: get("terminal_foreground"), bg: get("background"), cursor: get("cursor"), selection_bg: get("selection"), palette16, minimum_contrast: crate::settings::get().minimum_contrast, background_overrides: t.iter().filter_map(|(key, value)| crate::terminal_surfaces::parse_rule(key, value)).collect(), codex_colors: crate::terminal_surfaces::CodexColors::parse(|key| t.get(key).cloned()) }
  }
 
  #[derive(Clone, Default, PartialEq)]
-@@ -1803,10 +1804,21 @@
+@@ -515,6 +517,8 @@
+     pub cols: u16,
+     pub rows: u16,
+     theme: Theme,
++    codex_surfaces: crate::terminal_surfaces::CodexAdapter,
++    surface_dirty: bool,
+     /// The built-in 256-color palette, which the theme's 16 colors override.
+     base_palette: [GhosttyColorRgb; 256],
+     /// Ghostty's own click/double-click/triple-click/drag selection logic.
+@@ -754,6 +758,8 @@
+                 cols,
+                 rows,
+                 theme: theme(),
++                codex_surfaces: Default::default(),
++                surface_dirty: true,
+                 base_palette: colors.palette,
+                 gesture,
+                 press,
+@@ -773,11 +779,26 @@
+     /// Switches colors live (settings.json changed).
+     pub fn set_theme(&mut self, theme: Theme) {
+         if self.theme != theme {
++            self.codex_surfaces.update(self.codex_surfaces.process(),
++                [theme.bg.0, theme.bg.1, theme.bg.2], theme.codex_colors);
+             self.theme = theme;
++            self.surface_dirty = true;
+             self.apply_theme();
+             // Rows carry the theme's own colors too (the selection's).
+             self.seen.clear();
+         }
++    }
++
++    /// Scope semantic colors to the foreground Codex process, never a stale
++    /// status report or a shell that inherited its terminal.
++    pub fn set_codex_process(&mut self, process: Option<u64>) -> bool {
++        let bg = self.theme.bg;
++        let changed = self.codex_surfaces.update(process, [bg.0, bg.1, bg.2], self.theme.codex_colors);
++        if changed {
++            self.seen.clear();
++            self.surface_dirty = true;
++        }
++        changed
+     }
+
+     fn apply_theme(&mut self) {
+@@ -1635,7 +1656,7 @@
+     /// Whether output since the last frame changed what's on screen: a title,
+     /// or a cursor parked where it was, needs no frame.
+     pub fn shows_change(&mut self) -> bool {
+-        if self.shared.held_since.is_some() {
++        if self.surface_dirty || self.shared.held_since.is_some() {
+             return true;
+         }
+         unsafe {
+@@ -1753,6 +1774,7 @@
+             });
+
+             self.drawn = self.drawable();
++            self.surface_dirty = false;
+             ghostty_render_state_clean(state);
+             let cursor_cell = cur.viewport_has_value.then_some((cur.viewport_x, cur.viewport_y));
+             Frame { rows, all, cursor, cursor_cell, bg: bg_default, search_spans: self.search_spans.clone() }
+@@ -1803,10 +1825,27 @@
                  }
              }
 
-+            let preserve_surface = !self.theme.background_overrides.is_empty() && (preserves_graphics_color(&text) || text.starts_with('\u{10eeee}'));
++            let preserve_surface = preserves_graphics_color(&text) || text.starts_with('\u{10eeee}');
              if text.starts_with('\u{10eeee}') {
                  text.clear();
                  style.underline = 0;
@@ -40,19 +122,97 @@
 +
 +            // Paint-only theme rules leave PTY output and stored styles untouched.
 +            // Selection, inverse video and graphics retain their original semantics.
-+            if !self.theme.background_overrides.is_empty() && !style.inverse && !selected && !preserve_surface {
++            if (!self.theme.background_overrides.is_empty() || self.codex_surfaces.active())
++                && !style.inverse && !selected && !preserve_surface {
 +                let rgb = |Rgb(r, g, b)| [r, g, b];
 +                let cell = |[r, g, b]: [u8; 3]| Rgb(r, g, b);
-+                let mapped = crate::terminal_surfaces::remap(rgb(fg), bg.map(rgb), rgb(self.theme.fg), &self.theme.background_overrides);
++                let explicit = bg.is_some_and(|bg| self.theme.background_overrides.iter().any(|(source, _)| *source == rgb(bg)));
++                let mapped = if explicit {
++                    crate::terminal_surfaces::remap(rgb(fg), bg.map(rgb), rgb(self.theme.fg), &self.theme.background_overrides)
++                } else {
++                    self.codex_surfaces.remap(rgb(fg), bg.map(rgb), rgb(self.theme.fg))
++                };
 +                fg = cell(mapped.0);
 +                bg = mapped.1.map(cell);
              }
 
              // Contrast adjustment is opt-in; graphics always keep their colors.
-@@ -2270,6 +2282,34 @@
+@@ -2270,6 +2309,106 @@
      }
 
      #[test]
++    fn codex_surface_two_way_live_refresh_preserves_native_semantics() {
++        use crate::terminal_surfaces::CodexColors;
++        let custom = CodexColors { input: [241, 223, 189], history: [244, 236, 219],
++            add: [230, 239, 217], delete: [249, 226, 217] };
++        for (base, input, history, add, delete) in [
++            (Rgb(12, 27, 43), [41, 54, 68], [50, 63, 76], [33, 58, 43], [74, 34, 29]),
++            (Rgb(248, 245, 236), [238, 235, 226], [243, 240, 231], [218, 251, 225], [255, 235, 233]),
++        ] {
++            let mut vt = Vt::new(12, 6);
++            let mut native = theme();
++            native.bg = base;
++            native.minimum_contrast = 1.0;
++            vt.set_theme(native.clone());
++            vt.set_codex_process(Some(73));
++            for (i, [r, g, b]) in [input, history, add, delete].into_iter().enumerate() {
++                vt.write(format!("\x1b[{};1H\x1b[1;3;38;2;210;212;217;48;2;{r};{g};{b}mTest\x1b[0m", i + 1).as_bytes());
++            }
++            let [r, g, b] = input;
++            vt.write(format!("\x1b[5;1H\x1b[38;2;{r};{g};{b};48;2;210;212;217;7mInverse\x1b[0m\x1b[6;1H\x1b[48;2;{r};{g};{b}m█X\x1b[0m").as_bytes());
++            let before = vt.frame();
++            assert!(!vt.shows_change());
++            let mut light = native.clone();
++            light.bg = Rgb(248, 245, 236);
++            light.fg = Rgb(80, 60, 46);
++            light.codex_colors = Some(custom);
++            vt.set_theme(light.clone());
++            assert!(vt.shows_change());
++            let changed = vt.frame();
++            for (i, [r, g, b]) in [custom.input, custom.history, custom.add, custom.delete].into_iter().enumerate() {
++                assert_eq!(changed.rows[i][0].bg, Some(Rgb(r, g, b)));
++                assert!(contrast(changed.rows[i][0].fg, Rgb(r, g, b)) >= 4.5);
++                assert_eq!(changed.rows[i][0].text, "T");
++                assert!(changed.rows[i][0].bold && changed.rows[i][0].italic);
++            }
++            assert_eq!(changed.rows[4][0].bg, before.rows[4][0].bg);
++            assert_eq!(changed.rows[5][0].bg, before.rows[5][0].bg);
++            vt.select_at(Some(CellPosition { row: 0, col: 0 }), "cell").unwrap();
++            assert_eq!(vt.frame().rows[0][0].bg, Some(native.selection_bg));
++            vt.clear_selection();
++            vt.frame();
++            // Same base and foreground, only semantic token changes: must paint.
++            light.codex_colors.as_mut().unwrap().input = [245, 228, 197];
++            vt.set_theme(light.clone());
++            assert!(vt.shows_change());
++            assert_eq!(vt.frame().rows[0][0].bg, Some(Rgb(245, 228, 197)));
++            // Explicit overrides win on the original source, with no second map.
++            light.background_overrides = vec![(input, [33, 58, 43])];
++            vt.set_theme(light);
++            assert_eq!(vt.frame().rows[0][0].bg, Some(Rgb(33, 58, 43)));
++            let dark = Theme { bg: Rgb(17, 23, 32), fg: Rgb(210, 212, 217), ..native.clone() };
++            vt.set_theme(dark);
++            assert!(vt.shows_change());
++            let restored = vt.frame();
++            for (i, rgb) in [Rgb(45, 50, 58), Rgb(55, 60, 67), Rgb(33, 58, 43), Rgb(74, 34, 29)].into_iter().enumerate() {
++                assert_eq!(restored.rows[i][0].bg, Some(rgb));
++                assert!(contrast(restored.rows[i][0].fg, rgb) >= 4.5);
++            }
++            // Leaving Codex restores untouched stored styles without output.
++            assert!(vt.set_codex_process(None));
++            assert!(vt.shows_change());
++            let shell = vt.frame();
++            for i in 0..4 { assert_eq!(shell.rows[i][0].bg, before.rows[i][0].bg); }
++            // Returning from an editor to the same Codex restores adaptation.
++            vt.set_codex_process(Some(73));
++            assert_eq!(vt.frame().rows[0][0].bg, Some(Rgb(45, 50, 58)));
++            // A new process on a plain theme does not inherit the old opt-in.
++            vt.set_codex_process(Some(74));
++            assert_eq!(vt.frame().rows[0][0].bg, before.rows[0][0].bg);
++        }
++    }
++
++    #[test]
 +    fn explicit_surface_colors_reload_without_program_output() {
 +        let mut vt = Vt::new(12, 4);
 +        let original = theme();
@@ -86,7 +246,7 @@
          vt.set_theme(Theme { minimum_contrast: 1.6, ..theme() });
 --- a/defaults/AGENTS.md
 +++ b/defaults/AGENTS.md
-@@ -344,6 +344,13 @@
+@@ -344,6 +344,27 @@
    are placed in their cells as Ghostty places them.
  - `terminal_scroll_speed`: wheel and trackpad multiplier (default 1, clamped
    to 0.1..5), including mouse reports to programs. Small moves accumulate.
@@ -97,6 +257,93 @@
 +  contrast. Selection, reverse video and graphic glyphs are excluded.
 +  Example: `"terminal_bg_292929": "#f1dfbd"`. These opt-in rules apply
 +  to every terminal in this theme, not only a particular CLI.
++- Optional `colors.terminal_codex_input`, `terminal_codex_history`,
++  `terminal_codex_add` and `terminal_codex_delete` (all four `#rrggbb`) opt
++  foreground Codex processes into live semantic surfaces. The adapter derives
++  Codex 0.169 composer/history/HUD colors from observed terminal backgrounds
++  and known shipped palette bases; known fallback diff colors are included.
++  The opt-in follows that process when switching to a plain theme, deriving
++  native light/dark surfaces instead of leaving its cached old colors behind.
++  Other foreground programs suspend mapping; returning to the same Codex PID
++  resumes it. A new Codex PID does not inherit the previous process's opt-in.
++  Unknown custom startup colors from before attachment remain unchanged;
++  exact `terminal_bg_RRGGBB` rules can cover verified additional colors and
++  take precedence. Selection, inverse video and graphics stay unchanged.
++  `herdr-app --capabilities` reports this optional renderer contract without
++  opening a window, connecting to a core or changing configuration.
  - `font` / `font_size`: the terminals' (px at zoom 1); `ui_font`: the mods'
    (their text sizes are their own, in px, and follow zoom). Optional: without
    them a layout uses settings.json's, else Herdr's (JetBrains Mono 14, Geist).
+--- a/src/terminal.rs
++++ b/src/terminal.rs
+@@ -466,6 +466,10 @@
+         let mut g = self.grid.borrow_mut();
+         let cell = device_cell(g.cell, g.scale);
+         g.refresh_theme(&vt::theme(), cell);
++    }
++
++    pub fn set_codex_process(&self, process: Option<u64>, cx: &mut Context<Self>) {
++        if self.grid.borrow_mut().vt.set_codex_process(process) { cx.notify(); }
+     }
+
+     /// Its title as shown (see `shown_title`); news only when that changed.
+--- a/src/window.rs
++++ b/src/window.rs
+@@ -2095,9 +2095,11 @@
+     fn tell_term(&self, view: &Entity<TerminalView>, addr: &str, cx: &mut Context<Self>) {
+         let cwd = self.cwds.get(addr).map(std::path::PathBuf::from);
+         let to_program = self.live.get(addr).and_then(|r| r.pointer("/labels/herdr.right-click")).and_then(Value::as_str) == Some("program");
+-        view.update(cx, |v, _| {
++        let codex = self.live.get(addr).and_then(codex_process);
++        view.update(cx, |v, cx| {
+             v.cwd = cwd;
+             v.right_click_to_program = to_program;
++            v.set_codex_process(codex, cx);
+         });
+     }
+
+@@ -5059,6 +5061,17 @@
+     slot
+ }
+
++/// A live foreground process is authoritative; an old OSC status can outlive
++/// Codex and must never recolor the shell or another program that replaces it.
++fn codex_process(record: &Value) -> Option<u64> {
++    if record.get("state").and_then(Value::as_str) != Some("live") { return None; }
++    let foreground = record.get("foreground")?;
++    let argv = foreground.get("argv")?;
++    let program = program_of(&Value::Null, Some(argv));
++    if program.get("key").and_then(Value::as_str) != Some("codex") { return None; }
++    foreground.get("pid")?.as_u64().filter(|pid| *pid > 0)
++}
++
+ /// What a terminal runs now (core's `foreground`), else what it started with.
+ fn running_argv(rec: &serde_json::Map<String, Value>) -> Option<&Value> {
+     rec.get("foreground").and_then(|f| f.get("argv")).filter(|a| a.as_array().is_some_and(|a| !a.is_empty())).or_else(|| rec.get("argv"))
+@@ -5314,6 +5327,26 @@
+ mod tests {
+     use gpui::{div, point, px, size, Context, IntoElement, Render, TestAppContext, Window};
+     use gpui::prelude::*;
++
++    #[test]
++    fn codex_surface_process_uses_live_foreground_not_old_report() {
++        use serde_json::json;
++        let mut rec = json!({"state":"live", "report":{"app":"codex"},
++            "foreground":{"pid":73, "name":"codex", "argv":["/bin/codex"]}});
++        assert_eq!(super::codex_process(&rec), Some(73));
++        rec["foreground"]["argv"] = json!(["/bin/zsh"]);
++        assert_eq!(super::codex_process(&rec), None);
++        rec["foreground"]["argv"] = json!(["claude"]);
++        assert_eq!(super::codex_process(&rec), None);
++        rec["foreground"]["argv"] = json!(["codex"]);
++        rec["state"] = json!("exited");
++        assert_eq!(super::codex_process(&rec), None);
++        rec["state"] = json!("live");
++        rec["foreground"]["pid"] = json!(-1);
++        assert_eq!(super::codex_process(&rec), None);
++        rec["foreground"] = json!(null);
++        assert_eq!(super::codex_process(&rec), None);
++    }
+
+     #[test]
+     fn core_error_dismissal_survives_failed_retries_but_resets_after_recovery() {
