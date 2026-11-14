@@ -30,7 +30,7 @@ const stub = exports => new vm.SyntheticModule(Object.keys(exports), function ()
 const modules = new Map([
   ['gpui-kit', stub({ div: builder, image: path => builder('image', path), svg: path => builder('svg', path) })],
   ['gpui-base', stub({ h_flex: builder, v_flex: builder, Scrollbar: {} })],
-  ['herdr', stub({ props: () => ({ integrated: true }), panes: () => [], focused: () => ({}), shared: () => 'village', setShared() {}, run() {} })],
+  ['herdr', stub({ props: () => ({ integrated: true }), panes: () => [], focused: () => ({}), shared: key => key === 'ag.resourcePack' ? 'chiikawa' : 'village', setShared() {}, run() {} })],
   ['./agent-mode.js', stub({ inAgentMode: () => true, agentViewVisible: () => visible, applyModeTheme() {}, workspaceTheme: () => 'chiikawa' })],
   ['./overview-header.js', stub({ overviewHeader() {} })],
   ['./ui.js', stub({ button() {}, statusColor() {}, statusMark() {}, statusInfo() {}, statusLabel() {}, statusNotice: row => ['done', 'blocked'].includes(row.status) ? { label: row.status, text: 'Read me' } : null })],
@@ -38,15 +38,14 @@ const modules = new Map([
   ['./session-controls.js', stub({ renderSessionControls() {}, renderInlinePermission() {}, sessionState() {} })],
   ['./terminal-dock.js', stub({ hasTerminalDock: () => false, noteSceneSize() {} })],
 ]);
-async function load(name) {
+function load(name) {
   if (modules.has(name)) return modules.get(name);
   const module = new vm.SourceTextModule(readFileSync(new URL(`../mods/agents-plus/${name.slice(2)}`, import.meta.url), 'utf8'), { context });
   modules.set(name, module);
-  await module.link(load);
   return module;
 }
-const themeModule = await load('./agent-theme.js'); await themeModule.evaluate();
-const villageModule = await load('./village.js'); await villageModule.evaluate();
+const themeModule = load('./agent-theme.js'); await themeModule.link(load); await themeModule.evaluate();
+const villageModule = load('./village.js'); await villageModule.link(load); await villageModule.evaluate();
 const { initAgentTheme, motionControl, spriteFrame } = themeModule.namespace;
 const { villageLayout, advanceVillage, scenery } = villageModule.namespace;
 
@@ -54,7 +53,7 @@ const { villageLayout, advanceVillage, scenery } = villageModule.namespace;
 // sizes; only the outer crop moves. Residents retain their own bounded layout.
 for (const width of [400, 1400, 2100]) {
   drawn.length = 0;
-  scenery(villageLayout(width, 660, 5, 2), (await load("./themes.js")).namespace.THEMES.chiikawa);
+  scenery(villageLayout(width, 660, 5, 2), (await load("./resource-packs.js")).namespace.RESOURCE_PACKS.chiikawa);
   const scene = drawn.find(node => node.id === 'village-scenery');
   const field = drawn.find(node => node.path?.endsWith('/field.png'));
   const stump = drawn.find(node => node.path?.endsWith('/stump.png'));
@@ -77,7 +76,7 @@ assert.match(spriteFrame('chiikawa', 'kurimanju', 0, 1), /kurimanju\/001\.png$/)
 // A pose with no rear-view artwork only travels in its declared directions.
 {
   const row={id:'kurimanju',status:'working'};
-  const view={skin:'chiikawa',themeClock:0,residentAssignments:new Map([[row.id,'kurimanju']])};
+  const view={pack:'chiikawa',themeClock:0,residentAssignments:new Map([[row.id,'kurimanju']])};
   const layout=villageLayout(1200,740,1);
   advanceVillage(view,[row],layout);
   const actor=view.villageActors.get(row.id), y=actor.y;

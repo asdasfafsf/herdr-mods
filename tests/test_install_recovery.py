@@ -94,3 +94,7 @@ class InstallRecoveryTests(unittest.TestCase):
         with patch.object(installer,'check_mod') as check:
             self.assertTrue(installer.install_mod('example',True));check.assert_not_called()
         self.assert_old_files()
+
+
+if __name__ == "__main__":
+    unittest.main()

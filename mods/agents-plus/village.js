@@ -5,7 +5,7 @@ import { h_flex, v_flex, Scrollbar } from "gpui-base";
 import { run, focused } from "herdr";
 import { button, statusColor, statusMark, statusInfo, statusLabel, statusNotice } from "./ui.js";
 import { agentSprite } from "./agent-theme.js";
-import { themeDefinition } from "./themes.js";
+import { packDefinition } from "./resource-packs.js";
 import { spriteLayout } from "./sprite-layout.js";
 import { spriteArt } from "./sprite-art.js";
 import { renderAgentEmptyState } from "./agent-empty-state.js";
@@ -98,7 +98,7 @@ export function advanceVillage(view, rows, layout) {
     const dx = actor.tx - actor.x, dy = actor.ty - actor.y, distance = Math.hypot(dx, dy);
     if (distance < 2) {
       const name = agentSprite(view, row, true)?.name;
-      const declared = themeDefinition(view.skin).motions?.[name]?.directions;
+      const declared = packDefinition(view.pack).motions?.[name]?.directions;
       const directions = declared?.filter((direction) => ["left", "right", "up", "down"].includes(direction));
       const angles = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
       const direction = directions?.length ? directions[Math.floor(random(actor) * directions.length)] : null;
@@ -260,7 +260,7 @@ export function dragViewport(element, view) {
 export function renderVillage(view, state) {
   const { t, all, rows, visible, start, pages, states, openRow, empty, emptyActions } = state;
   const width = view.villageWidth || view.width || 1100;
-  const definition = themeDefinition(view.skin);
+  const definition = packDefinition(view.pack);
   const layout = villageLayout(width, view.villageHeight || 660, visible.length, visible.filter(villageNotice).length,
     visible.some((row) => row.status === "blocked") ? { width: 320, height: 340 } : {});
   const selected = visible.find((row) => row.id === view.villageSelected);

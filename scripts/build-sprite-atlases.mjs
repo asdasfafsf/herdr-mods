@@ -1,12 +1,12 @@
 // Pack unchanged PNG bytes into a code-native SVG, keeping one image resource
 // per resident. Mirrored cells transform only poses without source lettering.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { THEMES } from '../mods/agents-plus/themes.js';
+import { RESOURCE_PACKS } from '../mods/agents-plus/resource-packs.js';
 import { frameFacing } from '../mods/agents-plus/sprite-directions.js';
 
 const check = process.argv.includes('--check');
 let files = 0;
-for (const definition of Object.values(THEMES)) {
+for (const definition of Object.values(RESOURCE_PACKS)) {
   if (!definition.frameAtlas) continue;
   const root = new URL(`../${definition.art}/`, import.meta.url);
   const folder = new URL(`${definition.frameAtlas}/`, root);

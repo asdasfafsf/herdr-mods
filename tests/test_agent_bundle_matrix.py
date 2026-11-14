@@ -96,10 +96,12 @@ class AgentBundleMatrixTests(unittest.TestCase):
             with self.subTest(bundles=bundles), tempfile.TemporaryDirectory() as directory:
                 home = Path(directory)
                 self.assertEqual(self.install(home, bundles, workspace("absent"))[0], 0)
-                result = subprocess.run(["node", "--experimental-vm-modules", str(ROOT / "tests/agent-empty-states.mjs"),
-                                         "--mod-dir", str(home / "mods/agents-plus")],
-                                        cwd=directory, capture_output=True, text=True, timeout=20)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                for script in ["agent-empty-states.mjs", "theme-adapters.mjs"]:
+                    result = subprocess.run(["node", "--experimental-vm-modules", str(ROOT / "tests" / script),
+                                             "--mod-dir", str(home / "mods/agents-plus")],
+                                            cwd=directory, capture_output=True, text=True, timeout=20)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
     def test_empty_home_without_layout_files_is_not_an_exception(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -3,8 +3,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { SPRITES } from '../mods/agents-plus/theme-assets.js';
 import { frameFacing, movementFacing } from '../mods/agents-plus/sprite-directions.js';
 
-import { THEMES } from '../mods/agents-plus/themes.js';
-const definition = THEMES.chiikawa;
+import { RESOURCE_PACKS } from '../mods/agents-plus/resource-packs.js';
+const definition = RESOURCE_PACKS.chiikawa;
 const root = new URL('../mods/agents-plus/assets/chiikawa/', import.meta.url);
 let frames = 0;
 for (const name of Object.keys(definition.facing)) {

@@ -1,7 +1,7 @@
 // Presentation-only adapter. Session behavior lives in the shared view engine.
 import { SPRITES } from "./theme-assets.js";
-export const CHIIKAWA_ADAPTER = {
-  label: "Chiikawa", native: "herdr-chiikawa", layout: "village", contrast: true,
+export const CHIIKAWA_PACK = {
+  label: "Chiikawa", layout: "village",
   art: "mods/agents-plus/assets/chiikawa",
   frameAtlas: "atlases",
   residents: ["rakko", "hachiware", "idle", "done", "momonga", "kurimanju", "shisa", "yoroi", "anoko", "chiikabu", "momonga-heart", "chiikawa-fairy", "usagi-dance", "hachiware-dance", "chiikawa-bounce"],

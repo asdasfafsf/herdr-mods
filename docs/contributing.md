@@ -29,8 +29,12 @@
 
 - Preserve the selected theme's identity when improving readability. Use shared
   semantic palette tokens and [the theme template](../mods/agents-plus/themes/README.md).
-- Changes specific to Chiikawa must restore the user's prior settings when
-  selecting Default. Do not permanently change Codex or Claude configuration.
+- App palettes and agent resource packs are independent choices. Packs provide
+  metadata and assets only; reuse the shared status, speech, motion, selection,
+  drag, Cards/Village and native terminal split implementations.
+- Chiikawa palette changes must restore the user's prior settings when leaving
+  that native palette. Selecting a resource pack must not change palette or
+  terminal settings. Do not permanently change Codex or Claude configuration.
 - Verify visible changes in the native app when possible, including input,
   submitted messages and Edit output. Do not claim screenshot verification from
   synthetic rendering tests alone.
