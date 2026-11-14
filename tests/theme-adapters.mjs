@@ -17,7 +17,7 @@ const stack = () => ({ id: 'root', type: 'row', children: [{ id: 'workspace-view
   ] },
 ] }] });
 const find = (node, id) => node?.id === id ? node : node?.children?.map(child => find(child, id)).find(Boolean);
-async function hostFixture({ skin = 'fixture-garden', native = 'graphite', presentation = 'cards', agents = [], state = {}, focus = {}, layout = stack(), mode = 'overview', terminals = [] } = {}) {
+async function hostFixture({ skin = 'fixture-garden', native = 'graphite', presentation = 'cards', agents = [], state = {}, focus = {}, layout = stack(), mode = 'overview', terminals = [], integrated = true, localState = {}, toolbarFirst = false } = {}) {
   const handlers = new Map(), calls = [], timers = new Map(), cache = new Map();
   function builder(type, path) {
     const node = { type, path, ops: [] };
@@ -43,7 +43,7 @@ async function hostFixture({ skin = 'fixture-garden', native = 'graphite', prese
   const host = {
     agents: () => structuredClone(agents), terminals: () => structuredClone(terminals),
     panes: () => agents.map(a => ({ id: a.pane, terminal: a.address, tab: a.tab, title: a.title, program: a.program })),
-    spaces: () => [], focused: () => focus, props: () => ({ mode, integrated: true }),
+    spaces: () => [], focused: () => focus, props: () => ({ mode, integrated }),
     layout: () => layout, layouts: () => [], window: () => ({ active: true }),
     shared: key => structuredClone(shared[key]), setShared: (key, value) => { shared[key] = structuredClone(value); },
     theme: () => new Proxy({}, { get: () => nativeTheme === 'graphite' ? '#123456' : '#abcdef' }),
@@ -63,7 +63,7 @@ async function hostFixture({ skin = 'fixture-garden', native = 'graphite', prese
     exec: () => { throw new Error('No process or session command is permitted in empty-state tests'); },
     readTextFile: async () => '{}', writeTextFile: async () => { throw new Error('No configuration writes permitted'); },
   };
-  const local = new Map();
+  const local = new Map(Object.entries(localState));
   const context = vm.createContext({ console, Date: class extends Date { static now() { return now; } },
     localStorage: { getItem: key => local.get(key), setItem: (key, value) => local.set(key, value), removeItem: key => local.delete(key) } });
   const synthetic = (name, values) => new vm.SyntheticModule(Object.keys(values), function () { for (const [key, value] of Object.entries(values)) this.setExport(key, value); }, { context, identifier: name });
@@ -95,6 +95,7 @@ async function hostFixture({ skin = 'fixture-garden', native = 'graphite', prese
   if (helper.status !== 'evaluated') await helper.evaluate();
   const view = new main.namespace.default();
   const cx = { spawn() {}, timer: { every(ms, fn) { timers.set(ms, fn); } }, notify() {}, stop_propagation() {}, focus_handle: () => ({}) };
+  if (toolbarFirst) cache.get(resolve(modRoot, 'agent-mode.js')).namespace.initWorkspaceTheme(cx);
   view.init({}, cx); view.outside = [];
   const render = () => { handlers.clear(); return JSON.parse(JSON.stringify(view.render(cx))); };
   const click = id => { assert.ok(handlers.has(id), `missing recovery/navigation control ${id}`); handlers.get(id)({}, cx); };
@@ -229,7 +230,8 @@ await check('pack preference survives remount and one-time migration never overw
   for (const native of ['paper', 'herdr-chiikawa']) {
     const env = await hostFixture({ native, state: { 'ag.resourcePack': null }, presentation: null });
     const migrated = native === 'paper' ? 'default' : 'chiikawa';
-    assert.equal(env.shared['ag.resourcePack'], migrated);
+    assert.equal(env.packState.selectedResourcePack(), migrated);
+    assert.equal(env.shared['ag.resourcePack'], null, 'migration is not an explicit user selection');
     env.render(); env.click('overview-pack-fixture-garden');
     env.mode.initWorkspaceTheme(env.cx);
     assert.equal(env.shared['ag.resourcePack'], 'fixture-garden', 'palette initialization cannot overwrite a saved pack');
@@ -237,6 +239,32 @@ await check('pack preference survives remount and one-time migration never overw
     assert.equal(restored.view.pack, 'fixture-garden');
     assert.equal(restored.view.presentation, 'village');
   }
+});
+await check('toolbar and legacy overview mount order cannot discard the explicit legacy preference', async () => {
+  for (const toolbarFirst of [true, false]) {
+    const env = await hostFixture({ native: 'graphite', state: { 'ag.resourcePack': null },
+      integrated: false, localState: { 'overview.theme': 'chiikawa' }, toolbarFirst });
+    if (!toolbarFirst) env.mode.initWorkspaceTheme(env.cx);
+    assert.equal(env.view.pack, 'chiikawa', 'the actual legacy overview initialization preserves artwork');
+    assert.equal(env.packState.selectedResourcePack(), 'chiikawa');
+    env.packState.initResourcePack('default', 'native');
+    assert.equal(env.packState.selectedResourcePack(), 'chiikawa', 'later native changes cannot overwrite the migration');
+    const restored = await hostFixture({ native: 'paper', state: env.shared });
+    assert.equal(restored.view.pack, 'chiikawa', 'the migrated preference survives remount');
+    env.packState.selectResourcePack('default');
+    env.packState.initResourcePack('chiikawa', 'overview');
+    assert.equal(env.packState.selectedResourcePack(), 'default', 'explicit Pack selection always wins');
+  }
+});
+await check('native fallback is stable and invalid legacy values cannot replace it', async () => {
+  const env = await hostFixture({ native: 'paper', state: { 'ag.resourcePack': null } });
+  env.packState.initResourcePack('chiikawa', 'native');
+  env.packState.initResourcePack('unregistered', 'overview');
+  assert.equal(env.packState.selectedResourcePack(), 'default');
+  env.shared['ag.resourcePack'] = 'missing-saved-pack';
+  env.packState.initResourcePack('chiikawa', 'overview');
+  assert.equal(env.shared['ag.resourcePack'], 'missing-saved-pack');
+  assert.equal(env.packState.selectedResourcePack(), 'default');
 });
 await check('an unavailable saved pack falls back without losing its saved ID', async () => {
   const env = await hostFixture({ skin: 'not-installed', native: 'herdr-chiikawa', presentation: 'village', agents: [session('one', 'working')] });

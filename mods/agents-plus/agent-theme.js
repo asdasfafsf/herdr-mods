@@ -16,7 +16,8 @@ const preferredPresentation = (pack) => {
 
 export function initAgentTheme(view, cx) {
   // Read the old theme-derived choice once, then own a separate persisted pack.
-  initResourcePack(inAgentMode() ? workspaceTheme() : props()?.resourcePack || props()?.skin || localStorage.getItem("overview.theme"));
+  initResourcePack(inAgentMode() ? workspaceTheme() : props()?.resourcePack || props()?.skin || localStorage.getItem("overview.theme"),
+    inAgentMode() ? "native" : "overview");
   view.pack = selectedResourcePack();
   view.presentation = preferredPresentation(view.pack);
   view.themeClock = 0;

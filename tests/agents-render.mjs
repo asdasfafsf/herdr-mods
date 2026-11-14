@@ -203,7 +203,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
     {agent:'codex',pid:99,session:'two',cwd:'/another',title:'External two',status:'blocked',updated:2}];
   const env=await environment(data,null);
   env.render();
-  assert.deepEqual(env.writes.map(([key])=>key),['ag.resourcePack'],'only the initial pack migration writes a preference');
+  assert.deepEqual(env.writes.map(([key])=>key),['ag.resourcePackMigration'],'only the initial pack migration writes a preference');
   let rows=env.overview.agentViewRows(data.outside);
   assert.equal(rows.length,6,'4 parent agents and 2 sessions on the same PID');
   assert.equal(env.overview.filterAgentRows(rows,'External').length,2);
