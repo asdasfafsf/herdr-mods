@@ -47,7 +47,7 @@ async function load(name) {
 }
 const themeModule = await load('./agent-theme.js'); await themeModule.evaluate();
 const villageModule = await load('./village.js'); await villageModule.evaluate();
-const { initAgentTheme, themeControls, spriteFrame } = themeModule.namespace;
+const { initAgentTheme, motionControl, spriteFrame } = themeModule.namespace;
 const { villageLayout, advanceVillage, scenery } = villageModule.namespace;
 
 // The same background artwork keeps its scale and aspect ratio across viewport
@@ -83,7 +83,7 @@ visible = false; tick(1000); assert.equal(view.themeClock, 50, 'hidden presentat
 view.pointerDrag = { id: 'resident-t1', moved: true };
 tick(50); assert.equal(view.pointerDrag, null, 'hiding the view releases a grabbed resident');
 visible = true; tick(50); assert.equal(view.themeClock, 100, 'visible presentation resumes without jumping');
-themeControls(view, {});
+motionControl(view, {});
 handlers.get('overview-motion')({}, cx);
 tick(50); assert.equal(view.themeClock, 100, 'an explicit current-view pause is still respected');
 handlers.get('overview-motion')({}, cx);

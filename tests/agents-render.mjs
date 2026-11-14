@@ -59,6 +59,11 @@ async function environment(data, revision) {
         if (key === 'hover') { const style = builder('hover'); args[0](style); node.ops.push([key, style]); }
         else {
           if (key === 'on_click') handlers.set(node.ops.find(([k])=>k==='id')?.[1]?.[0],args[0]);
+          if (key === 'on_open_change') {
+            const id = node.ops.find(([op]) => op === 'id')?.[1][0];
+            handlers.set(id, (_e, cx) => args[0](!node.ops.find(([op]) => op === 'open')?.[1][0], cx));
+            handlers.set(`${id}:on_open_change`, args[0]);
+          }
           if (key.startsWith('on_mouse_')) handlers.set(`${node.ops.find(([k])=>k==='id')?.[1]?.[0]}:${key}`,args.at(-1));
           node.ops.push([key, args.map(v => typeof v === 'function' ? '[callback]' : v)]);
         }
@@ -100,7 +105,7 @@ async function environment(data, revision) {
   modules.set('gpui-kit',synthetic('gpui-kit',{View:class {},div:()=>builder('div'),image:s=>builder('image',s),svg:s=>builder('svg',s)}));
   const textState={new:({value=''}={})=>({text:value,events:{},focusCount:0,value(){return this.text},set_value(value){this.text=value},on(event,fn){this.events[event]=fn},focus(){this.focusCount++},emit(event,payload={}){this.events[event]?.(payload,cx)}})};
   modules.set('gpui-base',synthetic('gpui-base',{h_flex:()=>builder('h_flex'),v_flex:()=>builder('v_flex'),
-    InputState:textState,TextareaState:textState,
+    Popover: { new: id => builder('popover').id(id) }, InputState:textState,TextareaState:textState,
     Input:{new:()=>builder('input')},Textarea:{new:()=>builder('textarea')},Scrollbar:{vertical:id=>builder('scrollbar',id)}}));
   function module(file) {
     if (modules.has(file)) return modules.get(file);
@@ -272,10 +277,10 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(env.calls.agents,reads,'animation reuses host snapshots');
   data.windowActive=false;data.elapsed=100;env.timers.get(50)();
   assert.equal(env.instance.themeClock,600,'a visible overview animates without window focus');
-  env.click('overview-motion');assert.equal(env.instance.motionPaused,true);
+  env.click('village-filters');env.render();env.click('overview-motion');assert.equal(env.instance.motionPaused,true);
   data.elapsed=150;env.timers.get(50)();
   assert.equal(env.instance.themeClock,600,'motion pause freezes playback');
-  env.click('overview-motion');data.elapsed=1000;env.timers.get(50)();
+  env.click('overview-motion');env.click('village-filters');data.elapsed=1000;env.timers.get(50)();
   assert.equal(env.instance.themeClock,600,'a hidden overview stops playback');
   env.render();data.elapsed=1050;env.timers.get(50)();
   assert.equal(env.instance.themeClock,650,'playback resumes when the overview is rendered again');
@@ -543,7 +548,7 @@ console.log('agent ordering: sidebar pins, Active, external sessions, grouped so
   const focusedWrites=env.writes.length;env.timers.get(250)();
   assert.equal(env.writes.length,focusedWrites,'the following selection tick does not return focus to the terminal');
   env.click('village-filters');
-  assert.equal(env.instance.input.focusCount,1,'search takes focus only when explicitly opened');
+  assert.equal(env.instance.input.focusCount,0,'opening Options does not steal focus into Search');
 }
 console.log('native terminal dock: shared session, collapse, resize memory, shortcuts, clipboard routing and composer passed');
 
@@ -624,6 +629,22 @@ console.log('agent cards: session identity, current work, active focus and disti
   }
   console.log('village status: current state, real unread previews, no automatic acknowledgement, moving notices and clearing passed');
 }
+
+// Native dismissal closes only the popup; session selection and filters survive.
+for (const presentation of ['cards','village']) {
+  const data=fixture(4);data.props={mode:'overview',skin:'chiikawa'};data.outside=[];
+  const env=await environment(data,null);env.instance.presentation=presentation;
+  env.instance.villageSelected='t0';env.render();env.click('village-filters');
+  let output=JSON.stringify(env.render());
+  assert.ok(output.includes('Display options') && !output.includes('overview-refresh'));
+  env.click('overview-status-working');env.render();
+  env.pointer('village-filters','on_open_change',false);
+  output=JSON.stringify(env.render());
+  assert.ok(!output.includes('village-filter-panel'));
+  assert.equal(env.instance.villageSelected,'t0');assert.equal(env.instance.statusFilter,'working');
+  assert.equal(env.instance.input.focusCount,0);
+}
+console.log('Options popover: cards/village dismissal preserves filters and session selection');
 
 // A child click can consume mouse-up before the viewport sees it. It must
 // still end the pending grab; later unpressed motion never carries a character.

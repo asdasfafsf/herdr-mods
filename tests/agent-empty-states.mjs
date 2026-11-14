@@ -29,6 +29,11 @@ async function hostFixture({ skin = 'default', presentation = 'cards', agents = 
         if (key === 'hover') args[0](builder('hover'));
         else {
           if (key === 'on_click') handlers.set(node.ops.find(([op]) => op === 'id')?.[1][0], args[0]);
+          if (key === 'on_open_change') {
+            const id = node.ops.find(([op]) => op === 'id')?.[1][0];
+            handlers.set(id, (_e, cx) => args[0](!node.ops.find(([op]) => op === 'open')?.[1][0], cx));
+            handlers.set(`${id}:on_open_change`, args[0]);
+          }
           node.ops.push([key, args.map(arg => typeof arg === 'function' ? '[callback]' : arg)]);
         }
         return proxy;
@@ -66,7 +71,7 @@ async function hostFixture({ skin = 'default', presentation = 'cards', agents = 
   cache.set('herdr', synthetic('herdr', host));
   cache.set('gpui-kit', synthetic('gpui-kit', { View: class {}, div: () => builder('div'), image: () => builder('image'), svg: () => builder('svg') }));
   const input = { new: ({ value = '' } = {}) => ({ text: value, value() { return this.text; }, set_value(value) { this.text = value; }, on() {}, focus() {} }) };
-  cache.set('gpui-base', synthetic('gpui-base', { h_flex: () => builder('row'), v_flex: () => builder('column'), InputState: input, TextareaState: input,
+  cache.set('gpui-base', synthetic('gpui-base', { h_flex: () => builder('row'), v_flex: () => builder('column'), Popover: { new: id => builder('popover').id(id) }, InputState: input, TextareaState: input,
     Input: { new: () => builder('input') }, Textarea: { new: () => builder('textarea') }, Scrollbar: { vertical: () => builder('scrollbar') } }));
   function module(path) {
     if (cache.has(path)) return cache.get(path);

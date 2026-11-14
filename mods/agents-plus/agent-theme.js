@@ -55,11 +55,15 @@ export function themeControls(view, t) {
     .when(hasVillage(view.skin), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
       .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(8).py(5).rounded(5).text_size(11)
         .text_color(t.foreground).when(view.presentation === key, (el) => el.bg(t.selected)).cursor_pointer()
-        .on_click((_e, cx) => { finishDrag(view, null, cx); view.presentation = key; if (inAgentMode()) setShared("ag.presentation", key); else localStorage.setItem("overview.presentation", key); cx.notify(); }).child(label)))))
-    .when(hasResidents(view.skin), (el) => el.child(div().id("overview-motion").px(8).py(5).rounded(5)
-      .text_size(11).text_color(t.muted).cursor_pointer().hover((el) => el.bg(t.hover))
-      .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; cx.notify(); })
-      .child(view.motionPaused ? "Resume" : "Pause")));
+        .on_click((_e, cx) => { finishDrag(view, null, cx); view.presentation = key; if (inAgentMode()) setShared("ag.presentation", key); else localStorage.setItem("overview.presentation", key); cx.notify(); }).child(label)))));
+}
+
+export function motionControl(view, t) {
+  if (!hasResidents(view.skin)) return div();
+  return div().id("overview-motion").px(9).py(6).rounded(6).text_size(11)
+    .text_color(t.foreground).cursor_pointer().hover((el) => el.bg(t.hover))
+    .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; cx.notify(); })
+    .child(view.motionPaused ? "Resume animation" : "Pause animation");
 }
 
 function seed(text) {
