@@ -6,9 +6,9 @@ import { button } from "./ui.js";
 
 export function overviewHeader(view, { t, rows, scope, states, sources }) {
   const filtering = Boolean(view.input.value().trim() || view.statusFilter !== "all" || view.sourceFilter !== "all");
-  return v_flex().id("overview-header").px(16).py(10).gap(10).flex_none().border_b(1).border_color(t.border).bg(t.background)
+  return v_flex().id("overview-header").px(14).py(6).gap(8).flex_none().border_b(1).border_color(t.border).bg(t.background)
     .child(h_flex().items_center().gap(10).flex_wrap()
-      .child(div().text_size(16).font_semibold().text_color(t.foreground).child("Agents"))
+      .child(div().text_size(13).font_semibold().text_color(t.foreground).child("Agents"))
       .child(div().flex_1().text_size(11).text_color(t.muted).child(`${rows.length} sessions`))
       .child(themeControls(view, t))
       .child(button("village-filters", filtering ? "Filters applied" : "Search & filters", (cx) => { view.villageFilters = !view.villageFilters; if (view.villageFilters) view.input.focus(); cx.notify(); }, t))

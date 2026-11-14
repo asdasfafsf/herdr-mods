@@ -2,17 +2,19 @@ import { overviewHeader } from "./overview-header.js";
 // A quiet village: small status labels, speech bubbles only for unread work.
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar } from "gpui-base";
-import { run } from "herdr";
+import { run, focused } from "herdr";
 import { button, statusColor, statusMark, statusInfo, statusLabel, statusNotice } from "./ui.js";
 import { agentSprite } from "./agent-theme.js";
+import { themeDefinition } from "./themes.js";
+import { spriteLayout } from "./sprite-layout.js";
+import { renderAgentEmptyState } from "./agent-empty-state.js";
 import { selectVillageResident, renderVillageChat } from "./village-chat.js";
 import { renderSessionControls } from "./session-controls.js";
 import { inAgentMode } from "./agent-mode.js";
-import { hasTerminalDock } from "./terminal-dock.js";
+import { hasTerminalDock, noteSceneSize } from "./terminal-dock.js";
 import { beginDrag, moveDrag, finishDrag, isDragging, consumeDragClick, clampPosition, normalizedPosition, restorePosition } from "./drag-layout.js";
+import { movementFacing } from "./sprite-directions.js";
 
-const ART = "mods/agents-plus/assets/chiikawa";
-const SCENERY = `${ART}/village`;
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
 export const villageNotice = statusNotice;
 
@@ -75,9 +77,9 @@ export function advanceVillage(view, rows, layout) {
   });
   for (const { row, actor } of current) {
     actor.moving = false;
-    // Every visible resident roams, including the selected session and those
-    // with a notice. Their labels and speech bubbles follow the same position.
-    if (!dt || isDragging(view, `resident-${row.id}`)) continue;
+    // The inspected resident stays put until selection changes. Hover and
+    // unread notices alone do not interrupt the other residents' roaming.
+    if (!dt || row.id === view.villageSelected || isDragging(view, `resident-${row.id}`)) continue;
     if (actor.wait > 0) { actor.wait -= dt; continue; }
     const dx = actor.tx - actor.x, dy = actor.ty - actor.y, distance = Math.hypot(dx, dy);
     if (distance < 2) {
@@ -100,37 +102,42 @@ export function advanceVillage(view, rows, layout) {
       && Math.hypot(other.x - x, other.y - y) < layout.size * 0.72
       && Math.hypot(other.x - x, other.y - y) < Math.hypot(other.x - actor.x, other.y - actor.y));
     if (blocked) { actor.tx = actor.x; actor.ty = actor.y; actor.wait = 0.1; continue; }
+    actor.facing = movementFacing(x - actor.x, y - actor.y, actor.facing);
     actor.x = x; actor.y = y; actor.moving = true;
   }
   return current;
 }
 
-function resident(view, row, actor, layout, t) {
-  const sprite = agentSprite(view, row, true);
-  const size = layout.size, scale = Math.min(size / sprite.height, (size + 16) / sprite.width);
-  const width = sprite.width * scale, height = sprite.height * scale;
+function resident(view, row, actor, layout, t, focusedAddress) {
+  const sprite = agentSprite(view, row, true, actor.facing);
+  const size = layout.size, art = spriteLayout(sprite, size + 16, size, true);
   const selected = view.villageSelected === row.id;
+  const selectedLabel = row.address && row.address === focusedAddress ? "Active" : "Selected";
   const status = statusLabel(row.status);
   const notice = villageNotice(row), color = statusColor(t, row.status) || t.muted;
   const identity = [row.title, `${row.project}${row.branch ? ` · ${row.branch}` : ""}`, `${row.agent} · ${row.address || row.sourceLabel}`].join("\n");
   return div().id(`overview-${row.id}`).absolute().left(actor.x).top(actor.y).w(size + 16).h(size + 44)
     .cursor_pointer().accessibility_label(`${row.agent}, ${status}, ${row.title}, ${row.project}`)
     .tooltip(identity)
-    .on_mouse_down("left", (e, cx) => beginDrag(view, `resident-${row.id}`, e, actor, layout, (point) => {
+    .on_mouse_down("left", (e, cx) => beginDrag(view, `resident-${row.id}`, e, actor, () => view.villageBounds || layout, (point) => {
+      actor.facing = movementFacing(point.x - actor.x, point.y - actor.y, actor.facing);
       actor.x = point.x; actor.y = point.y; actor.tx = point.x; actor.ty = point.y; actor.wait = 0;
     }, cx))
+    .on_mouse_up("left", (e, cx) => finishDrag(view, e, cx))
     .on_hover((over, cx) => { view.villageHovered = over ? row.id : null; cx.notify(); })
-    .on_click((_e, cx) => { cx.stop_propagation(); if (!consumeDragClick(view, `resident-${row.id}`)) selectVillageResident(view, row, cx); })
-    .when(selected, (el) => el.child(div().absolute().left(18).top(size + 2).w(size - 20).h(8).rounded(50)
-      .bg(t.accent).opacity(0.2)))
+    .on_click((_e, cx) => { finishDrag(view, null, cx); cx.stop_propagation(); if (!consumeDragClick(view, `resident-${row.id}`)) selectVillageResident(view, row, cx); })
+    .when(selected, (el) => el.child(div().id(`village-selection-ring-${row.id}`).absolute().left(8).top(size).w(size).h(14).rounded(50)
+      .border(2).border_color(t.accent).bg(t.selected).opacity(0.8)))
     .when(!notice, (el) => el.child(h_flex().id(`village-status-${row.id}`).absolute().left((size + 16 - 84) / 2).top(-26)
       .w(84).h(22).gap(5).items_center().justify_center().rounded(11).bg(t.raised)
       .child(div().size(5).rounded(3).bg(color))
       .child(div().text_size(10).text_color(color).child(status))))
-    .child(image(sprite.path).absolute().left((size + 16 - width) / 2).top(size - height).w(width).h(height))
+    .child(image(sprite.path).absolute().left(art.left).top(art.top).w(art.width).h(art.height))
     .child(v_flex().id(`village-name-${row.id}`).absolute().top(size + 12).left(-6).w(size + 28).gap(2)
+      .when(selected, (el) => el.px(5).py(3).rounded(7).border(1).border_color(t.accent).bg(t.raised))
       .child(div().truncate().text_center().text_size(11).font_semibold().text_color(t.foreground).child(row.title))
-      .child(div().truncate().text_center().text_size(9).text_color(t.foreground).opacity(0.75).child(row.project)));
+      .child(div().truncate().text_center().text_size(9).text_color(selected ? t.accent : t.foreground).opacity(selected ? 1 : 0.75)
+        .child(selected ? `${selectedLabel} · ${row.project}` : row.project)));
 }
 
 function speechBubble(view, row, actor, layout, t) {
@@ -139,7 +146,7 @@ function speechBubble(view, row, actor, layout, t) {
   return div().id(`village-notice-${row.id}`).absolute().left(box.left).top(box.top).w(box.width).h(box.height + 12)
     .cursor_pointer().tooltip(`${row.project} · ${row.title}\n${notice.text}`)
     .accessibility_label(`${row.project}, ${notice.label}, ${notice.text}`)
-    .on_click((_e, cx) => { cx.stop_propagation(); selectVillageResident(view, row, cx); })
+    .on_click((_e, cx) => { finishDrag(view, null, cx); cx.stop_propagation(); if (!consumeDragClick(view)) selectVillageResident(view, row, cx); })
     .child(v_flex().w_full().h(box.height).p(11).gap(6).rounded(12).border(1).border_color(t.border).bg(t.raised)
       .hover((el) => el.border_color(color))
       .child(h_flex().gap(5).items_center()
@@ -147,18 +154,20 @@ function speechBubble(view, row, actor, layout, t) {
         .child(div().text_size(10).font_semibold().text_color(color).child(notice.label))
         .child(div().flex_1().truncate().text_size(9).text_color(t.muted).child(row.project)))
       .child(div().text_size(11).line_height(1.4).text_color(t.foreground).whitespace_normal().h(32).overflow_hidden().child(notice.text)))
-    .child(svg(`${SCENERY}/speech-tail.svg`).absolute().left(box.tail).top(box.height - 1).w(16).h(10).text_color(t.raised));
+    .child(svg("mods/agents-plus/speech-tail.svg").absolute().left(box.tail).top(box.height - 1).w(16).h(10).text_color(t.raised));
 }
 
-function scenery(layout) {
-  const width = layout.width, height = layout.height;
-  return div().absolute().inset_0()
-    .child(div().absolute().left(0).top(0).w(width).h(width * 0.16).bg("#e8f5f8"))
-    .child(image(`${SCENERY}/field.png`).absolute().left(0).top(0).w(width).h(width * 1492 / 3840))
-    .child(image(`${SCENERY}/trees-left.png`).absolute().left(-32).top(height * 0.52).w(100).h(262))
-    .child(div().absolute().right(-32).top(height * 0.32).w(100).h(264).overflow_hidden()
-      .child(image(`${SCENERY}/trees-right.png`).w(100).h(100 * 8706 / 916)))
-    .child(image(`${SCENERY}/stump.png`).absolute().left(width * 0.65).top(height * 0.72).w(64).h(25));
+export function scenery(layout, definition) {
+  const scene = definition.scene, { width, height } = scene;
+  return div().absolute().inset_0().overflow_hidden()
+    .child(div().id("village-scenery").absolute().left((layout.width - width) / 2).top(0).w(width).h(height)
+      .children((scene.layers || []).map((layer) => {
+        const tile = div().absolute().left(layer.x).top(layer.y).w(layer.width).h(layer.clipHeight ?? layer.height);
+        if (layer.clipHeight) tile.overflow_hidden();
+        if (layer.color) tile.bg(layer.color);
+        if (layer.path) tile.child(image(`${definition.art}/${layer.path}`).w(layer.width).h(layer.height));
+        return tile;
+      })));
 }
 
 export function villageDetails(view, row, t, states, width, openRow) {
@@ -174,7 +183,7 @@ export function villageDetails(view, row, t, states, width, openRow) {
   return v_flex().id("village-details").absolute().left(position.x).top(position.y).w(panelWidth)
     .h(height).overflow_hidden()
     .rounded(12).border(1).border_color(t.border).bg(t.raised).shadow_lg()
-    .on_click((_e, cx) => cx.stop_propagation())
+    .on_click((_e, cx) => { finishDrag(view, null, cx); cx.stop_propagation(); })
     .child(v_flex().flex_1().min_h(0).min_w(0).p(16).gap(9)
     .child(h_flex().flex_none().gap(8).items_center()
       .child(statusMark(t, row.status))
@@ -183,7 +192,8 @@ export function villageDetails(view, row, t, states, width, openRow) {
         .cursor_pointer().tooltip("Drag to move this conversation")
         .on_mouse_down("left", (e, cx) => beginDrag(view, `details-${row.id}`, e, position, () => view.detailDragBounds,
           (point) => positions.set(row.id, normalizedPosition(point, anchors)), cx))
-        .on_click((_e, cx) => { consumeDragClick(view, `details-${row.id}`); cx.stop_propagation(); })
+        .on_mouse_up("left", (e, cx) => finishDrag(view, e, cx))
+        .on_click((_e, cx) => { finishDrag(view, null, cx); consumeDragClick(view, `details-${row.id}`); cx.stop_propagation(); })
         .child(`${row.agent} · ${row.project}`))
       .child(button("village-detail-collapse", view.detailCollapsed ? "Expand" : "Collapse", (cx) => { view.detailCollapsed = !view.detailCollapsed; cx.notify(); }, t))
       .child(button("village-close", "Close", (cx) => { view.villageSelected = null; view.composerOpen = false; cx.notify(); }, t)))
@@ -202,14 +212,17 @@ export function villageDetails(view, row, t, states, width, openRow) {
 export function dragViewport(element, view) {
   return element.on_mouse_move((e, cx) => moveDrag(view, e, cx))
     .on_mouse_up("left", (e, cx) => finishDrag(view, e, cx))
+    .on_mouse_down_out((_e, cx) => finishDrag(view, null, cx))
     .on_hover((over, cx) => { if (!over) finishDrag(view, null, cx); });
 }
 
 export function renderVillage(view, state) {
-  const { t, all, rows, visible, start, pages, states, openRow } = state;
+  const { t, all, rows, visible, start, pages, states, openRow, empty, emptyActions } = state;
   const width = view.villageWidth || view.width || 1100;
+  const definition = themeDefinition(view.skin);
   const layout = villageLayout(width, view.villageHeight || 660, visible.length, visible.filter(villageNotice).length);
   const selected = visible.find((row) => row.id === view.villageSelected);
+  const focusedAddress = focused()?.terminal;
   const dragging = view.pointerDrag?.id;
   if (dragging && (dragging.startsWith("details-") ? dragging !== `details-${selected?.id}`
     : !visible.some((row) => dragging === `resident-${row.id}`))) finishDrag(view, null);
@@ -217,26 +230,29 @@ export function renderVillage(view, state) {
   if (!visible.some((row) => row.id === view.villageHovered)) view.villageHovered = null;
   // Discard departed sessions, but keep off-page/filtered residents in place.
   if (view.villageActors) for (const id of view.villageActors.keys()) if (!all.some((row) => row.id === id)) view.villageActors.delete(id);
+  view.villageBounds = layout;
   const residents = advanceVillage(view, visible, layout);
   const scrollId = `overview-list-${view.page}`;
   return dragViewport(v_flex().id("agent-view").track_focus(view.handle).size_full().min_h(0).bg(t.background).text_size(12), view)
-    .on_key_down((e, cx) => { if (e.key === "escape") { view.villageSelected = null; view.villageFilters = false; cx.notify(); } })
-    .on_size_change((size, cx) => { if (view.width !== size.width) { view.width = size.width; cx.notify(); } })
+    .on_key_down((e, cx) => { if (e.key === "escape") { finishDrag(view, null, cx); view.villageSelected = null; view.villageFilters = false; cx.notify(); } })
+    .on_size_change((size, cx) => { if (inAgentMode()) noteSceneSize(size.height, cx); if (view.width !== size.width) { view.width = size.width; cx.notify(); } })
     .child(overviewHeader(view, state))
     .child(div().relative().flex_1().min_h(0).overflow_hidden()
       .on_size_change((size, cx) => { if (view.villageWidth !== size.width || view.villageHeight !== size.height) { view.villageWidth = size.width; view.villageHeight = size.height; cx.notify(); } })
       .child(div().id(scrollId).size_full().overflow_y_scroll()
-        .child(div().id("chiikawa-village").relative().w(layout.width).h(layout.height).overflow_hidden().bg("#c3dea0")
-          .on_click((_e, cx) => { if (!consumeDragClick(view)) view.villageSelected = null; cx.notify(); })
-          .child(scenery(layout))
-          .children(residents.map(({ row, actor }) => resident(view, row, actor, layout, t)))
+        .child(div().id("agent-village").relative().w(layout.width).h(layout.height).overflow_hidden().bg(definition.scene.background || t.background)
+          .on_mouse_down("left", () => { if (!isDragging(view)) view.suppressedDragClick = null; })
+          .on_click((_e, cx) => { finishDrag(view, null, cx); if (!consumeDragClick(view)) view.villageSelected = null; cx.notify(); })
+          .child(scenery(layout, definition))
+          .children(residents.map(({ row, actor }) => resident(view, row, actor, layout, t, focusedAddress)))
           .children(residents.filter(({ row }) => villageNotice(row)).map(({ row, actor }) => speechBubble(view, row, actor, layout, t)))
-          .when(visible.length === 0, (el) => el.child(div().absolute().top(layout.height / 2).left(24).w(width - 48).text_center().text_size(13).text_color(t.foreground)
-            .child(all.length ? "No matching agents. Adjust your search or filters." : "Agents appear here when they start working.")))))
+          .when(Boolean(empty), (el) => el.child(div().absolute().top(layout.height / 2 - 70).left(Math.max(16, (width - 440) / 2))
+            .w(Math.min(440, width - 32)).rounded(12).bg(t.raised).border(1).border_color(t.border)
+            .child(renderAgentEmptyState(empty, t, emptyActions))))))
       .child(Scrollbar.vertical(scrollId).absolute().inset_0())
       .when(Boolean(selected) && (!inAgentMode() || !hasTerminalDock() || view.composerOpen || selected.external),
         (el) => el.child(villageDetails(view, selected, t, states, width, openRow)))
-      .when(!selected && pages === 1, (el) => el.child(div().absolute().bottom(16).left(16).text_size(11).text_color(t.foreground).opacity(0.65).child("Select a character to inspect the session and send a message"))))
+      .when(!selected && visible.length > 0 && pages === 1, (el) => el.child(div().absolute().bottom(16).left(16).text_size(11).text_color(t.foreground).opacity(0.65).child("Select a character to inspect the session and send a message"))))
     .when(pages > 1, (el) => el.child(h_flex().px(24).py(7).gap(12).items_center().border_t(1).border_color(t.border).flex_none()
       .child(div().text_size(11).text_color(t.muted).child(`${start + 1}–${start + visible.length} of ${rows.length} agents`))
       .child(div().flex_1())

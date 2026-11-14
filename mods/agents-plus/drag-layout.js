@@ -88,7 +88,8 @@ export function consumeDragClick(view, id) {
   const suppressed = view.suppressedDragClick;
   if (!suppressed) return false;
   if (suppressed.until < Date.now()) { view.suppressedDragClick = null; return false; }
-  if (id != null && suppressed.id !== id) return false;
+  // A release may land on another resident. That trailing click belongs to the
+  // drag too; it must never select the resident underneath the drop position.
   view.suppressedDragClick = null;
   return true;
 }

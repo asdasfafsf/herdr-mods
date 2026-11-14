@@ -11,7 +11,9 @@ native theme IDs to optional agent artwork and layouts; it owns no active
 palette. Cards and village consume native semantic colors unchanged. The
 workspace toolbar contains view controls, not a second theme selector.
 
-To add a theme, define its palette package and generate its native JSON with:
+Use [the adapter template](TEMPLATE.md) to add a palette, background and character metadata without editing the shared view engine. `theme-chiikawa.js` contains only presentation data; `themes.js` registers adapters by native theme ID.
+
+Generate native JSON for every `theme-*` palette package with:
 
 ```sh
 node scripts/build-agent-themes.mjs

@@ -59,6 +59,7 @@ async function environment(data, revision) {
         if (key === 'hover') { const style = builder('hover'); args[0](style); node.ops.push([key, style]); }
         else {
           if (key === 'on_click') handlers.set(node.ops.find(([k])=>k==='id')?.[1]?.[0],args[0]);
+          if (key.startsWith('on_mouse_')) handlers.set(`${node.ops.find(([k])=>k==='id')?.[1]?.[0]}:${key}`,args.at(-1));
           node.ops.push([key, args.map(v => typeof v === 'function' ? '[callback]' : v)]);
         }
         return proxy;
@@ -82,7 +83,7 @@ async function environment(data, revision) {
     runHost(...args);
     if (['layout.show','layout.hide','layout.resize'].includes(args[0])) {
       const node=findNode(data.layout,args[1].id);
-      if(node) { if(args[0]==='layout.resize') node.size={px:args[1].px}; else node.hidden=args[0]==='layout.hide'; }
+      if(node) { if(args[0]==='layout.resize') node.size=args[1].weight == null ? {px:args[1].px} : {weight:args[1].weight}; else node.hidden=args[0]==='layout.hide'; }
     }
     if (args[0] === 'app.theme') {
       const before = data.layout.theme;
@@ -122,7 +123,7 @@ async function environment(data, revision) {
   instance.activity=Object.fromEntries(data.agents.map(a=>[a.address,{doing:'Editing example',said:'Example result'}]));
   const render = () => { handlers.clear(); return JSON.parse(JSON.stringify(instance.render(cx))); };
   const click = id => { assert.ok(handlers.has(id),`missing click target ${id}`); handlers.get(id)({},cx); };
-  return {instance,calls,writes,render,data,click,timers,tasks,commands,cx,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace,chat:modules.get('mods/agents-plus/village-chat.js')?.namespace,mode:modules.get('mods/agents-plus/agent-mode.js')?.namespace,dock:modules.get('mods/agents-plus/terminal-dock.js')?.namespace,workspace:modules.get('mods/agents-plus/workspace-controls.js')?.namespace};
+  return {instance,calls,writes,render,data,click,pointer:(id,type,event)=>handlers.get(`${id}:${type}`)(event,cx),timers,tasks,commands,cx,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace,chat:modules.get('mods/agents-plus/village-chat.js')?.namespace,mode:modules.get('mods/agents-plus/agent-mode.js')?.namespace,dock:modules.get('mods/agents-plus/terminal-dock.js')?.namespace,workspace:modules.get('mods/agents-plus/workspace-controls.js')?.namespace};
 }
 for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],['grouped',40,true,false,1],['rail',40,false,true,1],['large',200,false,false,1],['deep',120,false,false,5]]) {
   const data = fixture(count,grouped,collapsed,depth);
@@ -223,14 +224,15 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.ok(!filtered.includes('overview-t0"'));
   const sidebarData=fixture(1);sidebarData.layout=workspaceLayout();sidebarData.state.layout='herdr-worktrees';
   const sidebar=await environment(sidebarData,null);
-  sidebar.render();sidebar.click('ag-view');
-  assert.equal(sidebar.writes.some(([,args])=>args[0]==='layout.clone'),false,'view switching must not create a layout');
-  assert.match(JSON.stringify(sidebar.data.layout),/agent-world/);
-  assert.equal(sidebar.writes.some(([,args])=>args[0]==='tab.new'),false,'Agent mode must not add a tab');
-  sidebar.data.panes.push({pane:'board',mod:'agents-plus',tab:'board-tab'});
-  sidebar.render();sidebar.click('ag-view');
-  assert.equal(sidebar.data.state.layout,'herdr-worktrees');
-  assert.equal(findNode(sidebar.data.layout,'workspace-views').active,'agent-world');
+  assert.ok(!JSON.stringify(sidebar.render()).includes('ag-view'),'expanded sidebar has no duplicate Agent view button');
+  sidebarData.collapsed=true;
+  assert.ok(!JSON.stringify(sidebar.render()).includes('ag-view-rail'),'collapsed sidebar has no duplicate mode button');
+  sidebarData.props={mode:'view-switch'};
+  const toolbar=await environment(sidebarData,null);toolbar.render();toolbar.click('workspace-view-agent');
+  assert.equal(toolbar.writes.some(([,args])=>args[0]==='layout.clone'),false,'view switching must not create a layout');
+  assert.equal(toolbar.writes.some(([,args])=>args[0]==='tab.new'),false,'Agent mode must not add a tab');
+  assert.equal(toolbar.data.state.layout,'herdr-worktrees');
+  assert.equal(findNode(toolbar.data.layout,'workspace-views').active,'agent-world');
   console.log('agent overview: all projects, parent agents, shared-PID sessions, deduplication, filters and navigation passed');
   const many=fixture(60);many.props={mode:'overview',presentation:'cards'};
   const paged=await environment(many,null);
@@ -257,10 +259,13 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(env.instance.skin,'chiikawa');
   assert.equal(env.instance.page,page,'changing a theme keeps the current page');
   assert.deepEqual(ids(themed),ids(before),'themes show the same agents in the same order');
-  assert.ok(themed.includes('chiikawa-village'),'the Chiikawa theme displays the village');
+  assert.ok(themed.includes('agent-village'),'the Chiikawa theme displays the village');
   assert.match(themed,/chiikawa\/(done|idle|hachiware|rakko|momonga|kurimanju)\/\d{3}\.png/);
-  const residents=new Set(Array.from({length:12},(_,i)=>env.agentTheme.agentSprite(env.instance,{id:`t${i}`,status:'idle'},true).name));
-  for(const name of env.agentTheme.RESIDENTS) assert.ok(residents.has(name),`resident ${name} is reachable`);
+  const residents=new Set(env.instance.residentAssignments.values());
+  for(const name of Array.from(new Set(env.instance.residentAssignments.values()))) assert.ok(residents.has(name),`resident ${name} is reachable`);
+  const firstResidents=env.instance.overviewRows.slice(0,new Set(env.instance.residentAssignments.values()).size).map(row=>env.agentTheme.agentSprite(env.instance,row,true).name);
+  assert.equal(new Set(firstResidents).size,firstResidents.length,'initial sessions receive distinct residents');
+  assert.equal(env.agentTheme.agentSprite(env.instance,{id:'t0'},false).name,env.agentTheme.agentSprite(env.instance,{id:'t0'},true).name,'cards and village retain the same character');
   for(const status of ['working','blocked','done','seen','idle']) assert.equal(env.agentTheme.agentSprite(env.instance,{id:'t0',status},true).name,env.agentTheme.agentSprite(env.instance,{id:'t0',status:'idle'},true).name,'identity remains stable across status changes');
   assert.ok(!themed.includes('village-details') && !themed.includes('village-filter-panel'),'the initial village has no persistent panels');
   const reads=env.calls.agents;env.instance.themeClock=500;env.render();
@@ -295,7 +300,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.deepEqual(JSON.parse(JSON.stringify(env.writes.filter(([kind])=>kind==='run').at(-1))),['run',['pane.focus',{pane:'p0'}]]);
   env.render();env.click('village-close');
   assert.ok(!JSON.stringify(env.render()).includes('village-details'),'details can be dismissed');
-  assert.notEqual(env.agentTheme.spriteFrame('walk',0),env.agentTheme.spriteFrame('walk',500));
+  assert.notEqual(env.agentTheme.spriteFrame('chiikawa','walk',0),env.agentTheme.spriteFrame('chiikawa','walk',500));
   for (const width of [360,640,1100,1800]) for (const count of [0,1,4,12,24]) {
     const layout=env.village.villageLayout(width,600,count);
     const view={themeClock:0}, rows=Array.from({length:count},(_,i)=>({id:`roamer-${i}`}));
@@ -320,7 +325,13 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
         view.themeClock+=50;env.village.advanceVillage(view,rows,layout);
         distance=Math.max(distance,Math.hypot(actor.x-x,actor.y-y));
       }
-      assert.ok(distance>4,'selected residents keep roaming while their details are open');
+      assert.equal(distance,0,'selected residents stay still for focused interaction');
+      view.villageSelected=null;
+      for(let frame=0;frame<100;frame++) {
+        view.themeClock+=50;env.village.advanceVillage(view,rows,layout);
+        distance=Math.max(distance,Math.hypot(actor.x-x,actor.y-y));
+      }
+      assert.ok(distance>4,'deselecting a resident resumes roaming');
     }
   }
   console.log('agent themes: shared sessions, opt-in filters/details, roaming bounds, motion pause, selection and navigation passed');
@@ -410,7 +421,7 @@ for (const choice of ['herdr-chiikawa',{light:'herdr-chiikawa',dark:'herdr-chiik
   assert.deepEqual(JSON.parse(JSON.stringify(env.writes.filter(([kind])=>kind==='run').at(-1))),['run',['pane.focus',{pane:'p0'}]]);
   env.mode.renderViewSwitch();env.click('overview-layout-cards');env.timers.get(50)();
   output=JSON.stringify(env.render());
-  assert.ok(!output.includes('chiikawa-village') && output.includes('chiikawa/'),'cards keep the theme characters');
+  assert.ok(!output.includes('agent-village') && output.includes('chiikawa/'),'cards keep the theme characters');
   env.mode.renderViewSwitch();env.click('overview-layout-village');env.timers.get(50)();env.mode.applyModeTheme('default');env.timers.get(50)();
   assert.equal(data.layout.colors,undefined,'default restores the original layout palette');
   env.mode.applyModeTheme('chiikawa');env.timers.get(50)();
@@ -495,10 +506,11 @@ console.log('agent ordering: sidebar pins, Active, external sessions, grouped so
   data.layout=workspaceLayout('agent-world');
   data.panes=data.panes.map(({id,...pane})=>({...pane,pane:id}));
   const stack=findNode(data.layout,'workspace-views');
-  stack.children[1]={id:'agent-world',type:'column',children:[
-    {id:'agent-scene',type:'block',content:{mod:'agents-plus',props:data.props}},
-    {id:'agent-terminal-dock',type:'column',size:{px:36},children:[
-      {id:'agent-terminal-surface',type:'block',hidden:true,content:{agent:'focused'}}]}]};
+  const terminalTree=stack.children[0];stack.type='column';delete stack.active;
+  stack.children=[
+    {id:'agent-scene',type:'block',size:{weight:1},min:0,content:{mod:'agents-plus',props:data.props}},
+    {id:'agent-terminal-dock',type:'column',size:{weight:0},min:20,children:[
+      {id:'agent-terminal-surface',type:'column',children:[terminalTree]}]}];
   data.state['ag.composer']={address:'t0',sequence:1};
   const env=await environment(data,null);env.render();
   env.timers.get(250)();
@@ -506,19 +518,21 @@ console.log('agent ordering: sidebar pins, Active, external sessions, grouped so
   assert.equal(env.instance.input.focusCount,0,'a hidden search field never takes terminal input focus');
   assert.ok(env.dock.hasTerminalDock());assert.equal(env.dock.terminalDockOpen(),false);
   env.click('overview-open-t0');
-  assert.equal(findNode(data.layout,'workspace-views').active,'agent-world','opening terminal stays in Agent mode');
+  assert.ok(env.dock.sceneVisible(),'opening terminal retains the scene');
   assert.ok(env.dock.terminalDockOpen());
-  assert.equal(findNode(data.layout,'agent-terminal-dock').size.px,320);
+  assert.equal(env.dock.workspaceSplit().sceneShare,0.6);
   assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
-  findNode(data.layout,'agent-terminal-dock').size.px=420;
+  findNode(data.layout,'agent-scene').size={weight:0.3};findNode(data.layout,'agent-terminal-dock').size={weight:0.7};
   env.workspace.workspaceCommand('toggle_terminal');
-  assert.equal(env.dock.terminalDockOpen(),false);assert.equal(data.state['ag.dockHeight'],420);
+  assert.equal(env.dock.terminalDockOpen(),false);
   env.workspace.workspaceCommand('toggle_terminal');
-  assert.equal(findNode(data.layout,'agent-terminal-dock').size.px,420,'reopening retains resized height');
-  const original=JSON.stringify(stack.children[0]);
-  env.workspace.workspaceCommand('toggle_view');assert.equal(stack.active,'main');
-  env.workspace.workspaceCommand('toggle_view');assert.equal(stack.active,'agent-world');
-  assert.equal(JSON.stringify(stack.children[0]),original,'terminal tree and pane options remain unchanged');
+  assert.equal(env.dock.workspaceSplit().sceneShare,0.3,'reopening retains resized ratio');
+  const original=JSON.stringify(terminalTree);
+  env.workspace.workspaceCommand('toggle_view');assert.equal(env.dock.workspaceSplit().sceneShare,0);
+  env.workspace.workspaceCommand('toggle_view');assert.equal(env.dock.workspaceSplit().sceneShare,0.3);
+  assert.equal(JSON.stringify(findNode(data.layout,'agent-terminal-surface').children[0]),original,'terminal tree and pane options remain unchanged');
+  const toolbar=JSON.stringify(env.dock.renderTerminalToolbar());
+  assert.ok(!toolbar.includes('Paste image') && !toolbar.includes('Compose'),'native terminal does not duplicate composer actions');
   env.dock.terminalAction('terminal.paste_image','t1');
   assert.deepEqual(JSON.parse(JSON.stringify(env.writes.slice(-2).map(entry=>entry[1]))),[['pane.focus',{pane:'p1'}],['terminal.paste_image']]);
   assert.equal(env.commands.length,0,'dock and clipboard actions use native commands, never hc send/keys');
@@ -595,9 +609,11 @@ console.log('agent cards: session identity, current work, active focus and disti
   assert.equal(env.writes.length,0,'previewing a bubble does not acknowledge the host session');
   data.state['ag.acked'].t1=now;
   data.agents[3].status='working';
+  data.state['ag.info'].t3.doing='Running unit checks';
   data.elapsed=2100;
   output=JSON.stringify(env.render());
-  assert.ok(!output.includes('village-notice-t1') && !output.includes('village-notice-t3'),'read or resumed work removes its bubble');
+  assert.ok(!output.includes('village-notice-t1'),'seen removes unread bubble');
+  assert.ok(output.includes('village-notice-t3') && output.includes('Running unit checks'),'working shares actual progress in its bubble');
   assert.ok(output.includes('village-status-t1') && output.includes('Seen'));
   for(const width of [360,640,1100]) {
     const layout=env.village.villageLayout(width,600,24,24);
@@ -607,6 +623,27 @@ console.log('agent cards: session identity, current work, active focus and disti
     }
   }
   console.log('village status: current state, real unread previews, no automatic acknowledgement, moving notices and clearing passed');
+}
+
+// A child click can consume mouse-up before the viewport sees it. It must
+// still end the pending grab; later unpressed motion never carries a character.
+{
+  const data=fixture(4);data.props={mode:'overview',skin:'chiikawa'};data.outside=[];
+  const env=await environment(data,null);env.render();
+  env.pointer('overview-t0','on_mouse_down',{position:{x:100,y:200}});
+  assert.ok(env.instance.pointerDrag);
+  env.click('overview-t0');
+  assert.equal(env.instance.pointerDrag,null,'click ends its pending grab even without parent mouse-up');
+  const actor=env.instance.villageActors.get('t0'), before=[actor.x,actor.y];
+  env.pointer('agent-view','on_mouse_move',{position:{x:400,y:400}});
+  assert.deepEqual([actor.x,actor.y],before,'unpressed motion after a click cannot move the character');
+  env.render();
+  env.pointer('overview-t0','on_mouse_down',{position:{x:100,y:200}});
+  env.pointer('agent-view','on_mouse_move',{position:{x:140,y:250}});
+  env.click('overview-t1');
+  assert.equal(env.instance.pointerDrag,null);
+  assert.equal(env.instance.villageSelected,'t0','dropping onto another resident does not select it');
+  console.log('native click propagation: click cleanup, unpressed motion and cross-resident drops passed');
 }
 
 // Chat uses a synthetic transport only: never send a test message to a live agent.
@@ -725,7 +762,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','terminal-dock','workspace-controls','composer','drag-layout']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','theme-chiikawa','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);

@@ -27,8 +27,8 @@ assert.equal(moveDrag(view, { ...event(1000, -300), local_position: { x: -40, y:
 assert.deepEqual(positions.at(-1), { x: 380, y: 100 });
 assert.equal(finishDrag(view, null, cx), true, 'pointer leave ends and resumes motion');
 assert.equal(isDragging(view), false);
-assert.equal(consumeDragClick(view, 'resident-t2'), false);
-assert.equal(consumeDragClick(view, 'resident-t1'), true, 'drag never opens the resident details');
+assert.equal(consumeDragClick(view, 'resident-t2'), true, 'dropping over another resident never selects it');
+assert.equal(consumeDragClick(view, 'resident-t1'), false);
 assert.equal(consumeDragClick(view), false);
 
 // A fresh click following a release-outside is not swallowed by an old guard.

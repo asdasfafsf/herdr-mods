@@ -5,14 +5,18 @@ import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Scrollbar } from "gpui-base";
 import { agents, terminals, panes, spaces, focused, shared, theme, props, run, window } from "herdr";
 import { AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, OPTIONS, TREES, LIVE } from "./state.js";
-import { shownStatus, seenFor, statusMark, statusColor, statusNotice, button, footer, agoText, STATUS_FILTERS, statusRank, statusInfo, statusLabel, normalizeStatus } from "./ui.js";
+import { shownStatus, seenFor, statusMark, statusColor, statusNotice, statusActivity, statusPreview, button, footer, agoText, STATUS_FILTERS, statusRank, statusInfo, statusLabel, normalizeStatus } from "./ui.js";
 import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
+import { hasResidents, hasVillage, residentPool } from "./themes.js";
+import { assignResidents } from "./resident-assignment.js";
+import { spriteLayout } from "./sprite-layout.js";
+import { agentEmptyState, renderAgentEmptyState } from "./agent-empty-state.js";
 import { renderVillage, villageDetails, dragViewport } from "./village.js";
-import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, AGENT_SELECTION } from "./agent-mode.js";
+import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, findViewStack, AGENT_SELECTION } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
 import { initSessionControls } from "./session-controls.js";
-import { hasTerminalDock, openTerminalDock, showComposer, COMPOSER } from "./terminal-dock.js";
+import { hasTerminalDock, openTerminalDock, showComposer, COMPOSER, noteSceneSize } from "./terminal-dock.js";
 
 const STATES = STATUS_FILTERS;
 const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"]];
@@ -129,7 +133,7 @@ export function agentViewRows(outside = []) {
       project: checkout?.repo || space?.name || agent.space_name || cwd.split("/").filter(Boolean).pop() || "No project",
       branch: checkout?.branch || "", cwd,
       source: "herdr", sourceLabel: space?.machine || "Herdr", context: "",
-      activity: raw === "working" || raw === "blocked" ? activity.doing || "" : raw === "done" ? activity.said || "" : "",
+      activity: statusActivity(raw, activity),
       at: activity.at || 0 });
   };
   parentAgents(listed, all).forEach(add);
@@ -173,13 +177,13 @@ function openRow(view, row) {
 function agentCard(view, row, t, focusedAddress) {
   const pic = row.program?.icon;
   const notice = statusNotice(row);
-  const note = notice?.text || row.activity?.trim() || statusInfo(row.status).summary;
+  const preview = statusPreview(row), note = preview.text;
   const color = statusColor(t, row.status) ?? t.dim;
   const selected = view.villageSelected === row.id;
   const active = Boolean(row.address && row.address === focusedAddress);
   const marker = active ? "Active" : selected ? "Selected" : null;
-  const themed = view.skin === "chiikawa", sprite = themed ? agentSprite(view, row, true) : null;
-  const scale = sprite ? Math.min(64 / sprite.width, 64 / sprite.height) : 1;
+  const themed = hasResidents(view.skin), sprite = themed ? agentSprite(view, row, true) : null;
+  const art = sprite ? spriteLayout(sprite, 64, 64) : null;
   const identity = `${row.agent} · ${row.address || row.sourceLabel}`;
   return v_flex().id(`overview-${row.id}`).flex_1().min_w(0).min_h(246).p(12).gap(8)
     .rounded(12).border(1).border_color(marker ? t.accent : t.border).bg(selected ? t.selected : t.raised ?? t.chrome).cursor_pointer()
@@ -195,9 +199,8 @@ function agentCard(view, row, t, focusedAddress) {
         .child(statusMark(t, row.status))
         .child(div().text_size(11).font_medium().text_color(color).child(statusLabel(row.status)))))
     .child(h_flex().min_h(68).flex_none().min_w(0).gap(10).items_center()
-      .when(themed, (el) => el.child(div().id(`overview-resident-${row.id}`).size(64).flex_none().rounded(12).bg(t.chrome)
-        .flex().items_center().justify_center()
-        .child(image(sprite.path).w(sprite.width * scale).h(sprite.height * scale).flex_none())))
+      .when(themed, (el) => el.child(div().id(`overview-resident-${row.id}`).relative().size(64).flex_none().rounded(12).bg(t.chrome).overflow_hidden()
+        .child(image(sprite.path).absolute().left(art.left).top(art.top).w(art.width).h(art.height))))
       .child(v_flex().flex_1().min_w(0).gap(3)
         .child(div().id(`overview-title-${row.id}`).h(36).flex_none().overflow_hidden().whitespace_normal().text_size(15).line_height(1.2)
           .font_semibold().text_color(t.foreground).tooltip(row.title).child(row.title))
@@ -205,9 +208,9 @@ function agentCard(view, row, t, focusedAddress) {
         .child(div().truncate().text_size(10).text_color(t.muted).tooltip(row.branch || row.cwd || row.sourceLabel)
           .child(row.branch || row.sourceLabel))))
     .child(v_flex().id(`overview-preview-${row.id}`).flex_none().min_w(0).p(8).gap(4).rounded(8)
-      .border(1).border_color(notice ? color : t.border).bg(t.background)
-      .child(div().text_size(10).line_height(1.2).font_semibold().text_color(notice ? color : t.muted)
-        .child(notice ? "Read required" : row.activity?.trim() ? "Latest activity" : "Session status"))
+      .border(1).border_color(preview.attention ? color : t.border).bg(t.background)
+      .child(div().text_size(10).line_height(1.2).font_semibold().text_color(preview.attention ? color : t.muted)
+        .child(preview.label))
       .child(div().h(51).flex_none().overflow_hidden().whitespace_normal().text_size(12).line_height(1.4)
         .text_color(t.foreground).tooltip(note).child(note)))
     .child(h_flex().flex_none().min_w(0).gap(6).items_center().flex_wrap()
@@ -227,7 +230,7 @@ function agentCard(view, row, t, focusedAddress) {
 export function renderAgentView(view) {
   const t = agentTheme(theme(), view.skin), now = Date.now();
   // Repainting GIFs must not reread every live session on every animation frame.
-  if (view.skin !== "chiikawa" || !view.overviewRows || now - view.overviewRowsAt > 2000 || view.overviewOutside !== view.outside) {
+  if (!hasResidents(view.skin) || !view.overviewRows || now - view.overviewRowsAt > 2000 || view.overviewOutside !== view.outside) {
     view.overviewRows = agentViewRows(view.outside);
     view.overviewRowsAt = now;
     view.overviewOutside = view.outside;
@@ -235,6 +238,7 @@ export function renderAgentView(view) {
   const focusedAddress = focused()?.terminal;
   // Focus, pinning and sidebar sort changes must reach even cached Chiikawa rows.
   view.overviewRows = orderAgentRows(view.overviewRows);
+  if (hasResidents(view.skin)) assignResidents(view, view.overviewRows, residentPool(view.skin));
   const all = inAgentMode() ? view.overviewRows.filter((row) => !statusInfo(row.status).quiet || row.address === focusedAddress
     || row.id === view.villageSelected) : view.overviewRows;
   view.lastThemeRender = now;
@@ -246,7 +250,12 @@ export function renderAgentView(view) {
   const visible = rows.slice(start, start + PAGE_SIZE);
   const back = props()?.returnPane;
   const canGoBack = Boolean(back && panes().some((pane) => pane.pane === back));
-  if (view.skin === "chiikawa" && view.presentation !== "cards") return renderVillage(view, { t, all, scope, rows, visible, start, pages, back, canGoBack, states: STATES, sources: SOURCES, openRow });
+  const empty = agentEmptyState({ total: view.overviewRows.length, available: all.length, count: rows.length });
+  const emptyActions = {
+    openTerminal: inAgentMode() && findViewStack() ? leaveAgentMode : undefined,
+    clearFilters: (cx) => { view.input.set_value(""); view.statusFilter = "all"; view.sourceFilter = "all"; view.page = 0; cx.notify(); },
+  };
+  if (hasVillage(view.skin) && view.presentation !== "cards") return renderVillage(view, { t, all, scope, rows, visible, start, pages, back, canGoBack, empty, emptyActions, states: STATES, sources: SOURCES, openRow });
   const columns = Math.max(1, Math.min(4, Math.floor(((view.width ?? 1100) - 32 + 12) / (300 + 12))));
   const cardRows = [];
   for (let i = 0; i < visible.length; i += columns) {
@@ -255,14 +264,12 @@ export function renderAgentView(view) {
       .children(Array.from({ length: columns - chunk.length }, () => div().flex_1().min_w(0))));
   }
   return dragViewport(v_flex().id("agent-view").track_focus(view.handle).relative().size_full().bg(t.background).text_size(12.5), view)
-    .on_size_change((size, cx) => { if (view.width !== size.width || view.height !== size.height) { view.width = size.width; view.height = size.height; cx.notify(); } })
+    .on_size_change((size, cx) => { if (inAgentMode()) noteSceneSize(size.height, cx); if (view.width !== size.width || view.height !== size.height) { view.width = size.width; view.height = size.height; cx.notify(); } })
     .child(overviewHeader(view, { t, rows, scope, states: STATES, sources: SOURCES }))
     .child(div().relative().flex_1().min_h(0).p(16)
       .child(v_flex().id(`overview-list-${view.page}`).size_full().overflow_y_scroll().gap(12)
         .children(cardRows)
-        .when(rows.length === 0, (el) => el.child(v_flex().p(28).gap(8).items_center()
-          .child(div().font_medium().text_color(t.foreground).child(all.length ? "No matching agents" : "No agents running yet"))
-          .child(div().text_size(12).text_color(t.muted).child(all.length ? "Try another search, status or source." : "Agents appear here when Herdr or a supported local app reports them.")))))
+        .when(Boolean(empty), (el) => el.child(renderAgentEmptyState(empty, t, emptyActions))))
       .child(Scrollbar.vertical(`overview-list-${view.page}`).absolute().inset_0()))
     .child(footer(rows.length ? `${start + 1}–${start + visible.length} of ${rows.length} agents · Activity updates automatically` : "Activity updates automatically", t,
       ...(pages > 1 ? [button("overview-prev", "Previous", (cx) => { view.page--; cx.notify(); }, t, { disabled: view.page === 0 }),

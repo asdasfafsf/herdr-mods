@@ -3,9 +3,10 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { layout, shared, setShared, run, props, theme, themes, focused, panes, settings } from "herdr";
-import { THEMES, VIEW_LAYOUTS } from "./themes.js";
+import { THEMES, VIEW_LAYOUTS, hasVillage, themeDefinition } from "./themes.js";
 import { LEGACY_CHIIKAWA_COLORS } from "./legacy-theme.js";
 import { setThemeContrast } from "./theme-contrast.js";
+import { workspaceSplit, sceneVisible, showWorkspaceScene, showWorkspaceTerminal } from "./terminal-dock.js";
 
 export const VIEW_STACK = "workspace-views";
 export const AGENT_VIEW = "agent-world";
@@ -20,7 +21,7 @@ export function findViewStack(node = layout()) {
   return null;
 }
 
-export const agentViewVisible = () => findViewStack()?.active === AGENT_VIEW;
+export const agentViewVisible = () => workspaceSplit() ? sceneVisible() : findViewStack()?.active === AGENT_VIEW;
 export const AGENT_SELECTION = "ag.selection";
 export function requestAgentSelection(id, address) {
   if (!agentViewVisible()) return;
@@ -98,7 +99,7 @@ export function initWorkspaceTheme(cx) {
     if (current === previous) return;
     if (current !== "default" && previous === "default" && previousLook) setShared(baseKey(), previousLook);
     previous = current;
-    cx.spawn(async (cx) => { await setThemeContrast(current !== "default"); cx.notify(); });
+    cx.spawn(async (cx) => { await setThemeContrast(Boolean(themeDefinition(current).contrast)); cx.notify(); });
   };
   sync(cx);
   cx.timer.every(250, sync);
@@ -123,10 +124,11 @@ export function applyModeTheme(skin) {
     } else {
       if (base?.theme == null) delete next.theme; else next.theme = base.theme;
       // A legacy backup may itself name our theme; Default must leave it.
-      if (next.theme === THEMES.chiikawa.native) delete next.theme;
+      const nativeThemes = new Set(Object.values(THEMES).map((definition) => definition.native).filter(Boolean));
+      if (nativeThemes.has(next.theme)) delete next.theme;
       else if (next.theme && typeof next.theme === "object") {
-        if (next.theme.light === THEMES.chiikawa.native) next.theme.light = "paper";
-        if (next.theme.dark === THEMES.chiikawa.native) next.theme.dark = "graphite";
+        if (nativeThemes.has(next.theme.light)) next.theme.light = "paper";
+        if (nativeThemes.has(next.theme.dark)) next.theme.dark = "graphite";
       }
       setShared(baseKey(), null);
       localStorage.removeItem(baseKey());
@@ -136,6 +138,7 @@ export function applyModeTheme(skin) {
 }
 
 export function setWorkspaceView(agent) {
+  if (workspaceSplit()) { if (agent) showWorkspaceScene(); else showWorkspaceTerminal(); return; }
   const stack = findViewStack();
   if (!stack) return;
   const terminal = stack.children.find((child) => child.id !== AGENT_VIEW);
@@ -157,7 +160,7 @@ export function renderViewSwitch() {
         .text_color(agent === value ? t.foreground : t.muted).when(agent === value, (el) => el.bg(t.selected))
         .cursor_pointer().hover((el) => el.bg(t.hover)).tooltip("Switch Terminal / Agent · ⌘⇧E")
         .on_click(() => setWorkspaceView(value)).child(label))))
-    .when(agent && workspaceTheme() === "chiikawa", (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
+    .when(agent && hasVillage(workspaceTheme()), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
       .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(10).py(4).rounded(5).text_size(11)
         .text_color(t.foreground).when((shared("ag.presentation") || "village") === key, (el) => el.bg(t.selected))
         .cursor_pointer().hover((el) => el.bg(t.hover)).on_click(() => setShared("ag.presentation", key)).child(label)))))

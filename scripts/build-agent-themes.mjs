@@ -1,9 +1,14 @@
 // Generate independent native theme packages; agent views read the host palette.
-import { writeFileSync, readFileSync } from 'node:fs';
-import { CHIIKAWA_THEME } from '../mods/theme-chiikawa/palette.js';
+import { writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+const mods = new URL('../mods/', import.meta.url);
 
 const outputs = new Map();
-for (const [directory, definition] of [['theme-chiikawa', CHIIKAWA_THEME]]) {
+for (const directory of readdirSync(mods).filter((name) => name.startsWith('theme-'))) {
+  const path = new URL(`${directory}/palette.js`, mods);
+  if (!existsSync(path)) continue;
+  const module = await import(path.href);
+  const definition = module.default || Object.values(module).find((value) => value?.native && value?.colors);
+  if (!definition) throw new Error(`Missing palette definition in ${directory}`);
   const { colors: c } = definition;
   outputs.set(`${directory}/${definition.native}.json`, JSON.stringify({
     background: c.background, foreground: c.foreground, cursor: c.foreground,

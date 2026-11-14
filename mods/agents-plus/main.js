@@ -19,12 +19,12 @@ import { agents, terminals, panes, focused, spaces, run, theme, shared, setShare
 import { resumeArgv, AGENTS, runs } from "./resume.js";
 import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
-import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
+import { statusMark, statusPill, statusColor, statusActivity, statusNotice, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
 import { renderViewSwitch, initWorkspaceTheme, requestAgentSelection } from "./agent-mode.js";
 import { initWorkspaceControls } from "./workspace-controls.js";
 import { renderTerminalToolbar } from "./terminal-dock.js";
 import { RenderProfile } from "./render-profile.js";
-import { openAgentView, initAgentView, renderAgentView, parentAgents } from "./overview.js";
+import { initAgentView, renderAgentView, parentAgents } from "./overview.js";
 
 // The agents outside Herdr, read every OUTSIDE_EVERY ms while the window is in front.
 const OUTSIDE_EVERY = 10000;
@@ -53,9 +53,28 @@ function toggleSidebar() {
 
 const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
 
-function lead(tab, all = panes()) {
-  const mine = all.filter(p => p.tab === tab.id && p.terminal);
-  return mine.find(p => p.program?.agent) ?? mine.find(p => p.focused) ?? mine[0];
+export function indexLeadPanes(all) {
+  const leads = new Map();
+  for (const pane of all) {
+    if (!pane.terminal) continue;
+    const previous = leads.get(pane.tab);
+    // Keep the first agent, else the first focused terminal, else the first
+    // terminal. Scan once rather than filtering every pane for every agent.
+    if (!previous || (!previous.program?.agent && (pane.program?.agent || (!previous.focused && pane.focused))))
+      leads.set(pane.tab, pane);
+  }
+  return leads;
+}
+
+export function nearestCheckout(path, paths) {
+  if (!path) return undefined;
+  // Ancestors are already longest-first. Work follows path depth rather than
+  // comparing every checkout for every outside session during row rendering.
+  for (let end = path.length; end > 0; end = path.lastIndexOf("/", end - 1)) {
+    const ancestor = path.slice(0, end);
+    if (paths.has(ancestor)) return ancestor;
+  }
+  return undefined;
 }
 
 function title(tab, l) {
@@ -91,12 +110,12 @@ function icon(p, size, color) {
 
 export default class Agents extends View {
   init(_props, cx) {
-    if (props()?.mode === "view-switch") {
+    if (props()?.mode === "terminal-toolbar") {
       initWorkspaceTheme(cx);
       initWorkspaceControls(cx);
       return;
     }
-    if (props()?.mode === "terminal-toolbar") return;
+    if (props()?.mode === "view-switch") return;
     if (props()?.sortMenu) return;
     // Themes share the same overview state: default cards or a Chiikawa village.
     if (props()?.mode === "overview") return initAgentView(this, cx);
@@ -181,12 +200,11 @@ export default class Agents extends View {
   // The second line of a row with news: working, what it's doing; waiting, what it asks to
   // run; done, the first line of its answer. Idle rows have none (one line, as before).
   news(a, t) {
-    const x = this.activity?.[a.address];
-    if (!x) return null;
-    if (a.status === "working" && x.doing) return { text: x.doing, color: t.muted, mark: "\u25b8" };
-    if (a.status === "blocked") return x.doing && x.doing !== "Thinking\u2026" ? { text: x.doing, color: t.blocked, mark: "?" } : null;
-    if (a.status === "done" && x.said) return { text: x.said, color: t.muted, mark: "\u2713" };
-    return null;
+    const activity = statusActivity(a.status, this.activity?.[a.address]);
+    const notice = statusNotice({ status: a.status, activity });
+    if (!activity || !notice) return null;
+    return { text: notice.text, color: notice.attention && a.status === "blocked" ? t.blocked : t.muted,
+      mark: a.status === "blocked" ? "?" : a.status === "done" ? "\u2713" : "\u25b8" };
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -350,8 +368,7 @@ export default class Agents extends View {
   // worktree's name (or folder) and session title, the app it runs in, its state. Click:
   // that session in Herdr (see the header).
   outsideRow(x, t, paths, metadata) {
-    // Paths are sorted once for this render, not flattened/sorted again for each row.
-    const checkout = paths.find((p) => inside(x.cwd, p));
+    const checkout = nearestCheckout(x.cwd, paths);
     const meta = checkout ? metadata[JSON.stringify([null, checkout])] ?? {} : {};
     const name = meta.name || (checkout ?? x.cwd).split("/").pop();
     // A Codex daemon owns several sessions in one PID; keep their UI identities apart.
@@ -441,9 +458,10 @@ export default class Agents extends View {
     // These maps live only for this render; the next render sees changed paths/names/tabs.
     const tabs = new Map(spaces().flatMap(s => s.tabs).map(tab => [tab.id, tab]));
     const paneList = panes();
+    const paneLeads = indexLeadPanes(paneList);
     const labels = new Map(list.map(a => {
       const tab = tabs.get(a.tab);
-      return [a.address, tab ? title(tab, lead(tab, paneList)) : a.title || a.program?.name || ""];
+      return [a.address, tab ? title(tab, paneLeads.get(tab.id)) : a.title || a.program?.name || ""];
     }));
     const label = (a) => labels.get(a.address);
     const repos = new Map();
@@ -456,7 +474,7 @@ export default class Agents extends View {
         if (!repos.has(c.space)) repos.set(c.space, { key, name: r.name, branch: c.branch ?? "detached", anchor: anchor ?? c.space });
       }
     }
-    paths.sort((a, b) => b.length - a.length);
+    const pathIndex = new Set(paths);
     const metadata = !collapsed && this.outside.length ? shared(META) ?? {} : {};
     const detail = new Map(list.map(a => [a.address, /^\d+$/.test(label(a)) ? null : label(a)]));
     const seen = {};
@@ -495,7 +513,7 @@ export default class Agents extends View {
       const when = this.since(a);
       const idle = a.status === "idle" && !a.focused && this.shown(a, snapshot) !== "seen";
       const isPinned = a.pinned;
-      const pin = div()
+      const pin = () => div()
         .id(`pin-${a.address}`)
         .flex_none()
         .p(2)
@@ -549,7 +567,7 @@ export default class Agents extends View {
           .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Mark as seen, without opening it")
           .on_click((_e, cx) => { cx.stop_propagation(); ackDone([a.address]); this.share(); cx.notify(); })
           .child(svg("mods/workspace-chrome/check.svg").size(13))))
-        .when(this.hovered === a.address, el => el.child(pin))
+        .when(this.hovered === a.address, el => el.child(pin()))
         .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
         .child(this.status(t, a, byPriority && !isPinned, snapshot));
     };
@@ -567,7 +585,7 @@ export default class Agents extends View {
     if (active.length) groups.push({ id: "active", label: "Active", status: null, color: t.accent, members: active });
     for (const a of rest) {
       if (active.includes(a)) continue;
-      const r = rankOf(a) || RANK.idle;
+      const r = rankOf(a) ?? RANK.idle;
       const id = byPriority ? `sec-${r}` : `sp-${a.space}`;
       if (groups.at(-1)?.id === id) groups.at(-1).members.push(a);
       else groups.push({ id, label: byPriority ? SECTION[r] : a.space_name || "", status: byPriority ? SECTION_STATUS[r] : null, members: [a] });
@@ -631,7 +649,7 @@ export default class Agents extends View {
     profile.phase("rows");
     const rows = collapsed
       ? list.map(row)
-      : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : [...g.members.map(row), ...this.outsideRows(g, t, paths, metadata)])]);
+      : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : [...g.members.map(row), ...this.outsideRows(g, t, pathIndex, metadata)])]);
 
     profile.counts({ groups: groups.length, rows: rows.length });
     profile.phase("container");
@@ -653,9 +671,6 @@ export default class Agents extends View {
             .items_center()
             .justify_between()
             .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents"))
-            .child(h_flex().id("ag-view").gap(4).items_center().px(7).py(3).rounded(5).text_size(11).text_color(t.muted).cursor_pointer()
-              .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("All agents across every project")
-              .on_click(() => openAgentView(this.outside)).child(svg("mods/workspace-chrome/layers.svg").size(12)).child("Agent view"))
             .child(
               div()
                 .id("ag-sort")
@@ -678,9 +693,6 @@ export default class Agents extends View {
             .h(28)
             .items_center()
             .justify_center()
-            .child(div().id("ag-view-rail").px(5).text_size(13).text_color(t.dim).cursor_pointer()
-              .hover((s) => s.text_color(t.foreground)).tooltip("Open Agent view")
-              .on_click(() => openAgentView(this.outside)).child(svg("mods/workspace-chrome/layers.svg").size(14)))
             .child(
               div()
                 .id("collapse")

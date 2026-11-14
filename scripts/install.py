@@ -246,35 +246,33 @@ def patch(layout, step):
     """Applies one bundle layout step; returns what it did, or None if already there."""
     kind, spec = next(iter(step.items()))
     if kind == "workspace_views":
-        stack = next((n for n, _ in blocks(layout) if n.get("id") == "workspace-views"), None)
-        if stack is not None:
-            # Upgrade only the exact Agent block we own. Keep user layouts and
-            # the original Terminal presentation (including split panes) intact.
-            agent = next((n for n in stack.get("children", []) if n.get("id") == "agent-world"), None)
-            owned = {"mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}
-            if agent and agent.get("type") == "block" and agent.get("content") == owned:
-                stack["children"][stack["children"].index(agent)] = agent_workspace()
-                return "collapsible native terminal in the Agent presentation"
+        workspace = next((n for n, _ in blocks(layout) if n.get("id") == "workspace-views"), None)
+        if workspace is not None:
+            # Upgrade only our former two-presentation stack. Its native tab
+            # block, pane options and all surrounding user layout stay intact.
+            terminal = owned_workspace_terminal(workspace)
+            if terminal is not None:
+                replacement = agent_workspace(terminal)
+                for key, value in workspace.items():
+                    if key not in {"id", "type", "children", "active", "resizable", "gap", "divider"}:
+                        replacement[key] = value
+                workspace.clear()
+                workspace.update(replacement)
+                # The old view switch has no role in one continuous workspace.
+                parent = next((n for n, _ in blocks(layout) if workspace in n.get("children", [])), None)
+                if parent is not None and parent.get("id") == "workspace-presentation":
+                    parent["children"] = [child for child in parent["children"] if not owned_view_switch(child)]
+                return "one resizable scene and native terminal workspace"
             return None
         for n, siblings in blocks(layout):
             if (n.get("content") or {}).get("tab") != "active" or siblings is None:
                 continue
-            # Keep the native tab tree and all of its pane options intact. Both
-            # presentations use the host's existing session focus and settings.
+            # Keep the native tab tree and all of its pane options intact. The
+            # scene and terminal use the host's existing focus and settings.
             terminal = dict(n)
             size = terminal.pop("size", {"weight": 1})
-            siblings[siblings.index(n)] = {
-                "id": "workspace-presentation", "type": "column", "size": size, "resizable": False,
-                "children": [
-                    {"id": "workspace-view-switch", "type": "block", "size": {"px": 38},
-                     "content": {"mod": "agents-plus", "props": {"mode": "view-switch"}}},
-                    {"id": "workspace-views", "type": "stack", "active": terminal["id"], "children": [
-                        terminal,
-                        agent_workspace()
-                    ]}
-                ]
-            }
-            return "terminal / agent presentations in the existing workspace"
+            siblings[siblings.index(n)] = {**agent_workspace(terminal), "size": size}
+            return "one resizable scene and native terminal workspace"
         return "(no active tab block for workspace presentations)"
     if kind == "swap":
         hits = [n for n, _ in blocks(layout) if (n.get("content") or {}).get("mod") == spec["from"]]
@@ -308,17 +306,55 @@ def patch(layout, step):
     return f"(unknown layout step {kind})"
 
 
-def agent_workspace():
-    """One live terminal surface, reusing the focused session and its scrollback."""
-    return {"id": "agent-world", "type": "column", "resizable": True, "children": [
-        {"id": "agent-scene", "type": "block", "size": {"weight": 1}, "min": 160,
+def owned_view_switch(node):
+    return node.get("id") == "workspace-view-switch" and node.get("content") == {
+        "mod": "agents-plus", "props": {"mode": "view-switch"}}
+
+
+def owned_workspace_terminal(workspace):
+    """Recognize both released stack versions, without replacing custom views."""
+    children = workspace.get("children", [])
+    if workspace.get("type") != "stack" or len(children) != 2:
+        return None
+    terminal = next((child for child in children if (child.get("content") or {}).get("tab") == "active"), None)
+    agent = next((child for child in children if child.get("id") == "agent-world"), None)
+    if terminal is None or agent is None:
+        return None
+    content = {"mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}
+    if agent.get("type") == "block" and agent.get("content") == content:
+        return terminal
+    parts = agent.get("children", [])
+    if agent.get("type") != "column" or len(parts) != 2:
+        return None
+    scene, dock = parts
+    dock_parts = dock.get("children", [])
+    if (scene.get("id") == "agent-scene" and scene.get("content") == content
+            and dock.get("id") == "agent-terminal-dock" and len(dock_parts) == 2
+            and dock_parts[0].get("id") == "agent-terminal-toolbar"
+            and dock_parts[0].get("content") == {"mod": "agents-plus", "props": {"mode": "terminal-toolbar"}}
+            and dock_parts[1].get("id") == "agent-terminal-surface"
+            and dock_parts[1].get("content") == {"agent": "focused"}):
+        return terminal
+    return None
+
+
+def agent_workspace(terminal):
+    """One native tab tree, with a persistent handle at either split endpoint.
+
+    Both sides use weights so the host's divider remains draggable after either
+    side reaches zero. The toolbar controller snaps native 24 px drag stops to
+    exact endpoints; nodes remain mounted, preserving terminal focus/scrollback.
+    """
+    return {"id": "workspace-views", "type": "column", "resizable": True,
+            "gap": 3, "divider": {"width": 1, "color": "border"}, "children": [
+        {"id": "agent-scene", "type": "block", "size": {"weight": 0.6}, "min": 0,
          "content": {"mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}},
-        {"id": "agent-terminal-dock", "type": "column", "size": {"px": 36}, "min": 36,
+        {"id": "agent-terminal-dock", "type": "column", "size": {"weight": 0.4}, "min": 20,
          "resizable": False, "children": [
-             {"id": "agent-terminal-toolbar", "type": "block", "size": {"px": 36},
+             {"id": "agent-terminal-toolbar", "type": "block", "size": {"px": 20},
               "content": {"mod": "agents-plus", "props": {"mode": "terminal-toolbar"}}},
-             {"id": "agent-terminal-surface", "type": "block", "hidden": True,
-              "size": {"weight": 1}, "content": {"agent": "focused"}}
+             {"id": "agent-terminal-surface", "type": "column", "min": 0,
+              "size": {"weight": 1}, "resizable": False, "children": [terminal]}
          ]}
     ]}
 
@@ -351,6 +387,24 @@ def archive_legacy_agent_layout(dry):
     say("layout", "retired the separate agent layout (backup retained)")
 
 
+def layout_document(path):
+    """Read a layout root without turning absent/malformed data into a clone."""
+    def node(value):
+        if not isinstance(value, dict):
+            return False
+        kind = value.get("type")
+        if kind == "block":
+            content = value.get("content")
+            return isinstance(content, dict) and any(isinstance(content.get(key), str)
+                for key in ("mod", "terminal", "tab", "context", "agent"))
+        if kind in ("row", "column", "stack"):
+            children = value.get("children")
+            return isinstance(children, list) and all(node(child) for child in children)
+        return False
+    value = load(path)
+    return value if node(value) else None
+
+
 def target_layout(name, dry):
     """The layout file to change: a personal one as it is, a shipped one copied first.
     Herdr keeps the shown layout's name in shared.json ("layout")."""
@@ -361,7 +415,9 @@ def target_layout(name, dry):
         return name, path, False
     copy = os.path.join(HOME, "layouts", f"{COPY_LAYOUT}.json")
     if not os.path.exists(copy):
-        data = load(path, {})
+        data = layout_document(path)
+        if data is None:
+            return name, path, False
         data["cloned_from"] = {"name": name, "version": (load(os.path.join(HOME, "update-notes.json"), {}) or {}).get("last_run", "")}
         if not dry:
             with open(copy, "w") as f:
@@ -455,7 +511,7 @@ def main(argv):
     # Only bundles with layout steps touch a layout (commands, say, has none).
     steps = [step for b in picked for step in bundles[b]["layout"]]
     name, path, copied = target_layout(layout_name, dry) if steps else (None, None, False)
-    layout = load(path) if steps else None
+    layout = layout_document(path) if steps else None
     if not steps:
         pass
     elif layout is None:

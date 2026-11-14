@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import { assignResidents } from '../mods/agents-plus/resident-assignment.js';
+
+const view = {}, pool = ['chiikawa', 'hachiware', 'usagi', 'rakko'];
+const rows = Array.from({ length: 4 }, (_, id) => ({ id: `t${id}` }));
+const first = new Map(assignResidents(view, rows, pool));
+assert.equal(new Set(first.values()).size, rows.length, 'use distinct artwork while the pool permits');
+assignResidents(view, [...rows].reverse(), pool);
+assert.deepEqual(view.residentAssignments, first, 'focus, status and sorting do not replace characters');
+assignResidents(view, [...rows, { id: 't4' }, { id: 't5' }], pool);
+const counts = pool.map((name) => [...view.residentAssignments.values()].filter((v) => v === name).length);
+assert.equal(Math.max(...counts) - Math.min(...counts), 1, 'overflow spreads repeats instead of concentrating them');
+assignResidents(view, rows.slice(1), pool);
+assert.ok(!view.residentAssignments.has('t0'), 'departed sessions release their artwork');
+assignResidents(view, [...rows.slice(1), { id: 'new' }], pool);
+assert.equal(view.residentAssignments.get('new'), first.get('t0'));
+const prior = new Map(view.residentAssignments);
+assignResidents(view, [...rows.slice(1), { id: 'new' }, { id: 'extra' }], [...pool, 'shisa']);
+for (const [id, name] of prior) assert.equal(view.residentAssignments.get(id), name);
+assert.equal(view.residentAssignments.get('extra'), 'shisa', 'new resources fill unused slots without disrupting sessions');
+assignResidents(view, rows, ['chiikawa', 'shisa']);
+assert.ok([...view.residentAssignments.values()].every((name) => ['chiikawa', 'shisa'].includes(name)), 'retired resources are replaced');
+console.log('resident assignment: uniqueness, stable identity, balanced overflow, departure and pool upgrades passed');
