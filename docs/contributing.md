@@ -15,8 +15,9 @@
 
 ## Shared presentation data
 
-- Status names, priority, color roles, icons and fallback messages belong in one
-  shared definition. Sidebar, cards, village and picker must consume it.
+- Status names, priority, color roles, icons and fallback messages belong in
+  [lib/agent-status.js](../lib/agent-status.js). Sidebar, cards, village and picker
+  must consume this definition through the shared UI helpers.
 - Derive displayed status from the host state and shared read/seen metadata.
   Do not keep independent status state in each presentation.
 - Application labels are English. User messages and agent output keep their

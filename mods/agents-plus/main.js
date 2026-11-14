@@ -19,7 +19,7 @@ import { agents, terminals, panes, focused, spaces, run, theme, shared, setShare
 import { resumeArgv, AGENTS, runs } from "./resume.js";
 import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
-import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag } from "./ui.js";
+import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK, normalizeStatus } from "./ui.js";
 import { renderViewSwitch, applyModeTheme, workspaceTheme } from "./agent-mode.js";
 import { setThemeContrast } from "./theme-contrast.js";
 import { RenderProfile } from "./render-profile.js";
@@ -63,22 +63,22 @@ function title(tab, l) {
   const telling = live && live !== prog && !/^[~/]|^[A-Za-z]:\\/.test(live) && !live.includes("@") && live.toLowerCase() !== l?.program?.key;
   return (tab.name === prog || !tab.named) && telling ? live : tab.name;
 }
-const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
+const RANK = STATUS_RANK;
 const ACTIVITY_EVERY = 3000; // how often working agents' current step is read (see readActivity)
 // A sub-agent without a pane isn't in agents(): its raw word, error counting as
 // blocked. It's never done: it reports to its parent, and the parent's done is the news.
 const kidStatus = (k, listed) => {
   const s = listed.get(k.address) ?? k.status;
-  return s === "error" ? "blocked" : s === "done" ? "idle" : s;
+  return normalizeStatus(s, true);
 };
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
   { id: "grouped", label: "Grouped by space", icon: "layers" },
 ];
 const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[0];
-const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", 1.5: "Seen", 1: "Idle" };
-const SECTION_STATUS = { 4: "blocked", 3: "done", 2: "working", 1.5: "seen" };
-const SEEN_RANK = 1.5; // Seen (lib/ui.js): between Working and Idle
+const SECTION = Object.fromEntries(Object.values(AGENT_STATUSES).map((state) => [state.priority, state.label]));
+const SECTION_STATUS = Object.fromEntries(Object.entries(AGENT_STATUSES).filter(([, state]) => !state.quiet).map(([key, state]) => [state.priority, key]));
+const SEEN_RANK = STATUS_RANK.seen; // Seen (lib/ui.js): between Working and Idle
 
 function duration(ms) {
   const m = Math.floor(ms / 60000);

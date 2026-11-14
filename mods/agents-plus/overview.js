@@ -5,15 +5,14 @@ import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Scrollbar } from "gpui-base";
 import { agents, terminals, panes, spaces, focused, shared, theme, props, run, window } from "herdr";
 import { AGENT_INFO, ACKED, OPTIONS, TREES, LIVE } from "./state.js";
-import { shownStatus, seenFor, statusMark, statusColor, button, footer, agoText } from "./ui.js";
+import { shownStatus, seenFor, statusMark, statusColor, button, footer, agoText, STATUS_FILTERS, statusRank, statusInfo, statusLabel, normalizeStatus } from "./ui.js";
 import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
 import { renderVillage, villageDetails } from "./village.js";
 import { openAgentMode, leaveAgentMode, inAgentMode, applyModeTheme, agentViewVisible } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
 
-const STATES = [["all", "All"], ["blocked", "Needs you"], ["working", "Working"], ["done", "Done"], ["seen", "Seen"], ["idle", "Idle"]];
-const PRIORITY = { blocked: 5, done: 4, working: 3, seen: 2, idle: 1 };
+const STATES = STATUS_FILTERS;
 const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"], ["child", "Sub-agents"]];
 const PAGE_SIZE = 24; // Divisible into 1–4 columns; bound native element creation.
 
@@ -84,7 +83,7 @@ export function agentViewRows(outside = []) {
     const program = agent.program ?? terminal?.program;
     const name = (tab?.named && tab.name) || pane?.title || agent.title || terminal?.name || terminal?.template || program?.name || agent.address;
     const child = Boolean(terminal?.parent);
-    const raw = agent.status === "error" ? "blocked" : child && agent.status === "done" ? "idle" : agent.status || "idle";
+    const raw = normalizeStatus(agent.status, child);
     const activity = info[agent.address] ?? {};
     const status = shownStatus(raw, { ...activity, acked: acked[agent.address] }, now, duration);
     rows.push({ id: agent.address, address: agent.address, pane: agent.pane ?? pane?.pane ?? pane?.id,
@@ -105,12 +104,12 @@ export function agentViewRows(outside = []) {
     seen.add(id);
     const checkout = checkouts.find((c) => !c.machine && c.path && inside(external.cwd, c.path));
     rows.push({ id, external, title: external.title || external.agent, agent: external.agent === "codex" ? "Codex" : "Claude",
-      program: { icon: `icons/${external.agent}.svg` }, status: external.status === "error" ? "blocked" : external.status || "idle",
+      program: { icon: `icons/${external.agent}.svg` }, status: normalizeStatus(external.status),
       project: checkout?.repo || (external.cwd ?? "").split("/").filter(Boolean).pop() || "No project",
       branch: checkout?.branch || "", cwd: external.cwd || "", source: "outside", sourceLabel: external.app || "Outside Herdr",
       activity: "", context: "Continue in Herdr", at: (external.updated || 0) * 1000 });
   }
-  return rows.sort((a, b) => (PRIORITY[b.status] || 0) - (PRIORITY[a.status] || 0) || b.at - a.at || a.title.localeCompare(b.title));
+  return rows.sort((a, b) => statusRank(b.status) - statusRank(a.status) || b.at - a.at || a.title.localeCompare(b.title));
 }
 
 export function filterAgentRows(rows, query, status = "all", source = "all") {
@@ -129,7 +128,7 @@ function openRow(view, row) {
 
 function agentCard(view, row, t) {
   const pic = row.program?.icon;
-  const note = row.activity || (row.status === "working" ? "Working on this task…" : row.status === "blocked" ? "Waiting for your input" : row.status === "done" ? "Task finished. Open the session to review." : "Ready for the next task");
+  const note = row.activity || statusInfo(row.status).summary;
   const color = statusColor(t, row.status) ?? t.dim;
   const themed = view.skin === "chiikawa", sprite = themed ? agentSprite(view, row, true) : null;
   return v_flex().id(`overview-${row.id}`).flex_1().min_w(0).h(232).rounded(10).border(1).border_color(t.border).bg(t.raised ?? t.chrome).overflow_hidden().cursor_pointer()
@@ -141,7 +140,7 @@ function agentCard(view, row, t) {
         .when(Boolean(pic), (el) => el.child(row.program.tint ? svg(pic).size(18).text_color(t.foreground) : image(pic).size(18).flex_none()))
         .child(div().flex_1().truncate().text_size(12).text_color(t.muted).child(row.agent))
         .child(statusMark(t, row.status))
-        .child(div().text_size(11).text_color(color).child(STATES.find(([key]) => key === row.status)?.[1] || "Unknown")))
+        .child(div().text_size(11).text_color(color).child(statusLabel(row.status))))
       .child(div().truncate().text_size(15).font_semibold().text_color(t.foreground).child(row.title))
       .child(h_flex().flex_1().min_h(0).gap(8).items_start().overflow_hidden()
         .when(themed, (el) => el.child(image(sprite.path).w(82 * sprite.width / sprite.height).h(82).flex_none()))
@@ -163,7 +162,7 @@ export function renderAgentView(view) {
     view.overviewOutside = view.outside;
   }
   const focusedAddress = focused()?.terminal;
-  const all = inAgentMode() ? view.overviewRows.filter((row) => row.status !== "idle" || row.address === focusedAddress) : view.overviewRows;
+  const all = inAgentMode() ? view.overviewRows.filter((row) => !statusInfo(row.status).quiet || row.address === focusedAddress) : view.overviewRows;
   view.lastThemeRender = now;
   const scope = filterAgentRows(all, view.input.value(), "all", view.sourceFilter);
   const rows = filterAgentRows(scope, "", view.statusFilter);

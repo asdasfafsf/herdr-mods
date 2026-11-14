@@ -352,8 +352,8 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   data.state['ag.info']={t1:{said:'수정 완료: 결과를 확인해주세요.',at:now},t3:{doing:'이 명령을 실행하도록 승인해주세요.',at:now}};
   const env=await environment(data,null);
   let output=JSON.stringify(env.render());
-  assert.ok(output.includes('village-status-t0') && output.includes('작업 중'));
-  assert.ok(output.includes('village-status-t2') && output.includes('쉬는 중'));
+  assert.ok(output.includes('village-status-t0') && output.includes('Working'));
+  assert.ok(output.includes('village-status-t2') && output.includes('Idle'));
   assert.ok(!output.includes('village-notice-t0') && !output.includes('village-notice-t2'));
   for(const text of ['village-notice-t1','village-notice-t3','수정 완료: 결과를 확인해주세요.','이 명령을 실행하도록 승인해주세요.']) assert.ok(output.includes(text),text);
   assert.equal(env.writes.length,0,'showing unread messages never marks them read');
@@ -368,7 +368,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   data.elapsed=2100;
   output=JSON.stringify(env.render());
   assert.ok(!output.includes('village-notice-t1') && !output.includes('village-notice-t3'),'read or resumed work removes its bubble');
-  assert.ok(output.includes('village-status-t1') && output.includes('확인함'));
+  assert.ok(output.includes('village-status-t1') && output.includes('Seen'));
   for(const width of [360,640,1100]) {
     const layout=env.village.villageLayout(width,600,24,24);
     for(const x of [layout.left,layout.right]) for(const y of [layout.top,layout.bottom]) {
@@ -497,7 +497,7 @@ if (process.argv.includes('--native')) {
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
     try {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
-      for (const name of ['state','ui','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','agent-mode','theme-contrast','village','village-chat']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
