@@ -1,0 +1,61 @@
+{
+  "name": "momonga-heart",
+  "id": "15055856194738441134",
+  "url": "https://media.tenor.com/0PElcJS_y64AAAAi/%EC%B9%98%EC%9D%B4%EC%B9%B4%EC%99%80-chiikawa.gif",
+  "source_page": "https://tenor.com/view/%EC%B9%98%EC%9D%B4%EC%B9%B4%EC%99%80-chiikawa-%EB%A8%BC%EC%9E%91%EA%B7%80-%ED%95%98%EB%8A%98%EB%8B%A4%EB%9E%8C%EC%A5%90-%EB%AA%A8%EB%AA%BD%EA%B0%80-gif-15055856194738441134",
+  "uploader": "K_isme",
+  "dims": [
+    282,
+    282
+  ],
+  "character": "Momonga",
+  "original_path": "mods/agents-plus/assets/chiikawa/originals/momonga-heart.gif",
+  "official": false,
+  "has_original_lettering": false,
+  "native_facing": 0,
+  "width": 282,
+  "height": 282,
+  "frames": 18,
+  "durations": [
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0
+  ],
+  "duration": 1800.0,
+  "content_bounds": [
+    8,
+    28,
+    265,
+    229
+  ],
+  "frames_directory": "mods/agents-plus/assets/chiikawa/momonga-heart",
+  "bytes": 113087,
+  "decoded_bytes": 396451,
+  "sha256": "5531fac2b0f9bc52f53c6d939f3660fd14c70fd62eba8659966cb9067c2ea176",
+  "decoded_rgba_sha256": "a01cce7caadd8903b5734d5b1947d24bd229ecdc9f7df6e930da99aa554f1912",
+  "pixels_identical_to_source": true,
+  "checked_on": "2026-11-15",
+  "processing": "FFmpeg frame decoding only; no crop, resize, recolor, redrawing, background removal, or timing changes.",
+  "rights": "Character artwork is not covered by the repository code license. No open reuse license verified. Community Tenor upload; official origin and reuse rights unverified.",
+  "description": "Momonga blushing with hands at cheeks and moving fluffy tail; caption-free.",
+  "visually_checked_frames": [
+    1,
+    9
+  ],
+  "native_facing_note": "Front-facing or alternating front/back; no persistent left/right-facing pose."
+}

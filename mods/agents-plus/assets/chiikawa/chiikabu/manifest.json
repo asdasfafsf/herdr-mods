@@ -1,0 +1,57 @@
+{
+  "name": "chiikabu",
+  "id": "9547867018433912183",
+  "url": "https://media.tenor.com/hIDWd2xr3XcAAAAi/chiikabu-chiikawa.gif",
+  "source_page": "https://tenor.com/view/chiikabu-chiikawa-gif-9547867018433912183",
+  "uploader": "Miwuuuuuu",
+  "dims": [
+    108,
+    109
+  ],
+  "character": "Chiikabu",
+  "original_path": "mods/agents-plus/assets/chiikawa/originals/chiikabu.gif",
+  "official": false,
+  "has_original_lettering": false,
+  "native_facing": 0,
+  "width": 108,
+  "height": 109,
+  "frames": 14,
+  "durations": [
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0,
+    120.0
+  ],
+  "duration": 1680.0,
+  "content_bounds": [
+    0,
+    0,
+    108,
+    109
+  ],
+  "frames_directory": "mods/agents-plus/assets/chiikawa/chiikabu",
+  "bytes": 54940,
+  "decoded_bytes": 163087,
+  "sha256": "ba489dd31b5361d40d136fb0ac78ec712a80f9fb203afba33f807092488c5e67",
+  "decoded_rgba_sha256": "546981c51761d190a946e92b5410ef3786085c98279108f68d16ed0af4ba6472",
+  "pixels_identical_to_source": true,
+  "checked_on": "2026-11-15",
+  "processing": "FFmpeg frame decoding only; no crop, resize, recolor, redrawing, background removal, or timing changes.",
+  "rights": "Character artwork is not covered by the repository code license. No open reuse license verified. Community Tenor upload; official origin and reuse rights unverified.",
+  "description": "Chiikabu swaying in a beetle costume; source is 108×109 and should not be enlarged far beyond normal village resident size.",
+  "visually_checked_frames": [
+    1,
+    8
+  ],
+  "native_facing_note": "Front-facing or alternating front/back; no persistent left/right-facing pose."
+}

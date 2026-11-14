@@ -1,0 +1,63 @@
+{
+  "name": "chiikawa-bounce",
+  "id": "16440424583004264571",
+  "url": "https://media.tenor.com/5CgfDZqRmHsAAAAi/chiikawa.gif",
+  "source_page": "https://tenor.com/view/chiikawa-gif-16440424583004264571",
+  "uploader": "meowingcx",
+  "dims": [
+    300,
+    276
+  ],
+  "character": "Chiikawa",
+  "original_path": "mods/agents-plus/assets/chiikawa/originals/chiikawa-bounce.gif",
+  "official": false,
+  "has_original_lettering": false,
+  "native_facing": 0,
+  "width": 300,
+  "height": 276,
+  "frames": 20,
+  "durations": [
+    30.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    30.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0,
+    70.0
+  ],
+  "duration": 1320.0,
+  "content_bounds": [
+    26,
+    19,
+    247,
+    241
+  ],
+  "frames_directory": "mods/agents-plus/assets/chiikawa/chiikawa-bounce",
+  "bytes": 99053,
+  "decoded_bytes": 268099,
+  "sha256": "6780ef30bfc23b9e58aa42dfb55971a799e509155b902824fea7586312b58130",
+  "decoded_rgba_sha256": "04a480162937e5a02152a8ac71e2c329538764872ebd7f065dde6c36d2c049b2",
+  "pixels_identical_to_source": true,
+  "checked_on": "2026-11-15",
+  "processing": "FFmpeg frame decoding only; no crop, resize, recolor, redrawing, background removal, or timing changes.",
+  "rights": "Character artwork is not covered by the repository code license. No open reuse license verified. Community Tenor upload; official origin and reuse rights unverified.",
+  "description": "Chiikawa bouncing side to side; caption-free.",
+  "visually_checked_frames": [
+    1,
+    11
+  ],
+  "native_facing_note": "Front-facing or alternating front/back; no persistent left/right-facing pose."
+}

@@ -1,0 +1,60 @@
+{
+  "name": "anoko",
+  "id": "2415612012347946121",
+  "url": "https://media.tenor.com/IYX6U6cqdIkAAAAi/transparent-anoko.gif",
+  "source_page": "https://tenor.com/view/transparent-anoko-chiikawa-gif-2415612012347946121",
+  "uploader": "Chimera111",
+  "dims": [
+    498,
+    498
+  ],
+  "character": "Anoko",
+  "original_path": "mods/agents-plus/assets/chiikawa/originals/anoko.gif",
+  "official": false,
+  "has_original_lettering": false,
+  "native_facing": 0,
+  "width": 498,
+  "height": 498,
+  "frames": 17,
+  "durations": [
+    90.0,
+    30.0,
+    30.0,
+    30.0,
+    150.0,
+    30.0,
+    60.0,
+    30.0,
+    90.0,
+    30.0,
+    30.0,
+    30.0,
+    150.0,
+    30.0,
+    60.0,
+    30.0,
+    30.0
+  ],
+  "duration": 930.0,
+  "content_bounds": [
+    11,
+    48,
+    485,
+    436
+  ],
+  "frames_directory": "mods/agents-plus/assets/chiikawa/anoko",
+  "bytes": 548618,
+  "decoded_bytes": 2712742,
+  "sha256": "d06044df2b3f82028e50817eae5cdd3084180120eb1d9e903325deec0a472413",
+  "decoded_rgba_sha256": "532a277c60c4ea1bcf9382cf5983cfd5bd51e18f432fd0a44cdfc82dcb683f5e",
+  "pixels_identical_to_source": true,
+  "checked_on": "2026-11-15",
+  "processing": "FFmpeg frame decoding only; no crop, resize, recolor, redrawing, background removal, or timing changes.",
+  "rights": "Character artwork is not covered by the repository code license. No open reuse license verified. Community Tenor upload; official origin and reuse rights unverified.",
+  "description": "Full-body Anoko swaying; caption-free with original manga texture.",
+  "visually_checked_frames": [
+    1,
+    9
+  ],
+  "native_facing_note": "Front-facing or alternating front/back; no persistent left/right-facing pose."
+}

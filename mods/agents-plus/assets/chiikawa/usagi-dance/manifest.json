@@ -1,0 +1,61 @@
+{
+  "name": "usagi-dance",
+  "id": "10827715909119384800",
+  "url": "https://media.tenor.com/lkPGQGvoHOAAAAAi/usagi-chiikawa.gif",
+  "source_page": "https://tenor.com/view/usagi-chiikawa-dance-fat-rabbit-gif-10827715909119384800",
+  "uploader": "UsagiEnjoyer",
+  "dims": [
+    446,
+    480
+  ],
+  "character": "Usagi",
+  "original_path": "mods/agents-plus/assets/chiikawa/originals/usagi-dance.gif",
+  "official": false,
+  "has_original_lettering": false,
+  "native_facing": 0,
+  "width": 446,
+  "height": 480,
+  "frames": 18,
+  "durations": [
+    100.0,
+    20.0,
+    60.0,
+    20.0,
+    80.0,
+    20.0,
+    20.0,
+    60.0,
+    20.0,
+    100.0,
+    20.0,
+    60.0,
+    20.0,
+    100.0,
+    20.0,
+    40.0,
+    20.0,
+    20.0
+  ],
+  "duration": 800.0,
+  "content_bounds": [
+    25,
+    13,
+    421,
+    462
+  ],
+  "frames_directory": "mods/agents-plus/assets/chiikawa/usagi-dance",
+  "bytes": 193210,
+  "decoded_bytes": 869146,
+  "sha256": "e2536a654f72198a4d2addd92abe88fc488b80c8a5265f92b39cb1507c80a849",
+  "decoded_rgba_sha256": "22ad1a206c3b8fef92751d6a660386c737921411b785e65f8ab1db23990f907a",
+  "pixels_identical_to_source": true,
+  "checked_on": "2026-11-15",
+  "processing": "FFmpeg frame decoding only; no crop, resize, recolor, redrawing, background removal, or timing changes.",
+  "rights": "Character artwork is not covered by the repository code license. No open reuse license verified. Community Tenor upload; official origin and reuse rights unverified.",
+  "description": "Usagi swaying and hopping; caption-free.",
+  "visually_checked_frames": [
+    1,
+    9
+  ],
+  "native_facing_note": "Front-facing or alternating front/back; no persistent left/right-facing pose."
+}

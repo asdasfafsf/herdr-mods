@@ -1,0 +1,107 @@
+{
+  "name": "shisa",
+  "character": "Shisa",
+  "original_path": "mods/agents-plus/assets/chiikawa/originals/shisa.png",
+  "url": "https://stickershop.line-scdn.net/stickershop/v1/sticker/838685767/iPhone/sticker_animation@2x.png?v=1",
+  "source_page": "https://store.line.me/stickershop/product/33799640/ja",
+  "uploader": "Doga Kobo (動画工房)",
+  "official": true,
+  "has_original_lettering": true,
+  "native_facing": 0,
+  "width": 370,
+  "height": 300,
+  "frames": 12,
+  "durations": [
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333,
+    83.33333333333333
+  ],
+  "duration": 1000.0,
+  "content_bounds": [
+    25,
+    34,
+    277,
+    227
+  ],
+  "frames_directory": "mods/agents-plus/assets/chiikawa/shisa",
+  "bytes": 123061,
+  "decoded_bytes": 270463,
+  "sha256": "18c63b69868240418c237e97adea3f1698617134414df2087a447f938f919cf6",
+  "decoded_rgba_sha256": "dc4a77ef8aef1c995ecc1910c08732dd27b97f84f7e9a3f5d096a577657fb296",
+  "pixels_identical_to_source": true,
+  "checked_on": "2026-11-15",
+  "processing": "FFmpeg frame decoding only; no crop, resize, recolor, redrawing, background removal, or timing changes.",
+  "rights": "Character artwork is not covered by the repository code license. No open reuse license verified. Official public Doga Kobo LINE preview; ©nagano / chiikawa committee.",
+  "description": "Official Shisa greeting/bowing; original お師匠ッ lettering remains.",
+  "visually_checked_frames": [
+    1,
+    12
+  ],
+  "native_facing_note": "Front-facing or alternating front/back; no persistent left/right-facing pose.",
+  "body_reference_bounds_approx": [
+    42,
+    69,
+    191,
+    175
+  ],
+  "body_reference_note": "Visual body-only reference for layout sizing; not a crop. Full original canvas and alpha content_bounds remain unchanged.",
+  "source_frame_delay_fractions_seconds": [
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ],
+    [
+      1,
+      12
+    ]
+  ]
+}

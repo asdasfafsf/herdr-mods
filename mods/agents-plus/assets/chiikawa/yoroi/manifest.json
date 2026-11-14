@@ -1,0 +1,147 @@
+{
+  "name": "yoroi",
+  "character": "Yoroi-san",
+  "original_path": "mods/agents-plus/assets/chiikawa/originals/yoroi.png",
+  "url": "https://stickershop.line-scdn.net/stickershop/v1/sticker/838685761/iPhone/sticker_animation@2x.png?v=1",
+  "source_page": "https://store.line.me/stickershop/product/33799640/ja",
+  "uploader": "Doga Kobo (動画工房)",
+  "official": true,
+  "has_original_lettering": true,
+  "native_facing": 0,
+  "width": 370,
+  "height": 300,
+  "frames": 20,
+  "durations": [
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0,
+    50.0
+  ],
+  "duration": 1000.0,
+  "content_bounds": [
+    45,
+    25,
+    281,
+    260
+  ],
+  "frames_directory": "mods/agents-plus/assets/chiikawa/yoroi",
+  "bytes": 269388,
+  "decoded_bytes": 558228,
+  "sha256": "5cb57fe4dc8356ab33d1800d6fe799a159b7cb0cedb2e30551861240ad6a356f",
+  "decoded_rgba_sha256": "3c0baf6f5a4d8c6b71d9bbb498560d4cb44b601c32abe9d69e1bdd05dd2e0b50",
+  "pixels_identical_to_source": true,
+  "checked_on": "2026-11-15",
+  "processing": "FFmpeg frame decoding only; no crop, resize, recolor, redrawing, background removal, or timing changes.",
+  "rights": "Character artwork is not covered by the repository code license. No open reuse license verified. Official public Doga Kobo LINE preview; ©nagano / chiikawa committee.",
+  "description": "Official Yoroi-san bowing; original オツカレ様です!! lettering remains.",
+  "visually_checked_frames": [
+    1,
+    10
+  ],
+  "native_facing_note": "Front-facing or alternating front/back; no persistent left/right-facing pose.",
+  "body_reference_bounds_approx": [
+    162,
+    42,
+    160,
+    247
+  ],
+  "body_reference_note": "Visual body-only reference for layout sizing; not a crop. Full original canvas and alpha content_bounds remain unchanged.",
+  "source_frame_delay_fractions_seconds": [
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ],
+    [
+      1,
+      20
+    ]
+  ]
+}
