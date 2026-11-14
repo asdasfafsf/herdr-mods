@@ -89,6 +89,12 @@ export function agentSprite(view, row, roaming = false, facing) {
   if (!pool.length) return null;
   const assigned = view.residentAssignments?.get(row.id);
   const name = pool.includes(assigned) ? assigned : pool[seed(row.id) % pool.length];
-  const path = spriteFrame(view.skin, name, clock, roaming ? facing : undefined);
-  return { ...definition.sprites[name], name, clock, path, mirrored: path.endsWith(".svg") };
+  const sprite = definition.sprites[name];
+  // One native GIF resource keeps its loaded frames across redraws. Cycling
+  // hundreds of PNG URLs evicts the native image cache and flashes on each lap.
+  const direction = definition.facing?.[name];
+  const directional = Array.isArray(direction) ? direction.some(Boolean) : Boolean(direction);
+  const nativeAnimation = Boolean(sprite.animation && !directional && !view.motionPaused);
+  const path = nativeAnimation ? `${definition.art}/${sprite.animation}` : spriteFrame(view.skin, name, clock, roaming ? facing : undefined);
+  return { ...sprite, name, clock, path, nativeAnimation, mirrored: path.endsWith(".svg") };
 }

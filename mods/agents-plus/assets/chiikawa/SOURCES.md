@@ -93,3 +93,5 @@ Official Shisa and Yoroi-san previews: ©nagano / chiikawa committee, Doga Kobo 
 Rejected: static Usagi barbell (1 frame); off-style Momonga spin; opaque/rectangular Shisa and Kani anime scene GIFs. No clean transparent animated Kani was located in this pass, so none was padded into the set.
 
 Original bytes: 5,129,666. Decoded PNG bytes: 16,307,971. Total frames: 447.
+
+The active Rakko resident uses the smooth official `rakko` APNG frames, sized by its body bounds rather than the surrounding lettering. The grainy manga-style `rakko-sword` original is retained as an optional resource. Neutral GIFs with matching canvas dimensions use one native animated image resource to avoid cache eviction between loops; PNG frames remain available for pausing and directional poses.

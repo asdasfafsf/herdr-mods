@@ -646,6 +646,23 @@ for (const presentation of ['cards','village']) {
 }
 console.log('Options popover: cards/village dismissal preserves filters and session selection');
 
+// Long animations keep one native resource and a stable image identity instead
+// of churning 127+ cache entries. Pause still stops autonomous GIF playback.
+{
+  const data=fixture(4);data.props={mode:'overview',skin:'chiikawa'};data.outside=[];
+  const env=await environment(data,null);let output=JSON.stringify(env.render());
+  const row=env.instance.overviewRows[0];env.instance.residentAssignments.set(row.id,'hachiware-dance');
+  const paths=new Set();
+  for(const clock of [0,100,13900,14000,28000]) { env.instance.themeClock=clock;paths.add(env.agentTheme.agentSprite(env.instance,row,true).path); }
+  assert.equal(paths.size,1,'every animation lap keeps one native resource');
+  assert.match([...paths][0],/originals\/hachiware-dance\.gif$/);
+  output=JSON.stringify(env.render());
+  assert.ok(output.includes(`village-art-${row.id}-hachiware-dance`),'native animation has stable row/resource identity');
+  env.click('village-filters');output=JSON.stringify(env.render());assert.ok(output.includes('overview-motion'));
+  env.click('overview-motion');assert.match(env.agentTheme.agentSprite(env.instance,row,true).path,/hachiware-dance\/\d{3}\.png$/);
+  console.log('native animation: stable resource/image identity and pause fallback passed');
+}
+
 // A child click can consume mouse-up before the viewport sees it. It must
 // still end the pending grab; later unpressed motion never carries a character.
 {

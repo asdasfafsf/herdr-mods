@@ -200,7 +200,7 @@ function agentCard(view, row, t, focusedAddress) {
         .child(div().text_size(11).font_medium().text_color(color).child(statusLabel(row.status)))))
     .child(h_flex().min_h(68).flex_none().min_w(0).gap(10).items_center()
       .when(themed, (el) => el.child(div().id(`overview-resident-${row.id}`).relative().size(64).flex_none().rounded(12).bg(t.chrome).overflow_hidden()
-        .child(image(sprite.path).absolute().left(art.left).top(art.top).w(art.width).h(art.height))))
+        .child(image(sprite.path).id(`card-art-${row.id}-${sprite.name}`).absolute().left(art.left).top(art.top).w(art.width).h(art.height))))
       .child(v_flex().flex_1().min_w(0).gap(3)
         .child(div().id(`overview-title-${row.id}`).h(36).flex_none().overflow_hidden().whitespace_normal().text_size(15).line_height(1.2)
           .font_semibold().text_color(t.foreground).tooltip(row.title).child(row.title))

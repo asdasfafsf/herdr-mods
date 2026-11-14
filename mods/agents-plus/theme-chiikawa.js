@@ -3,7 +3,7 @@ import { SPRITES } from "./theme-assets.js";
 export const CHIIKAWA_ADAPTER = {
   label: "Chiikawa", native: "herdr-chiikawa", layout: "village", contrast: true,
   art: "mods/agents-plus/assets/chiikawa",
-  residents: ["rakko-sword", "hachiware", "idle", "done", "momonga", "kurimanju", "shisa", "yoroi", "anoko", "chiikabu", "momonga-heart", "chiikawa-fairy", "usagi-dance", "hachiware-dance", "chiikawa-bounce"],
+  residents: ["rakko", "hachiware", "idle", "done", "momonga", "kurimanju", "shisa", "yoroi", "anoko", "chiikabu", "momonga-heart", "chiikawa-fairy", "usagi-dance", "hachiware-dance", "chiikawa-bounce"],
   sprites: SPRITES,
   // 0 is a frontal pose; never mirror source lettering. Kurimanju only turns
   // during the four text-free drinking frames, keeping caption frames intact.
