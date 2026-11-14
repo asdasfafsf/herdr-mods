@@ -14,7 +14,7 @@ import { renderSessionControls } from "./session-controls.js";
 import { inAgentMode } from "./agent-mode.js";
 import { hasTerminalDock, noteSceneSize } from "./terminal-dock.js";
 import { beginDrag, moveDrag, finishDrag, isDragging, consumeDragClick, clampPosition, normalizedPosition, restorePosition } from "./drag-layout.js";
-import { movementFacing } from "./sprite-directions.js";
+import { movementFacing, movementDirection } from "./sprite-directions.js";
 
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
 export function villageNotice(row) {
@@ -80,21 +80,34 @@ export function advanceVillage(view, rows, layout) {
     return { row, actor };
   });
   for (const { row, actor } of current) {
-    actor.moving = false;
+    if (!dt && row.id !== view.villageSelected && row.id !== view.permissionHovered
+        && !view.villageChats?.get(row.id)?.acting && !isDragging(view, `resident-${row.id}`)) continue;
+    actor.moving = Boolean(isDragging(view, `resident-${row.id}`) && view.pointerDrag?.moved);
     // The inspected resident stays put until selection changes. Hover and
     // unread notices alone do not interrupt the other residents' roaming.
     if (!dt || row.id === view.villageSelected || isDragging(view, `resident-${row.id}`)) continue;
     if (actor.wait > 0) { actor.wait -= dt; continue; }
     const dx = actor.tx - actor.x, dy = actor.ty - actor.y, distance = Math.hypot(dx, dy);
     if (distance < 2) {
-      const angle = random(actor) * Math.PI * 2, travel = 80 + random(actor) * 190;
+      const name = agentSprite(view, row, true)?.name;
+      const declared = themeDefinition(view.skin).motions?.[name]?.directions;
+      const directions = declared?.filter((direction) => ["left", "right", "up", "down"].includes(direction));
+      const angles = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
+      const direction = directions?.length ? directions[Math.floor(random(actor) * directions.length)] : null;
+      const angle = direction ? angles[direction] : random(actor) * Math.PI * 2, travel = 80 + random(actor) * 190;
       actor.tx = clamp(actor.x + Math.cos(angle) * travel, layout.left, layout.right);
       actor.ty = clamp(actor.y + Math.sin(angle) * travel, layout.top, layout.bottom);
       // At a corner an outward step can clamp back onto the resident. Choose a
       // point inside the field instead of repeatedly waiting on the same spot.
       if (Math.hypot(actor.tx - actor.x, actor.ty - actor.y) < 2) {
-        actor.tx = layout.left + random(actor) * (layout.right - layout.left);
-        actor.ty = layout.top + random(actor) * (layout.bottom - layout.top);
+        const reverse = { left: "right", right: "left", up: "down", down: "up" }[direction];
+        if (direction && directions.includes(reverse)) {
+          actor.tx = clamp(actor.x + Math.cos(angles[reverse]) * travel, layout.left, layout.right);
+          actor.ty = clamp(actor.y + Math.sin(angles[reverse]) * travel, layout.top, layout.bottom);
+        } else if (!direction) {
+          actor.tx = layout.left + random(actor) * (layout.right - layout.left);
+          actor.ty = layout.top + random(actor) * (layout.bottom - layout.top);
+        }
       }
       actor.wait = 0.1 + random(actor) * 0.25;
       continue;
@@ -107,13 +120,18 @@ export function advanceVillage(view, rows, layout) {
       && Math.hypot(other.x - x, other.y - y) < Math.hypot(other.x - actor.x, other.y - actor.y));
     if (blocked) { actor.tx = actor.x; actor.ty = actor.y; actor.wait = 0.1; continue; }
     actor.facing = movementFacing(x - actor.x, y - actor.y, actor.facing);
+    actor.direction = movementDirection(x - actor.x, y - actor.y, actor.direction);
     actor.x = x; actor.y = y; actor.moving = true;
+  }
+  for (const { actor } of current) {
+    const motion = actor.moving ? actor.direction || "down" : "idle";
+    if (actor.motion !== motion) { actor.motion = motion; actor.motionSince = clock; }
   }
   return current;
 }
 
 function resident(view, row, actor, layout, t, focusedAddress) {
-  const sprite = agentSprite(view, row, true, actor.facing);
+  const sprite = agentSprite(view, row, true, actor.facing, actor);
   const size = layout.size, art = spriteLayout(sprite, size + 16, size, true);
   const selected = view.villageSelected === row.id;
   const selectedLabel = row.address && row.address === focusedAddress ? "Active" : "Selected";
@@ -125,6 +143,7 @@ function resident(view, row, actor, layout, t, focusedAddress) {
     .tooltip(identity)
     .on_mouse_down("left", (e, cx) => beginDrag(view, `resident-${row.id}`, e, actor, () => view.villageBounds || layout, (point) => {
       actor.facing = movementFacing(point.x - actor.x, point.y - actor.y, actor.facing);
+      actor.direction = movementDirection(point.x - actor.x, point.y - actor.y, actor.direction);
       actor.x = point.x; actor.y = point.y; actor.tx = point.x; actor.ty = point.y; actor.wait = 0;
     }, cx))
     .on_mouse_up("left", (e, cx) => finishDrag(view, e, cx))

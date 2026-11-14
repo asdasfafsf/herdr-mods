@@ -59,3 +59,27 @@ Validate changes with `tests/theme-adapters.mjs` (run Node with
 `--experimental-vm-modules`), resource integrity checks, both generators and
 native rendering. Its second-theme fixture deliberately provides data only:
 it must reuse speech, movement, focus and input with no Chiikawa paths.
+
+### Movement clips
+
+An optional `motions` map selects each resident's `idle`, `left`, `right`,
+`up`, or `down` clip from actual movement, independently of agent status.
+Each clip can select `sprite`, zero-based `frames`, and horizontal `facing`.
+Missing direction clips fall back to `idle`; missing metadata retains the
+original animation. `directions` restricts roaming to directions with usable
+artwork (for example `["left", "right"]` when no rear pose exists).
+
+```js
+motions: { resident: {
+  directions: ["left", "right"],
+  idle: { sprite: "resident" },
+  left: { sprite: "resident", frames: [1, 2, 3, 4], facing: -1 },
+  right: { sprite: "resident", frames: [1, 2, 3, 4], facing: 1 },
+} }
+```
+
+Frame subsets keep source durations and restart on motion changes. They use
+the same atlas through every loop. A GIF clip with a frame subset needs a
+generated atlas or falls back to the numbered source frames. The current
+Kurimanju pack reuses drinking side poses; it does not contain walking or
+rear-view artwork. Its full captioned animation plays while stationary.

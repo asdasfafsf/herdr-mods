@@ -74,6 +74,30 @@ assert.match(spriteFrame('chiikawa', 'momonga', 50, 1), /directional\/momonga\/0
 assert.match(spriteFrame('chiikawa', 'rakko', 0, -1), /rakko\/001\.png$/, 'lettered poses are never mirrored');
 assert.match(spriteFrame('chiikawa', 'kurimanju', 0, 1), /kurimanju\/001\.png$/);
 
+// A pose with no rear-view artwork only travels in its declared directions.
+{
+  const row={id:'kurimanju',status:'working'};
+  const view={skin:'chiikawa',themeClock:0,residentAssignments:new Map([[row.id,'kurimanju']])};
+  const layout=villageLayout(1200,740,1);
+  advanceVillage(view,[row],layout);
+  const actor=view.villageActors.get(row.id), y=actor.y;
+  const orientations=new Set();
+  for(let i=0;i<1200;i++) {
+    view.themeClock+=50;advanceVillage(view,[row],layout);
+    assert.ok(Math.abs(actor.y-y)<0.001,'side poses never travel backwards up the scene');
+    const sprite=themeModule.namespace.agentSprite(view,row,true,actor.facing,actor);
+    if(actor.moving) {
+      orientations.add(actor.direction);
+      assert.ok(['left','right'].includes(sprite.motion));
+      assert.ok([1,2,3,4].includes(sprite.atlas.frame),'moving only plays text-free side poses');
+      assert.ok(sprite.path.endsWith(`kurimanju-${actor.direction}.svg`),'travel selects the matching orientation');
+    }
+  }
+  assert.equal(orientations.size,2,'both directions remain reachable');
+  view.villageSelected=row.id;advanceVillage(view,[row],layout);
+  assert.equal(themeModule.namespace.agentSprite(view,row,true,actor.facing,actor).motion,'idle','selection returns to the idle clip');
+}
+
 const view = {};
 initAgentTheme(view, cx);
 assert.equal(view.motionPaused, false, 'old persisted pause must not freeze a newly opened view');

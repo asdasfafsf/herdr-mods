@@ -13,7 +13,9 @@ for (const definition of Object.values(THEMES)) {
   if (!check) mkdirSync(folder, { recursive: true });
   for (const [name, sprite] of Object.entries(definition.sprites)) {
     const directions = Array.from({ length: sprite.frames }, (_, i) => frameFacing(definition, name, i));
-    if (sprite.animation && !directions.some(Boolean)) continue;
+    const clipped = Object.entries(definition.motions || {}).some(([resident, motions]) =>
+      Object.values(motions).some((clip) => clip?.frames?.length && (clip.sprite || resident) === name));
+    if (sprite.animation && !directions.some(Boolean) && !clipped) continue;
     const columns = Math.ceil(Math.sqrt(sprite.frames)), rows = Math.ceil(sprite.frames / columns);
     const { width, height } = sprite;
     const frames = Array.from({ length: sprite.frames }, (_, i) => readFileSync(new URL(`${name}/${String(i + 1).padStart(3, '0')}.png`, root)).toString('base64'));

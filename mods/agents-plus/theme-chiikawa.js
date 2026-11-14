@@ -10,6 +10,13 @@ export const CHIIKAWA_ADAPTER = {
   // during the four text-free drinking frames, keeping caption frames intact.
   facing: { idle: 1, momonga: -1, hachiware: -1, done: -1,
     kurimanju: [0, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  motions: {
+    // These source poses look left while drinking; there is no rear-view walk.
+    // Keep captioned/frontal poses at rest and use the side poses for travel.
+    kurimanju: { directions: ["left", "right"], idle: { sprite: "kurimanju" },
+      left: { sprite: "kurimanju", frames: [1, 2, 3, 4], facing: -1 },
+      right: { sprite: "kurimanju", frames: [1, 2, 3, 4], facing: 1 } },
+  },
   scene: {
     width: 1400, height: 900, background: "#c3dea0",
     layers: [

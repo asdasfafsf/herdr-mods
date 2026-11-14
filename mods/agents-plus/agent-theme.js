@@ -6,6 +6,7 @@ import { THEMES, VIEW_LAYOUTS, themeTokens, themeDefinition, residentPool, hasRe
 import { inAgentMode, agentViewVisible, applyModeTheme, workspaceTheme } from "./agent-mode.js";
 import { finishDrag } from "./drag-layout.js";
 import { frameFacing } from "./sprite-directions.js";
+import { spriteMotion } from "./sprite-motion.js";
 
 const SKINS = Object.entries(THEMES).map(([key, value]) => [key, value.label]);
 const preferredPresentation = (skin) => (inAgentMode() ? shared("ag.presentation")
@@ -81,34 +82,42 @@ export function spriteFrameIndex(sprite, clock) {
 
 export function spriteFrame(skin, name, clock, facing) {
   const definition = themeDefinition(skin), sprite = definition.sprites[name];
-  const frame = spriteFrameIndex(sprite, clock);
+  return spriteFramePath(definition, name, spriteFrameIndex(sprite, clock), facing);
+}
+
+function spriteFramePath(definition, name, frame, facing) {
   const file = String(frame + 1).padStart(3, "0");
   const nativeFacing = frameFacing(definition, name, frame);
   return nativeFacing && (facing === -1 || facing === 1) && facing !== nativeFacing
     ? `${definition.art}/directional/${name}/${file}.svg` : `${definition.art}/${name}/${file}.png`;
 }
 
-export function agentSprite(view, row, roaming = false, facing) {
-  const clock = (view.themeClock ?? 0) + seed(row.id) % 12000;
+export function agentSprite(view, row, roaming = false, facing, actor) {
+  let clock = (view.themeClock ?? 0) + seed(row.id) % 12000;
   const definition = themeDefinition(view.skin), pool = residentPool(view.skin);
   if (!pool.length) return null;
   const assigned = view.residentAssignments?.get(row.id);
-  const name = pool.includes(assigned) ? assigned : pool[seed(row.id) % pool.length];
+  const resident = pool.includes(assigned) ? assigned : pool[seed(row.id) % pool.length];
+  const motion = spriteMotion(definition, resident, roaming ? actor : null);
+  const name = motion.name;
   const sprite = definition.sprites[name];
+  if (motion.frames) clock = Math.max(0, (view.themeClock ?? 0) - (actor?.motionSince ?? 0));
+  const frame = motion.frames ? motion.frames[spriteFrameIndex({ frames: motion.frames.length, duration: motion.duration,
+    durations: motion.frames.map((index) => sprite.durations[index]) }, clock)] : spriteFrameIndex(sprite, clock);
+  const targetFacing = motion.facing ?? (roaming && (facing === -1 || facing === 1) ? facing : 0);
   // One native GIF resource keeps its loaded frames across redraws. Cycling
   // hundreds of PNG URLs evicts the native image cache and flashes on each lap.
   const direction = definition.facing?.[name];
   const directional = Array.isArray(direction) ? direction.some(Boolean) : Boolean(direction);
-  const nativeAnimation = Boolean(sprite.animation && !directional && !view.motionPaused);
-  if (definition.frameAtlas && (!sprite.animation || directional)) {
-    const frame = spriteFrameIndex(sprite, clock), nativeFacing = frameFacing(definition, name, frame);
-    const targetFacing = roaming && (facing === -1 || facing === 1) ? facing : 0;
+  const nativeAnimation = Boolean(sprite.animation && !directional && !motion.frames && !view.motionPaused);
+  if (definition.frameAtlas && (!sprite.animation || directional || motion.frames)) {
+    const nativeFacing = frameFacing(definition, name, frame);
     const columns = Math.ceil(Math.sqrt(sprite.frames));
     const suffix = directional && targetFacing ? targetFacing < 0 ? "-left" : "-right" : "";
-    return { ...sprite, name, clock, path: `${definition.art}/${definition.frameAtlas}/${name}${suffix}.svg`,
+    return { ...sprite, name: resident, resource: name, motion: motion.key, clock, path: `${definition.art}/${definition.frameAtlas}/${name}${suffix}.svg`,
       atlas: { frame, columns, rows: Math.ceil(sprite.frames / columns) }, nativeAnimation: false,
       mirrored: Boolean(nativeFacing && targetFacing && nativeFacing !== targetFacing) };
   }
-  const path = nativeAnimation ? `${definition.art}/${sprite.animation}` : spriteFrame(view.skin, name, clock, roaming ? facing : undefined);
-  return { ...sprite, name, clock, path, nativeAnimation, mirrored: path.endsWith(".svg") };
+  const path = nativeAnimation ? `${definition.art}/${sprite.animation}` : spriteFramePath(definition, name, frame, targetFacing);
+  return { ...sprite, name: resident, resource: name, motion: motion.key, clock, path, nativeAnimation, mirrored: path.endsWith(".svg") };
 }
