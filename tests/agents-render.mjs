@@ -302,8 +302,12 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
     if(count) {
       view.villageSelected=rows[0].id;
       const actor=view.villageActors.get(rows[0].id), x=actor.x,y=actor.y;
-      for(let frame=0;frame<100;frame++) {view.themeClock+=50;env.village.advanceVillage(view,rows,layout);}
-      assert.equal(actor.x,x);assert.equal(actor.y,y,'selected residents stop for inspection');
+      let distance=0;
+      for(let frame=0;frame<100;frame++) {
+        view.themeClock+=50;env.village.advanceVillage(view,rows,layout);
+        distance=Math.max(distance,Math.hypot(actor.x-x,actor.y-y));
+      }
+      assert.ok(distance>4,'selected residents keep roaming while their details are open');
     }
   }
   console.log('agent themes: shared sessions, opt-in filters/details, roaming bounds, motion pause, selection and navigation passed');
@@ -394,7 +398,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(env.writes.length,0,'showing unread messages never marks them read');
   const waiting=env.instance.villageActors.get('t3'), position=[waiting.x,waiting.y];
   for(let i=0;i<100;i++) {env.instance.themeClock+=50;env.render();}
-  assert.deepEqual([waiting.x,waiting.y],position,'residents with unread work stand still');
+  assert.ok(Math.hypot(waiting.x-position[0],waiting.y-position[1])>4,'residents with unread work keep roaming with their bubbles');
   env.click('village-notice-t1');
   assert.equal(env.instance.villageSelected,'t1');
   assert.equal(env.writes.length,0,'previewing a bubble does not acknowledge the host session');
@@ -411,7 +415,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
       assert.ok(box.left>=0 && box.left+box.width<=width && box.top>=0 && box.top+box.height<=layout.height,'speech bubbles fit within the village');
     }
   }
-  console.log('village status: current state, real unread previews, no automatic acknowledgement, stable reading and clearing passed');
+  console.log('village status: current state, real unread previews, no automatic acknowledgement, moving notices and clearing passed');
 }
 
 // Chat uses a synthetic transport only: never send a test message to a live agent.

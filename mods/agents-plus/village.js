@@ -60,7 +60,7 @@ export function advanceVillage(view, rows, layout) {
       actor.x = layout.left + u * (layout.right - layout.left);
       actor.y = layout.top + v * (layout.bottom - layout.top);
       actor.tx = actor.x; actor.ty = actor.y;
-      actor.wait = random(actor) * 1.5;
+      actor.wait = random(actor) * 0.2;
       actor.speed = 23 + random(actor) * 12;
       actors.set(row.id, actor);
     }
@@ -72,14 +72,22 @@ export function advanceVillage(view, rows, layout) {
   });
   for (const { row, actor } of current) {
     actor.moving = false;
-    if (!dt || villageNotice(row) || view.villageSelected === row.id || view.villageHovered === row.id) continue;
+    // Every visible resident roams, including the selected session and those
+    // with a notice. Their labels and speech bubbles follow the same position.
+    if (!dt) continue;
     if (actor.wait > 0) { actor.wait -= dt; continue; }
     const dx = actor.tx - actor.x, dy = actor.ty - actor.y, distance = Math.hypot(dx, dy);
     if (distance < 2) {
       const angle = random(actor) * Math.PI * 2, travel = 80 + random(actor) * 190;
       actor.tx = clamp(actor.x + Math.cos(angle) * travel, layout.left, layout.right);
       actor.ty = clamp(actor.y + Math.sin(angle) * travel, layout.top, layout.bottom);
-      actor.wait = 1.5 + random(actor) * 3;
+      // At a corner an outward step can clamp back onto the resident. Choose a
+      // point inside the field instead of repeatedly waiting on the same spot.
+      if (Math.hypot(actor.tx - actor.x, actor.ty - actor.y) < 2) {
+        actor.tx = layout.left + random(actor) * (layout.right - layout.left);
+        actor.ty = layout.top + random(actor) * (layout.bottom - layout.top);
+      }
+      actor.wait = 0.1 + random(actor) * 0.25;
       continue;
     }
     const step = Math.min(distance, actor.speed * dt);
@@ -88,7 +96,7 @@ export function advanceVillage(view, rows, layout) {
     const blocked = current.some(({ actor: other }) => other !== actor
       && Math.hypot(other.x - x, other.y - y) < layout.size * 0.72
       && Math.hypot(other.x - x, other.y - y) < Math.hypot(other.x - actor.x, other.y - actor.y));
-    if (blocked) { actor.tx = actor.x; actor.ty = actor.y; actor.wait = 0.5; continue; }
+    if (blocked) { actor.tx = actor.x; actor.ty = actor.y; actor.wait = 0.1; continue; }
     actor.x = x; actor.y = y; actor.moving = true;
   }
   return current;

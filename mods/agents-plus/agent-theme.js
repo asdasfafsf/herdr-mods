@@ -15,7 +15,9 @@ export function initAgentTheme(view, cx) {
   view.skin = SKINS.some(([key]) => key === saved) ? saved : "default";
   view.presentation = (inAgentMode() ? shared("ag.presentation") : localStorage.getItem("overview.chiikawaLayout")) === "cards" ? "cards" : "village";
   view.themeClock = 0;
-  view.motionPaused = localStorage.getItem("overview.motionPaused") === "true";
+  // Motion is on whenever this view opens. A pause belongs to this view's
+  // current interaction, not a hidden preference inherited from an old session.
+  view.motionPaused = false;
   view.overviewTab = panes().find((pane) => pane.mod === "agents-plus")?.tab;
   let previous = Date.now();
   cx.timer.every(50, (cx) => {
@@ -55,7 +57,7 @@ export function themeControls(view, t) {
         .on_click((_e, cx) => { view.presentation = key; localStorage.setItem("overview.chiikawaLayout", key); cx.notify(); }).child(label)))))
     .when(view.skin === "chiikawa", (el) => el.child(div().id("overview-motion").px(8).py(5).rounded(5)
       .text_size(11).text_color(t.muted).cursor_pointer().hover((el) => el.bg(t.hover))
-      .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; localStorage.setItem("overview.motionPaused", String(view.motionPaused)); cx.notify(); })
+      .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; cx.notify(); })
       .child(view.motionPaused ? "Resume motion" : "Pause motion")));
 }
 
