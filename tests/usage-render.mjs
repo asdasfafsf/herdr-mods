@@ -19,6 +19,7 @@ function builder(kind = 'div', id) {
       const id = node.ops.find(([name]) => name === 'id')?.[1][0];
       // Explicit allowlist: action buttons and Refresh have no callable handler here.
       if ((key === 'on_change' && id === 'reset-credits-toggle') ||
+          (key === 'on_key_down' && id === 'reset-credits-control') ||
           (key === 'on_click' && id === 'usage-pill')) handlers.set(id, args[0]);
       if (key === 'hover' || key === 'focus') args = [args[0](builder(`${key}-style`))];
       node.ops.push([key, args.map(value => typeof value === 'function' ? '[handler]' : value)]);
@@ -37,7 +38,7 @@ const Type = new Function('View', 'div', 'image', 'svg', 'v_flex', 'h_flex',
   class {}, () => builder(), () => builder('image'), () => builder('svg'),
   () => builder('column'), () => builder('row'), component('accordion'), component('accordion-item'),
   { new: trigger => builder('accordion-header').child(trigger) }, component('accordion-trigger'), component('accordion-panel'),
-  () => properties, () => palette, value => { overlay = value; }, forbidden, () => 'just now',
+  () => properties, () => palette, value => { overlay = value; }, forbidden, time => `age ${time}`,
   // Do not retain or invoke credit-selection or confirmation callbacks.
   (id, label, _fn, _t, options = {}) => builder('button', id).child(label).disabled(Boolean(options.disabled)),
   forbidden, forbidden);
@@ -90,6 +91,7 @@ for (const [themeName, colors] of Object.entries(palettes)) {
   properties = { mode: 'detail' };
   for (const [name, value, label, detail] of cases) {
     const view = new Type(); // Deliberately skip init: no reads, timers or host calls.
+    view.resetCreditsFocus = { focus() {} };
     view.usage = usageWith(value);
     const original = JSON.stringify(view.usage);
     let root = tree(view);
@@ -97,10 +99,16 @@ for (const [themeName, colors] of Object.entries(palettes)) {
     assertCollapsed(root);
     assert.ok(display(root, label), `${themeName}/${name}: ${label}`);
     const trigger = byId(root, 'reset-credits-toggle');
+    const control = byId(root, 'reset-credits-control');
     assert.equal(trigger.kind, 'accordion-trigger');
-    assert.deepEqual(op(trigger, 'accessibility_label'), [`Reset credits: ${label}. Show details`]);
-    assert.deepEqual(op(trigger, 'bg'), [colors.hover]);
-    assert.deepEqual(op(trigger, 'border_color'), [colors.border]);
+    for (const unsupported of ['accessibility_label', 'hover', 'focus', 'track_focus']) assert.equal(op(trigger, unsupported), undefined);
+    assert.deepEqual(op(control, 'accessibility_label'), [`Reset credits: ${label}. Collapsed. Show details`]);
+    assert.deepEqual(op(control, 'bg'), [colors.hover]);
+    assert.deepEqual(op(control, 'border_color'), [colors.border]);
+    assert.ok(op(control, 'track_focus'));
+    assert.deepEqual(op(control, 'tab_stop'), [true]);
+    assert.ok(byId(root, 'reset-credits-heading'));
+    assert.ok(byId(root, 'reset-credits-region'));
     assert.deepEqual(op(display(root, label), 'text_color'), [value?.availableCount > 0 ? colors.accent : colors.muted]);
 
     handlers.get('reset-credits-toggle')(true, cx);
@@ -142,6 +150,28 @@ for (const [themeName, colors] of Object.entries(palettes)) {
 }
 assert.equal(notifications, Object.keys(palettes).length * cases.length * 2);
 
+// Only disclosure keys are dispatched, directly to the supported plain wrapper.
+// This verifies script behavior, not native focus traversal or screen-reader output.
+const keyboardView = new Type();
+keyboardView.usage = usageWith(summary);
+let focuses = 0, stopped = 0;
+keyboardView.resetCreditsFocus = { focus() { focuses++; } };
+const keyContext = { notify() {}, stop_propagation() { stopped++; } };
+const key = event => { tree(keyboardView); handlers.get('reset-credits-control')(event, keyContext); };
+key({ key: 'enter' });
+assert.equal(keyboardView.resetCreditsExpanded, true);
+key({ key: 'enter', is_held: true });
+assert.equal(keyboardView.resetCreditsExpanded, true);
+key({ key: 'space' });
+assert.equal(keyboardView.resetCreditsExpanded, false);
+key({ key: 'enter', modifiers: { platform: true } });
+key({ key: 'escape' });
+assert.equal(keyboardView.resetCreditsExpanded, false);
+assert.equal(stopped, 3);
+tree(keyboardView);
+handlers.get('reset-credits-toggle')(true, keyContext);
+assert.equal(focuses, 1, 'Pointer disclosure requests focus on the wrapper');
+
 // Collapsed rendering must not inspect individual details, even when cached.
 properties = { mode: 'detail' };
 const view = new Type();
@@ -158,6 +188,11 @@ for (const width of [360, 480, 720, 1200]) for (const [value, marker, label] of 
   const root = tree(view);
   assert.ok(display(root, marker), `${width}: ${marker}`);
   assert.ok(JSON.stringify(root).includes(`Reset credits: ${label}`));
+  if (value === summary) {
+    assert.ok(op(byId(root, 'usage-reset-count'), 'tooltip')[0].includes('(as of age 100)'), 'Count tooltip uses the credit timestamp');
+    assert.ok(op(byId(root, 'usage-codex'), 'tooltip')[0].includes('Reset credits: 2 available (as of age 100)'));
+    assert.ok(op(byId(root, 'usage-codex'), 'tooltip')[0].includes(`\nas of age ${fixture.codex.updated}`), 'Usage keeps its own newer timestamp');
+  }
   assert.ok(byId(root, 'usage-refresh'));
   assert.deepEqual(op(byId(root, 'usage-pill'), 'max_w'), [width - 116]);
   assert.deepEqual(op(byId(root, 'usage-limits'), 'min_w'), [0]);
@@ -200,7 +235,7 @@ export const exec=forbidden,appHome=forbidden,openOverlay=forbidden,closeOverlay
         writeFileSync(join(directory, 'main.js'), `
 import Usage from './usage.js';
 export default class Probe extends Usage {
-  init(){this.usage=${JSON.stringify(usageWith(value))};this.resetCreditsExpanded=${expanded};}
+  init(_props,cx){this.usage=${JSON.stringify(usageWith(value))};this.resetCreditsExpanded=${expanded};this.resetCreditsFocus=cx.focus_handle();}
 }
 `);
         check(`${themeName}/${name}/${expanded}`);

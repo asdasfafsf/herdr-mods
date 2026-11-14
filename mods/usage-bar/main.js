@@ -24,6 +24,7 @@ const AGENTS = [["claude", "Claude", "icons/claude.svg"], ["codex", "Codex", "ic
 const P = () => props() ?? {};
 const resetCount = (summary) => Number.isInteger(summary?.availableCount) && summary.availableCount >= 0 ? summary.availableCount : null;
 const resetCountLabel = (count) => count === null ? "Unavailable" : `${count} available`;
+const resetCreditTip = (summary) => `Reset credits: ${resetCountLabel(resetCount(summary))}${resetCount(summary) !== null && Number.isFinite(summary?.updated) ? ` (as of ${agoText(summary.updated)})` : ""}`;
 
 const when = (s) => {
   if (!s) return "";
@@ -57,6 +58,7 @@ export default class UsageBar extends View {
   init(_props, cx) {
     this.usage = P().usage ?? null; // the detail popup starts with what the bar read
     this.resetCreditsExpanded = false; // local to this popup; reopening starts with the count
+    if (P().mode === "detail") this.resetCreditsFocus = cx.focus_handle();
     // ...and reads on as the bar does, so one left open doesn't show numbers from when it opened.
     this.read(cx);
     cx.timer.every(EVERY, (cx) => this.read(cx));
@@ -103,7 +105,7 @@ export default class UsageBar extends View {
 
   tip(name, u) {
     const lines = u.windows.map((w) => `${w.name}: ${passed(w) ? "reset since" : `${Math.round(w.used)}% used`}${w.resets ? `, ${passed(w) ? `reset at ${when(w.resets)}` : `resets in ${until(w.resets)} (${at(w.resets)})`}` : ""}`);
-    if (name === "Codex") lines.push(`Reset credits: ${resetCountLabel(resetCount(u.resetCredits))}`);
+    if (name === "Codex") lines.push(resetCreditTip(u.resetCredits));
     return `${name}${u.plan ? ` (${u.plan})` : ""}\n${lines.join("\n")}\nas of ${agoText(u.updated)}`;
   }
 
@@ -151,7 +153,7 @@ export default class UsageBar extends View {
         .children(parts.flatMap(([k, name, icon], i) => [...(i ? [div().w(1).h(12).flex_none().bg(t.border)] : []), this.item(k, name, icon, u[k], t, compact, narrow)])))
       .when(Boolean(u.codex), (el) => el.child(div().id("usage-reset-count").flex_none().pl(8).border_l(1).border_color(t.border)
         .text_color(resetCount(u.codex.resetCredits) > 0 ? t.accent : t.muted)
-        .tooltip(`Codex reset credits: ${resetCountLabel(resetCount(u.codex.resetCredits))}`)
+        .tooltip(`Codex · ${resetCreditTip(u.codex.resetCredits)}`)
         .child(`↺ ${resetCount(u.codex.resetCredits) ?? "—"}`)));
   }
 
@@ -195,21 +197,38 @@ export default class UsageBar extends View {
     const expanded = Boolean(this.resetCreditsExpanded);
     const count = resetCount(summary);
     const action = expanded ? "Hide details" : "Show details";
+    // The native trigger carries expanded semantics but its materializer does
+    // not bind focus/key handlers or state styles. Put those on a plain child.
+    const control = h_flex().id("reset-credits-control").w_full().h(44).px(10).items_center().gap(8).rounded(8)
+      .bg(t.hover).border(1).border_color(t.border).cursor_pointer()
+      .hover((s) => s.bg(t.selected)).focus((s) => s.border_color(t.accent))
+      .when(Boolean(this.resetCreditsFocus), (el) => el.track_focus(this.resetCreditsFocus).tab_stop(true))
+      .role("group").accessibility_label(`Reset credits: ${resetCountLabel(count)}. ${expanded ? "Expanded" : "Collapsed"}. ${action}`)
+      .on_key_down((event, cx) => {
+        if (!["enter", "space", " "].includes(event.key) || Object.values(event.modifiers ?? {}).some(Boolean)) return;
+        cx.stop_propagation();
+        if (!event.is_held) this.setResetCreditsExpanded(!this.resetCreditsExpanded, cx);
+      })
+      .child(div().flex_1().font_semibold().text_color(t.foreground).child("Reset credits"))
+      .child(div().flex_none().px(6).py(2).rounded(5).bg(t.popover).text_size(11)
+        .font_medium().text_color(count > 0 ? t.accent : t.muted).child(resetCountLabel(count)))
+      .child(div().flex_none().text_size(10.5).text_color(t.muted).child(action))
+      .child(div().flex_none().text_color(t.muted).child(expanded ? "▾" : "▸"));
     return Accordion.new("reset-credits").w_full().flex_none().mt(4)
       .child(AccordionItem.new().open(expanded).disabled(Boolean(this.resetting)).flex().flex_col().gap(8)
         .header(AccordionHeader.new(AccordionTrigger.new("reset-credits-toggle")
-          .w_full().h(44).px(10).flex().items_center().gap(8).rounded(8)
-          .bg(t.hover).border(1).border_color(t.border).cursor_pointer()
-          .hover((s) => s.bg(t.selected)).focus((s) => s.border_color(t.accent))
-          .accessibility_label(`Reset credits: ${resetCountLabel(count)}. ${action}`)
-          .on_change((open, cx) => { this.resetCreditsExpanded = open; cx.notify(); })
-          .child(div().flex_1().font_semibold().text_color(t.foreground).child("Reset credits"))
-          .child(div().flex_none().px(6).py(2).rounded(5).bg(t.popover).text_size(11)
-            .font_medium().text_color(count > 0 ? t.accent : t.muted).child(resetCountLabel(count)))
-          .child(div().flex_none().text_size(10.5).text_color(t.muted).child(action))
-          .child(div().flex_none().text_color(t.muted).child(expanded ? "▾" : "▸"))))
+          .w_full().on_change((open, cx) => {
+            this.resetCreditsFocus?.focus();
+            this.setResetCreditsExpanded(open, cx);
+          }).child(control)).id("reset-credits-heading"))
         // Do not even describe credit details or their controls while collapsed.
-        .panel(AccordionPanel.new().when(expanded, (el) => el.child(this.renderResetCreditDetails(count === null ? null : summary, t)))));
+        .panel(AccordionPanel.new().id("reset-credits-region").when(expanded, (el) => el.child(this.renderResetCreditDetails(count === null ? null : summary, t)))));
+  }
+
+  setResetCreditsExpanded(open, cx) {
+    if (this.resetting || Boolean(this.resetCreditsExpanded) === open) return;
+    this.resetCreditsExpanded = open;
+    cx.notify();
   }
 
   renderResetCreditDetails(summary, t) {
