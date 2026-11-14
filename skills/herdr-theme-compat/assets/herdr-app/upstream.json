@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/herdrdev/herdr-app",
+  "commit": "b67715e8985e6097f83f8120fc9b9e52e6596f50",
+  "version": "0.1.15",
+  "rust": "1.95.0",
+  "zig": "0.16.0",
+  "ghostty": "291fd050b9e9c293c8adb6a140742649b7e42d3a",
+  "files": {
+    "src/main.rs": "7f43e0c50fb008dad2314467d84b05786a36ec4fb08161b8b3892c81f7c6f4bf",
+    "src/vt.rs": "78f3b657496ef4bc9c960980ee5cde976f77eedf7f6222821665a6f0c8f74f91",
+    "defaults/AGENTS.md": "9098807bbab33350c02ce04d7e3270c9764c61382935ad7e4423d1a33af0c92d"
+  },
+  "patched_files": {
+    "src/main.rs": "50a49e481a825282ead049c6c4a043cb2aeaeef23b65fd4546a029af2c1781b1",
+    "src/vt.rs": "f8b08ce7f9f63ce221a6a7ea0e6fcdba95f2c3d801ff2767a6c8c0f2a523ba2d",
+    "defaults/AGENTS.md": "23e407473579b864a02a5ec4ff87868bb84f597be09a029b739aa9ea262311e0"
+  },
+  "module_sha256": "8fca8baeb573779b9db38e42385b77495a7a6dde78228a54feeb4ecab8142e60"
+}

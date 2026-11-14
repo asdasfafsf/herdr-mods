@@ -1,0 +1,102 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -34,6 +34,7 @@
+ mod telemetry;
+ mod feedback;
+ mod terminal;
++mod terminal_surfaces;
+ mod update;
+ mod update_notes;
+ mod vt;
+--- a/src/vt.rs
++++ b/src/vt.rs
+@@ -70,6 +70,7 @@
+     pub selection_bg: Rgb,
+     pub palette16: [Rgb; 16],
+     pub minimum_contrast: f32,
++    pub background_overrides: Vec<crate::terminal_surfaces::Rule>,
+ }
+
+ /// The terminal colors from settings.json's theme.
+@@ -81,7 +82,7 @@
+     for (i, c) in palette16.iter_mut().enumerate() {
+         *c = get(&format!("ansi{i}"));
+     }
+-    Theme { fg: get("terminal_foreground"), bg: get("background"), cursor: get("cursor"), selection_bg: get("selection"), palette16, minimum_contrast: crate::settings::get().minimum_contrast }
++    Theme { fg: get("terminal_foreground"), bg: get("background"), cursor: get("cursor"), selection_bg: get("selection"), palette16, minimum_contrast: crate::settings::get().minimum_contrast, background_overrides: t.iter().filter_map(|(key, value)| crate::terminal_surfaces::parse_rule(key, value)).collect() }
+ }
+
+ #[derive(Clone, Default, PartialEq)]
+@@ -1803,10 +1804,21 @@
+                 }
+             }
+
++            let preserve_surface = !self.theme.background_overrides.is_empty() && (preserves_graphics_color(&text) || text.starts_with('\u{10eeee}'));
+             if text.starts_with('\u{10eeee}') {
+                 text.clear();
+                 style.underline = 0;
+                 style.strikethrough = false;
++            }
++
++            // Paint-only theme rules leave PTY output and stored styles untouched.
++            // Selection, inverse video and graphics retain their original semantics.
++            if !self.theme.background_overrides.is_empty() && !style.inverse && !selected && !preserve_surface {
++                let rgb = |Rgb(r, g, b)| [r, g, b];
++                let cell = |[r, g, b]: [u8; 3]| Rgb(r, g, b);
++                let mapped = crate::terminal_surfaces::remap(rgb(fg), bg.map(rgb), rgb(self.theme.fg), &self.theme.background_overrides);
++                fg = cell(mapped.0);
++                bg = mapped.1.map(cell);
+             }
+
+             // Contrast adjustment is opt-in; graphics always keep their colors.
+@@ -2270,6 +2282,34 @@
+     }
+
+     #[test]
++    fn explicit_surface_colors_reload_without_program_output() {
++        let mut vt = Vt::new(12, 4);
++        let original = theme();
++        vt.write(b"\x1b[38;2;210;212;217;48;2;41;41;41m draft \x1b[0m\r\n\x1b[48;2;41;41;42m other \x1b[0m");
++        vt.write("\r\n\x1b[38;2;41;41;41;48;2;210;212;217;7m inverse \x1b[0m\r\n\x1b[48;2;41;41;41m█X\x1b[0m".as_bytes());
++        let before = vt.frame();
++        let mut custom = original.clone();
++        custom.background_overrides = vec![([41, 41, 41], [241, 223, 189])];
++        custom.fg = Rgb(80, 60, 46);
++        vt.set_theme(custom);
++        let adjusted = vt.frame();
++        assert_eq!(adjusted.rows[0][0].bg, Some(Rgb(241, 223, 189)));
++        assert!(contrast(adjusted.rows[0][1].fg, Rgb(241, 223, 189)) >= 4.5);
++        assert_eq!(adjusted.rows[1][1].bg, before.rows[1][1].bg);
++        assert!(!Rc::ptr_eq(&before.rows[0], &adjusted.rows[0]));
++        assert_eq!(adjusted.rows[2][1].bg, before.rows[2][1].bg, "inverse video stays unchanged");
++        assert_eq!(adjusted.rows[3][0].bg, before.rows[3][0].bg, "graphics stay unchanged");
++        assert_eq!(adjusted.rows[3][1].bg, Some(Rgb(241, 223, 189)));
++        vt.select_at(Some(CellPosition { row: 0, col: 1 }), "cell").unwrap();
++        assert_eq!(vt.frame().rows[0][1].bg, Some(original.selection_bg));
++        vt.clear_selection();
++        vt.set_theme(original);
++        let restored = vt.frame();
++        assert_eq!(restored.rows[0][1].bg, before.rows[0][1].bg);
++        assert_eq!(restored.rows[0][1].fg, before.rows[0][1].fg);
++    }
++
++    #[test]
+     fn graphics_keep_low_contrast_colors_in_frames() {
+         let mut vt = Vt::new(8, 2);
+         vt.set_theme(Theme { minimum_contrast: 1.6, ..theme() });
+--- a/defaults/AGENTS.md
++++ b/defaults/AGENTS.md
+@@ -344,6 +344,13 @@
+   are placed in their cells as Ghostty places them.
+ - `terminal_scroll_speed`: wheel and trackpad multiplier (default 1, clamped
+   to 0.1..5), including mouse reports to programs. Small moves accumulate.
++- Optional `colors.terminal_bg_RRGGBB` entries map exact program background
++  colors to theme colors at paint time. Existing cells refresh live; removing
++  a rule restores their original colors. Text on mapped surfaces keeps its
++  color when readable, otherwise blends toward theme foreground for 4.5:1
++  contrast. Selection, reverse video and graphic glyphs are excluded.
++  Example: `"terminal_bg_292929": "#f1dfbd"`. These opt-in rules apply
++  to every terminal in this theme, not only a particular CLI.
+ - `font` / `font_size`: the terminals' (px at zoom 1); `ui_font`: the mods'
+   (their text sizes are their own, in px, and follow zoom). Optional: without
+   them a layout uses settings.json's, else Herdr's (JetBrains Mono 14, Geist).

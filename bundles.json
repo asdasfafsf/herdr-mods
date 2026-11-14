@@ -30,6 +30,7 @@
     "mods": [
       "agents-plus"
     ],
+    "skills": ["herdr-theme-compat"],
     "layout": [
       {
         "swap": {

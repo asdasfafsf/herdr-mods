@@ -54,3 +54,10 @@ Other Herdr windows also see it. The host currently has no per-layout contrast
 or RGB-remapping API. Full, automatically reversible pastel backgrounds for
 both CLIs therefore need a host renderer extension; palette tokens alone cannot
 provide that behavior.
+
+An isolated [native renderer experiment](../../../skills/herdr-theme-compat/references/native-renderer.md)
+adds exact background replacement rules to theme data and redraws existing
+cells without restarting a CLI. It is not part of the normal installer and
+does not replace the official Herdr application. Its verification and upstream
+version are recorded separately so this optional extension does not become a
+dependency of the mods.
