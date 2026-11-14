@@ -39,7 +39,7 @@ export function initAgentTheme(view, cx) {
 }
 
 export function agentTheme(base, skin) {
-  return themeTokens(base, skin);
+  return inAgentMode() ? base : themeTokens(base, skin);
 }
 
 export function themeControls(view, t) {

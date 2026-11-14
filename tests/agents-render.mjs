@@ -72,7 +72,8 @@ async function environment(data, revision) {
     shared: key => cloneRead(`shared:${key}`, data.state[key]), setShared: (key, value) => { data.state[key] = structuredClone(value); writes.push([key,value]); },
     setAgentOrder: value => writes.push(['setAgentOrder',value]),
     focused: () => data.focused ?? ({agent:'t0',terminal:'t0',pane:'p0',tab:'b0'}), layout: () => data.layout ?? ({id:'root',type:'row',children:[{id:'sidebar',size:{px:data.collapsed ? 76 : 268}},{id:'main',type:'block',content:{tab:'active'}}]}), layouts:()=>data.layouts ?? ['main'], props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
-    run: (...args) => {writes.push(['run',args]);if(args[0]==='layout.set') data.layout=structuredClone(args[1].layout); if(args[0]==='layout.clone') {data.state.layout=args[1].as;data.layouts=['main',args[1].as];}if(args[0]==='layout.switch') data.state.layout=args[1].name; if(args[0]==='layout.select') findNode(data.layout,args[1].stack).active=args[1].child;}, openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => data.settingsRaw ?? '{}', writeTextFile: async (_path, text, expected) => { assert.equal(expected, data.settingsRaw ?? '{}'); data.settingsRaw=text; },
+    settings: () => ({theme: data.nativeTheme ?? (typeof data.layout?.theme === 'string' ? data.layout.theme : data.layout?.theme?.[data.dark ? 'dark' : 'light']) ?? (data.dark ? 'graphite' : 'paper'), dark: Boolean(data.dark)}),
+    run: (...args) => {writes.push(['run',args]);if(args[0]==='layout.set') {data.layout=structuredClone(args[1].layout);delete data.nativeTheme;} if(args[0]==='layout.clone') {data.state.layout=args[1].as;data.layouts=['main',args[1].as];}if(args[0]==='layout.switch') data.state.layout=args[1].name; if(args[0]==='layout.select') findNode(data.layout,args[1].stack).active=args[1].child;}, openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => data.settingsRaw ?? '{}', writeTextFile: async (_path, text, expected) => { assert.equal(expected, data.settingsRaw ?? '{}'); data.settingsRaw=text; },
   };
   const store = new Map();
   const context = vm.createContext({ console, Date: class extends Date { static now() { return now + (data.elapsed ?? 0); } }, localStorage: { getItem:k => store.get(k), setItem:(k,v) => store.set(k,v), removeItem:k => store.delete(k) } });
@@ -308,16 +309,50 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   console.log('agent themes: shared sessions, opt-in filters/details, roaming bounds, motion pause, selection and navigation passed');
 }
 
+// Native Settings owns the theme; legacy shared flags cannot override it.
+{
+  const data=fixture(4); data.props={mode:'overview',integrated:true}; data.outside=[];
+  data.layout={...workspaceLayout('agent-world'),theme:'paper'};
+  data.state['ag.workspaceTheme']='chiikawa';
+  const env=await environment(data,null);
+  assert.equal(env.mode.workspaceTheme(),'default');
+  assert.ok(!JSON.stringify(env.mode.renderViewSwitch()).includes('workspace-theme-'),'toolbar has no duplicate theme selector');
+  data.layout.theme='herdr-chiikawa'; env.timers.get(50)();
+  assert.equal(env.instance.skin,'chiikawa','Settings changes reach Agent mode');
+  data.layout.theme='ink'; env.timers.get(50)();
+  assert.equal(env.instance.skin,'default','leaving Chiikawa restores native presentation');
+  env.mode.applyModeTheme('chiikawa'); env.timers.get(50)();
+  assert.equal(data.layout.theme,'herdr-chiikawa','village selection changes the native look');
+  env.mode.applyModeTheme('default'); env.timers.get(50)();
+  assert.equal(data.layout.theme,'ink','Default restores the preceding native theme');
+  assert.equal(env.agentTheme.agentTheme({foreground:'#abcdef'},'chiikawa').foreground,'#abcdef','native palette overrides reach cards and village');
+  delete data.state['ag.nativeThemeMigrated.main']; data.state['ag.workspaceTheme']='chiikawa';
+  data.layout.colors={chrome:'#f4ecdb',foreground:'#503c2e',accent:'#123123',personal:'#abcdef'};
+  env.mode.migrateWorkspaceTheme();
+  assert.deepEqual(data.layout.colors,{accent:'#123123',personal:'#abcdef'},'remove owned palette values; preserve custom edits');
+  assert.equal(data.layout.theme,'ink','migration preserves the native theme');
+  assert.equal(data.state['ag.workspaceTheme'],null);
+  data.layout.colors.chrome='#f4ecdb'; env.mode.migrateWorkspaceTheme();
+  assert.equal(data.layout.colors.chrome,'#f4ecdb','future user colors are not deleted by repeated migration');
+  env.mode.initWorkspaceTheme(env.cx);
+  data.layout.theme='moss'; env.timers.get(250)();
+  data.layout.theme='herdr-chiikawa'; env.timers.get(250)();
+  env.mode.applyModeTheme('default');
+  assert.equal(data.layout.theme,'moss','Settings entry preserves the previously observed native theme');
+  await Promise.all(env.tasks);
+}
+
+
 // Integrated mode uses the same rows, with quiet residents following native focus.
 {
   const data=fixture(4);data.props={mode:'overview',integrated:true,skin:'chiikawa'};
-  data.state.layout='herdr-worktrees';data.state['ag.workspaceTheme']='chiikawa';data.layout=workspaceLayout('agent-world');data.outside=[];
+  data.state.layout='herdr-worktrees';data.state['ag.workspaceTheme']='chiikawa';data.layout={...workspaceLayout('agent-world'),theme:'herdr-chiikawa'};data.outside=[];
   const env=await environment(data,null);
   let output=JSON.stringify(env.render());
   assert.ok(output.includes('overview-t0') && output.includes('overview-t3'));
   assert.ok(output.includes('overview-t1'),'seen agents stay visible');
   assert.ok(!output.includes('overview-t2"'),'idle agents are absent until focused');
-  assert.equal(data.layout.theme,'herdr-chiikawa');assert.equal(data.layout.colors.chrome,'#f4ecdb','the shared layout gets the same theme tokens');
+  assert.equal(data.layout.theme,'herdr-chiikawa');assert.equal(data.layout.colors,undefined,'palette comes from the native theme file');
   data.focused={terminal:'t2',pane:'p2',tab:'b2'};env.timers.get(250)();
   output=JSON.stringify(env.render());
   assert.ok(output.includes('overview-t2') && output.includes('village-message-t2'));
@@ -329,11 +364,11 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   env.mode.renderViewSwitch();env.click('overview-layout-cards');env.timers.get(50)();
   output=JSON.stringify(env.render());
   assert.ok(!output.includes('chiikawa-village') && output.includes('chiikawa/'),'cards keep the theme characters');
-  env.mode.renderViewSwitch();env.click('overview-layout-village');env.timers.get(50)();env.mode.renderViewSwitch();env.click('workspace-theme-default');env.timers.get(50)();
+  env.mode.renderViewSwitch();env.click('overview-layout-village');env.timers.get(50)();env.mode.applyModeTheme('default');env.timers.get(50)();
   assert.equal(data.layout.colors,undefined,'default restores the original layout palette');
-  env.mode.renderViewSwitch();env.click('workspace-theme-chiikawa');env.timers.get(50)();
+  env.mode.applyModeTheme('chiikawa');env.timers.get(50)();
   env.mode.leaveAgentMode();
-  assert.equal(data.layout.colors.chrome,'#f4ecdb','whole-workspace theme survives presentation changes');
+  assert.equal(data.layout.theme,'herdr-chiikawa','whole-workspace native theme survives presentation changes');
   assert.equal(data.state.layout,'herdr-worktrees','switching presentation keeps the same workspace');
   assert.equal(findNode(data.layout,'workspace-views').active,'main','terminal presentation restores the original tab tree');
   assert.equal(data.focused.terminal,'t1','presentation does not choose another session');
@@ -499,7 +534,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','agent-mode','theme-contrast','village','village-chat','session-controls']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
@@ -509,6 +544,7 @@ const copy=x=>JSON.parse(JSON.stringify(x??null));
 export const agents=()=>copy(data.agents), terminals=()=>copy(data.terminals), spaces=()=>copy(data.spaces), panes=()=>copy(data.panes);
 export const shared=k=>copy(data.state[k]), setShared=(k,v)=>{data.state[k]=v}, setAgentOrder=()=>{};
 export const focused=()=>({agent:'t0',terminal:'t0',tab:'b0'}), layout=()=>({id:'sidebar',size:{px:268}}), layouts=()=>['main'], props=()=>({mode:'${mode.startsWith('chiikawa')?'overview':mode}'}), window=()=>({active:true});
+export const settings=()=>({theme:'paper',dark:false});
 export const theme=()=>Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5','popover','background'].map(k=>[k,'#123456']));
 export const run=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'{}',writeTextFile=async()=>{};
 export const outside=data.outside;

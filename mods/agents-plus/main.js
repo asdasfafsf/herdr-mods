@@ -20,8 +20,7 @@ import { resumeArgv, AGENTS, runs } from "./resume.js";
 import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
 import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK, normalizeStatus } from "./ui.js";
-import { renderViewSwitch, applyModeTheme, workspaceTheme } from "./agent-mode.js";
-import { setThemeContrast } from "./theme-contrast.js";
+import { renderViewSwitch, initWorkspaceTheme } from "./agent-mode.js";
 import { RenderProfile } from "./render-profile.js";
 import { openAgentView, initAgentView, renderAgentView } from "./overview.js";
 
@@ -97,8 +96,7 @@ function icon(p, size, color) {
 export default class Agents extends View {
   init(_props, cx) {
     if (props()?.mode === "view-switch") {
-      applyModeTheme(workspaceTheme());
-      cx.spawn(async (cx) => { await setThemeContrast(workspaceTheme() === "chiikawa"); cx.notify(); });
+      initWorkspaceTheme(cx);
       return;
     }
     if (props()?.sortMenu) return;

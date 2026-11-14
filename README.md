@@ -7,6 +7,7 @@ git clone https://kcd.codes/amir/herdr-mods.git
 cd herdr-mods
 ./install.sh            # 전부
 ./install.sh worktrees agents   # 골라서
+./install.sh chiikawa          # 치이카와 앱 테마만
 ```
 
 KCD 계정으로 로그인해야 받을 수 있는 사내 레포다. Herdr 앱(`herdr-app`)과 `python3`, `git` 이 있어야 한다.
@@ -21,6 +22,7 @@ KCD 계정으로 로그인해야 받을 수 있는 사내 레포다. Herdr 앱(`
 |---|---|---|
 | `worktrees` | 사이드바에 레포 → primary 체크아웃 → 워크트리(열린 것·안 열린 것 전부) → 그 밑 터미널을 트리로. 프로젝트 추가(폴더·clone·새로), 새 워크트리, 행 메뉴, 세션 목록, Sleep | `spaces-plus` `worktree-plus` `wt-menu` `wt-sessions` `project-add` |
 | `agents` | Agents 목록과 전체 Agent view: 프로젝트별 에이전트·하위 에이전트·Herdr 밖 Claude/Codex 검색과 상태 필터 | `agents-plus` |
+| `chiikawa` | Agent view 없이도 사용할 수 있는 독립 치이카와 앱 테마. Settings → Look에서 선택 | (mod 없음) `themes/herdr-chiikawa.json` |
 | `palette` | ⌘P·⌘J 창에서 탭과 함께 워크트리도 찾고, 없으면 새로 만든다 | `picker-plus` |
 | `restore` | 재부팅·로그아웃·크래시로 Herdr core 가 내려갔다 오면, 돌던 에이전트 세션을 같은 탭에서 이어 연다 | `wt-restore` |
 | `usage` | 하단바 왼쪽 끝에 Claude·Codex 요금제 한도와 Codex 리셋권 개수·상세 정보 | `usage-bar` |
@@ -39,6 +41,7 @@ KCD 계정으로 로그인해야 받을 수 있는 사내 레포다. Herdr 앱(`
    |---|---|
    | `worktrees` | `spaces` 블록을 `spaces-plus` 로 바꾼다 |
    | `agents` | `agents` 블록을 `agents-plus` 로 바꾼다 |
+   | `chiikawa` | 없음(테마 파일만 설치) |
    | `palette` | 없음(단축키로 연다) |
    | `restore` | 화면에 안 보이는 floating 블록 `wt-restore` 추가 |
    | `usage` | 하단바(`workspace-status`)를 `status-row` 로 감싸 왼쪽에 720px `usage-bar` 블록 추가 |
@@ -60,6 +63,13 @@ KCD 계정으로 로그인해야 받을 수 있는 사내 레포다. Herdr 앱(`
 저장·조회·설치 실패의 처리와 검증 범위는 [실패 복구](docs/recovery-reliability.md)에 정리했다.
 
 `--dry-run` 은 위를 실제로 하지 않고 할 일만 출력한다. 처음엔 이걸로 먼저 보는 게 좋다.
+
+치이카와 색상만 쓰려면 `./install.sh chiikawa`로 설치한 뒤 **Settings → Look →
+Light → herdr chiikawa**를 선택한다. 이 번들은 레이아웃·키·모드·기존 설정을
+바꾸지 않고 테마 파일만 추가한다. Agent view도 함께 쓰려면
+`./install.sh agents chiikawa`로 설치한다. Agent view는 선택된 native 테마를 읽어
+치이카와 캐릭터와 Cards/Village 표현을 제공하며, 앱 색상을 따로 소유하지 않는다.
+기존 `herdr-chiikawa` 테마 ID와 선택 상태는 유지된다.
 
 ### 번들끼리의 의존
 
@@ -159,7 +169,7 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 - 마을 캐릭터는 치이카와·하치와레·우사기·랏코·모몽가·쿠리만쥬 6종이다. 각 세션에 배정된 캐릭터는 상태나 정렬이 바뀌어도 유지된다.
 - 마을의 캐릭터 아래에는 **세션명·프로젝트**가 항상 보인다. 긴 이름은 마우스를 올려 전체를 확인하며, 선택 상세에는 브랜치와 세션 주소도 표시한다. 상세의 **말 걸기**에서 `보내기` 또는 `⌘ Enter`로 해당 에이전트의 기존 세션에 메시지를 보낸다. Enter는 줄바꿈이며 캐릭터별 초안은 탭이 살아 있는 동안 유지한다. 전송 중 중복 전송을 막고 실패하거나 전송 중 편집한 초안을 보존한다. 새 답변은 기존 말풍선으로 확인한다. 입력·승인 대기 중인 세션은 `세션 열기`에서 확인하며, 외부 세션은 Herdr에서 이어 연 뒤 대화할 수 있다.
 
-- 작업 영역 상단의 **터미널 / 에이전트**로 같은 작업공간의 표시만 전환한다. 에이전트 표시에서는 터미널을 숨기며, 기존 탭·사이드바·선택 세션·포커스를 공유한다. 별도 레이아웃이나 설정 항목은 만들지 않는다. 캐릭터/카드를 선택하면 같은 세션 포커스가 바뀌고, `세션 열기`는 그 세션의 터미널 표시로 전환한다. **기본 테마 / 치이카와 테마**, 치이카와 안의 **카드형 / 마을형**은 같은 에이전트 화면에 적용된다. 치이카와 색상은 사이드바·탭·하단바·터미널까지 공통 토큰을 사용하고 표시 전환에도 유지된다. working·blocked·done·seen은 표시하고 **idle만 선택된 세션을 표시**한다. 검색·필터·정렬·24개 페이지와 메시지 초안은 보기 방식 전환에도 유지된다. 말풍선은 입력 대기/읽지 않은 답변 미리보기이며 확인 전에는 캐릭터가 멈춘다. 마을은 세로 스크롤과 움직임 끄기를 지원한다. 리소스 출처는 [SOURCES.md](mods/agents-plus/assets/chiikawa/SOURCES.md)에 있다.
+- 작업 영역 상단의 **터미널 / 에이전트**로 같은 작업공간의 표시만 전환한다. 에이전트 표시에서는 터미널을 숨기며, 기존 탭·사이드바·선택 세션·포커스를 공유한다. 별도 레이아웃이나 설정 항목은 만들지 않는다. 캐릭터/카드를 선택하면 같은 세션 포커스가 바뀌고, `세션 열기`는 그 세션의 터미널 표시로 전환한다. **치이카와 테마**는 독립 `chiikawa` 번들의 앱 전체 native 테마이며, 에이전트 화면은 그 선택에 맞춰 **Cards / Village** 표현을 제공한다. 치이카와 색상은 사이드바·탭·하단바·터미널까지 공통 토큰을 사용하고 표시 전환에도 유지된다. working·blocked·done·seen은 표시하고 **idle만 선택된 세션을 표시**한다. 검색·필터·정렬·24개 페이지와 메시지 초안은 보기 방식 전환에도 유지된다. 말풍선은 입력 대기/읽지 않은 답변 미리보기이며 확인 전에는 캐릭터가 멈춘다. 마을은 세로 스크롤과 움직임 끄기를 지원한다. 리소스 출처는 [SOURCES.md](mods/agents-plus/assets/chiikawa/SOURCES.md)에 있다.
 
 - Herdr 의 Agents 목록에 Herdr 밖에서 도는 Claude Code·Codex 가 같은 상태 묶음(working·blocked·done·idle) 안에 섞여 나온다. 앱 이름 태그와 흐린 아이콘으로 구분한다. 창이 앞에 있을 때 10초마다 `ps`·`lsof` 와 `~/.claude/sessions` 로 찾는다.
 - 바깥 에이전트를 누르면 그 세션을 Herdr 에서 이어 연다. 원래 앱의 것은 끄지 않는다.

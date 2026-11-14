@@ -9,7 +9,7 @@ import { shownStatus, seenFor, statusMark, statusColor, button, footer, agoText,
 import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
 import { renderVillage, villageDetails } from "./village.js";
-import { openAgentMode, leaveAgentMode, inAgentMode, applyModeTheme, agentViewVisible } from "./agent-mode.js";
+import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
 import { initSessionControls } from "./session-controls.js";
 
@@ -33,7 +33,6 @@ export function initAgentView(view, cx) {
   initAgentTheme(view, cx);
   initSessionControls(view, cx);
   if (inAgentMode()) {
-    applyModeTheme(view.skin);
     cx.timer.every(250, (cx) => {
       if (!agentViewVisible()) return;
       const address = focused()?.terminal;

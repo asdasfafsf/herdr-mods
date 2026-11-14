@@ -30,7 +30,6 @@
     "mods": [
       "agents-plus"
     ],
-    "themes": ["agents-plus/themes/herdr-chiikawa.json"],
     "layout": [
       {
         "swap": {
@@ -42,6 +41,15 @@
         "workspace_views": {}
       }
     ],
+    "keys": {}
+  },
+  "chiikawa": {
+    "about": "Standalone Chiikawa app palette, selectable in native Settings without installing Agent view",
+    "mods": [],
+    "themes": [
+      "theme-chiikawa/herdr-chiikawa.json"
+    ],
+    "layout": [],
     "keys": {}
   },
   "palette": {

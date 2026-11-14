@@ -1,22 +1,28 @@
-# Agent theme template
+# Native themes and agent adapters
 
-`../themes.js` owns each theme's UI colors and ANSI palette.
-Layouts consume semantic colors; they must not replace the palette to repair a
-terminal program's explicit RGB output.
+The standalone Chiikawa palette lives in
+[theme-chiikawa/palette.js](../../theme-chiikawa/palette.js). Its `chiikawa` bundle
+installs only `themes/herdr-chiikawa.json`: no agent view, layout, key bindings or
+CLI configuration changes. Install with `./install.sh chiikawa`, then select it
+in Settings → Look. Install `agents` separately for card/village presentation.
 
-To add a palette, copy the `chiikawa` registry entry, give it a unique `native`
-name and fill all 16 `ansi0`–`ansi15` colors. Run:
+Herdr's effective native theme is the single authority. `../themes.js` maps
+native theme IDs to optional agent artwork and layouts; it owns no active
+palette. Cards and village consume native semantic colors unchanged. The
+workspace toolbar contains view controls, not a second theme selector.
+
+To add a theme, define its palette package and generate its native JSON with:
 
 ```sh
 node scripts/build-agent-themes.mjs
 node scripts/build-agent-themes.mjs --check
 ```
 
-Add the generated JSON to `agents.themes` in `bundles.json`. The installer
-preserves user-owned files. CLI themes are not installed or selected:
-a persistent CLI override would outlive Chiikawa mode.
-Codex and Claude configuration files stay unchanged. Character artwork and scenery remain
-Chiikawa-specific; adding another character world also needs its artwork adapter.
+Declare the theme file in its own bundle. Add an agent adapter only if that theme
+needs distinct artwork or presentation. Keep all 16 ANSI colors readable against
+the theme background. The installer preserves user-owned theme files and keeps
+Codex/Claude configuration unchanged. `legacy-theme.js` is a frozen migration
+snapshot, not a second palette definition.
 
 ## Codex terminal rendering
 
@@ -33,13 +39,13 @@ palette refresh upstream; do not interrupt a working session automatically.
 
 ## Immediate readability and restoration
 
-While Chiikawa is selected in the workspace toolbar, `theme-contrast.js` raises
+While the native Settings theme is Chiikawa, `theme-contrast.js` raises
 Herdr's `minimum_contrast` to 1.6 (unless the user already chose a stronger
 value). Herdr corrects unreadable text against each cell's actual background,
 including existing user messages and diffs in Codex and Claude. This gentle
 threshold keeps distinguishable syntax colors instead of flattening them into
 black/white. It does not
-replace the program's RGB backgrounds. Selecting Default restores the exact
+replace the program's RGB backgrounds. Selecting another native theme restores the exact
 previous setting, including an absent field; later manual changes are preserved.
 Writes compare the settings snapshot and retry stale writes, preserving other keys.
 

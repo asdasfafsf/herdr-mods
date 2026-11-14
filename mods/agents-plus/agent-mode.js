@@ -2,8 +2,9 @@
 // a stack shows either the original terminal tree or the agent presentation.
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { layout, shared, setShared, run, props, theme, focused, panes } from "herdr";
+import { layout, shared, setShared, run, props, theme, focused, panes, settings } from "herdr";
 import { THEMES, VIEW_LAYOUTS } from "./themes.js";
+import { LEGACY_CHIIKAWA_COLORS } from "./legacy-theme.js";
 import { setThemeContrast } from "./theme-contrast.js";
 
 export const VIEW_STACK = "workspace-views";
@@ -21,53 +22,81 @@ export function findViewStack(node = layout()) {
 
 export const agentViewVisible = () => findViewStack()?.active === AGENT_VIEW;
 const baseKey = () => `overview.baseLook.${shared("layout") || "main"}`;
-export const workspaceTheme = () => shared("ag.workspaceTheme") || (layout()?.theme === THEMES.chiikawa.native || layout()?.colors?.chrome === THEMES.chiikawa.colors.chrome ? "chiikawa" : "default");
+// The effective native theme is the only authority, including Settings picks.
+export function workspaceTheme() {
+  const current = settings().theme;
+  const fallback = layout()?.theme;
+  const name = typeof current === "string" ? current
+    : typeof fallback === "string" ? fallback : fallback?.[settings().dark ? "dark" : "light"];
+  return Object.entries(THEMES).find(([, definition]) => definition.native === name)?.[0] || "default";
+}
 
-function paint(next, skin) {
+function savedLook() {
   const key = baseKey();
   let base = shared(key);
-  // localStorage belongs to each mod copy; theme state must be shared by the
-  // toolbar, sidebar and overview. Import the previous per-copy backup once.
   if (!base) try { base = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
-  const terminals = [];
-  const visit = (node) => {
-    if (node.content?.tab || node.content?.terminal || node.content?.agent) terminals.push(node);
-    for (const child of node.children ?? []) visit(child);
-  };
-  visit(next);
-  if (skin === "chiikawa") {
-    if (!base) {
-      base = next.colors?.chrome === THEMES.chiikawa.colors.chrome ? {} : { theme: next.theme, colors: next.colors };
-    }
-    base.terminals ??= Object.fromEntries(terminals.map((node) => [node.id, { theme: node.theme, colors: node.colors }]));
-    if (JSON.stringify(shared(key)) !== JSON.stringify(base)) setShared(key, base);
-    // Host currently applies only the root look. Keep terminal and panels in
-    // the same light palette, including ANSI colors used by terminal programs.
-    next.theme = THEMES.chiikawa.native;
-    next.colors = { ...THEMES.chiikawa.colors };
-    for (const node of terminals) {
-      const original = base.terminals[node.id];
-      if (original?.theme == null) delete node.theme; else node.theme = original.theme;
-      if (original?.colors == null) delete node.colors; else node.colors = original.colors;
-    }
-  } else if (base) {
-    if (base.theme == null) delete next.theme; else next.theme = base.theme;
-    if (base.colors == null) delete next.colors; else next.colors = base.colors;
-    for (const node of terminals) {
-      const original = base.terminals?.[node.id];
-      if (!original) continue;
-      if (original.theme == null) delete node.theme; else node.theme = original.theme;
-      if (original.colors == null) delete node.colors; else node.colors = original.colors;
-    }
-    setShared(key, null);
-    localStorage.removeItem(key);
+  return base;
+}
+
+function clearLegacyColors(next, base) {
+  if (!next.colors) return;
+  // Remove only the values this mod used to inject. Preserve later user edits.
+  for (const [key, value] of Object.entries(LEGACY_CHIIKAWA_COLORS)) {
+    if (next.colors[key] !== value) continue;
+    const original = base?.colors?.[key];
+    if (original != null && original !== value) next.colors[key] = original;
+    else delete next.colors[key];
   }
+  if (!Object.keys(next.colors).length) delete next.colors;
+}
+
+export function migrateWorkspaceTheme() {
+  if (!findViewStack()) return;
+  const marker = `ag.nativeThemeMigrated.${shared("layout") || "main"}`;
+  if (shared(marker)) return;
+  const base = savedLook(), legacy = shared("ag.workspaceTheme");
+  const current = layout(), next = JSON.parse(JSON.stringify(current));
+  if (base || legacy != null) clearLegacyColors(next, base);
+  if (JSON.stringify(current) !== JSON.stringify(next)) run("layout.set", { layout: next });
+  if (legacy != null) setShared("ag.workspaceTheme", null);
+  setShared(marker, true);
+}
+
+export function initWorkspaceTheme(cx) {
+  migrateWorkspaceTheme();
+  let previous, previousLook;
+  const sync = (cx) => {
+    const current = workspaceTheme();
+    if (current === "default") previousLook = { theme: layout()?.theme };
+    if (current === previous) return;
+    if (current !== "default" && previous === "default" && previousLook) setShared(baseKey(), previousLook);
+    previous = current;
+    cx.spawn(async (cx) => { await setThemeContrast(current !== "default"); cx.notify(); });
+  };
+  sync(cx);
+  cx.timer.every(250, sync);
 }
 
 export function applyModeTheme(skin) {
-  if (!findViewStack()) return;
+  if (!findViewStack() || !THEMES[skin]) return;
+  migrateWorkspaceTheme();
   const current = layout(), next = JSON.parse(JSON.stringify(current));
-  paint(next, skin);
+  let base = savedLook();
+  if (skin !== workspaceTheme()) {
+    if (THEMES[skin].native) {
+      // Store the native look, not a separate current-theme flag. Settings and
+      // every view read the same effective layout theme immediately afterward.
+      base = { theme: next.theme, colors: next.colors };
+      setShared(baseKey(), base);
+      next.theme = THEMES[skin].native;
+    } else {
+      if (base?.theme == null) delete next.theme; else next.theme = base.theme;
+      // A legacy backup may itself name our theme; Default must leave it.
+      if (next.theme === THEMES.chiikawa.native) delete next.theme;
+      setShared(baseKey(), null);
+      localStorage.removeItem(baseKey());
+    }
+  }
   if (JSON.stringify(current) !== JSON.stringify(next)) run("layout.set", { layout: next });
 }
 
@@ -97,13 +126,5 @@ export function renderViewSwitch() {
         .text_color(t.foreground).when((shared("ag.presentation") || "village") === key, (el) => el.bg(t.selected))
         .cursor_pointer().hover((el) => el.bg(t.hover)).on_click(() => setShared("ag.presentation", key)).child(label)))))
     .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted)
-      .child(pane?.title || "Select a session"))
-    .child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
-      .children(Object.entries(THEMES).map(([key, value]) => div().id(`workspace-theme-${key}`).px(9).py(4).rounded(5).text_size(11)
-        .text_color(t.foreground).when(workspaceTheme() === key, (el) => el.bg(t.selected))
-        .cursor_pointer().hover((el) => el.bg(t.hover)).on_click((_event, cx) => {
-          setShared("ag.workspaceTheme", key);
-          applyModeTheme(key);
-          cx.spawn(async (cx) => { await setThemeContrast(key === "chiikawa"); cx.notify(); });
-        }).child(value.label))));
+      .child(pane?.title || "Select a session"));
 }

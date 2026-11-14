@@ -1,22 +1,11 @@
-// Theme tokens and artwork live here; layouts never choose their own palette.
+// Agent presentation adapters keyed by the effective native theme.
+// Palettes are independently installed theme packages, never agent-view state.
 export const THEMES = {
   default: { label: "Default", layout: "cards" },
   chiikawa: {
     label: "Chiikawa", native: "herdr-chiikawa", layout: "village", art: "mods/agents-plus/assets/chiikawa",
     residents: ["done", "hachiware", "idle", "rakko", "momonga", "kurimanju"],
-    colors: {
-      background: "#f8f5ec", canvas: "#f4ecdb", surface: "#fffaf0", foreground: "#503c2e",
-      muted: "#7b6957", dim: "#95816b", raised: "#fffaf0",
-      chrome: "#f4ecdb", popover: "#fffaf0", border: "#d7c8ad", input: "#bbaa8d",
-      hover: "#f4ecd9", selected: "#f1dfbd", selection: "#e5d6ab", accent: "#8b6744",
-      accent_foreground: "#fffaf0", solid: "#80603f", solid_foreground: "#fffaf0",
-      working: "#58764b", blocked: "#ba5b4a", done: "#488aa0", idle: "#a09680", unknown: "#a09680",
-      ansi0: "#44362b", ansi1: "#a34845", ansi2: "#48683c", ansi3: "#866329",
-      ansi4: "#386e82", ansi5: "#94516b", ansi6: "#3f7166", ansi7: "#756755",
-      ansi8: "#7b6c5a", ansi9: "#a34845", ansi10: "#48683c", ansi11: "#866329",
-      ansi12: "#386e82", ansi13: "#94516b", ansi14: "#3f7166", ansi15: "#503c2e",
-    },
   },
 };
 export const VIEW_LAYOUTS = [["cards", "Cards"], ["village", "Village"]];
-export function themeTokens(base, name) { return { ...base, ...(THEMES[name]?.colors ?? {}) }; }
+export function themeTokens(base) { return base; }
