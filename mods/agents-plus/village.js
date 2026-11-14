@@ -6,6 +6,7 @@ import { run } from "herdr";
 import { button, statusColor, statusMark, statusInfo, statusLabel, statusNotice } from "./ui.js";
 import { agentSprite } from "./agent-theme.js";
 import { selectVillageResident, renderVillageChat } from "./village-chat.js";
+import { renderSessionControls } from "./session-controls.js";
 
 const ART = "mods/agents-plus/assets/chiikawa";
 const SCENERY = `${ART}/village`;
@@ -147,25 +148,27 @@ function scenery(layout) {
 }
 
 export function villageDetails(view, row, t, states, width, openRow) {
-  const panelWidth = Math.min(500, width - 32);
+  const panelWidth = Math.min(760, width - 32);
   const note = row.activity || statusInfo(row.status).summary;
   return v_flex().id("village-details").absolute().left((width - panelWidth) / 2).bottom(20).w(panelWidth)
-    .max_h(Math.max(160, (view.villageHeight || 660) - 32)).overflow_y_scroll()
+    .h(Math.min(740, Math.max(240, (view.villageHeight || 660) - 32))).overflow_hidden()
     .rounded(12).border(1).border_color(t.border).bg(t.raised).shadow_lg()
     .on_click((_e, cx) => cx.stop_propagation())
-    .child(v_flex().flex_none().min_w(0).p(16).gap(9)
+    .child(v_flex().flex_1().min_h(0).min_w(0).p(16).gap(9)
     .child(h_flex().flex_none().gap(8).items_center()
       .child(statusMark(t, row.status))
       .child(div().text_size(11).text_color(statusColor(t, row.status)).child(statusLabel(row.status)))
       .child(div().flex_1().truncate().text_size(11).text_color(t.muted).child(`${row.agent} · ${row.project}`))
       .child(button("village-close", "Close", (cx) => { view.villageSelected = null; cx.notify(); }, t)))
-    .child(div().truncate().text_size(14).font_semibold().text_color(t.foreground).tooltip(row.title).child(row.title))
+    .child(div().flex_none().truncate().text_size(14).font_semibold().text_color(t.foreground).tooltip(row.title).child(row.title))
+    .child(v_flex().id("session-detail-scroll").flex_1().min_h(0).overflow_y_scroll().gap(9)
     .child(div().id("village-activity").text_size(12).text_color(t.muted).whitespace_normal().max_h(52).overflow_y_scroll().child(note))
     .child(h_flex().gap(8).items_center()
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted)
         .tooltip([row.cwd, row.context, row.address].filter(Boolean).join("\n"))
         .child(`${row.branch || row.sourceLabel} · ${row.address || "Outside session"}`))
       .child(button("village-open-session", "Open session", () => openRow(view, row), t)))
+    .child(renderSessionControls(view.villageChats?.get(row.id), t)))
     .child(renderVillageChat(view, row, t)));
 }
 

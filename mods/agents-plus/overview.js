@@ -11,6 +11,7 @@ import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
 import { renderVillage, villageDetails } from "./village.js";
 import { openAgentMode, leaveAgentMode, inAgentMode, applyModeTheme, agentViewVisible } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
+import { initSessionControls } from "./session-controls.js";
 
 const STATES = STATUS_FILTERS;
 const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"], ["child", "Sub-agents"]];
@@ -30,6 +31,7 @@ export function initAgentView(view, cx) {
   view.handle = cx.focus_handle();
   view.input.focus();
   initAgentTheme(view, cx);
+  initSessionControls(view, cx);
   if (inAgentMode()) {
     applyModeTheme(view.skin);
     cx.timer.every(250, (cx) => {
