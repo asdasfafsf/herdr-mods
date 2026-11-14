@@ -69,7 +69,9 @@ Light → herdr chiikawa**를 선택한다. 이 번들은 레이아웃·키·모
 바꾸지 않고 테마 파일만 추가한다. Agent view도 함께 쓰려면
 `./install.sh agents chiikawa`로 설치한다. Agent view는 선택된 native 테마를 읽어
 치이카와 캐릭터와 Cards/Village 표현을 제공하며, 앱 색상을 따로 소유하지 않는다.
-기존 `herdr-chiikawa` 테마 ID와 선택 상태는 유지된다.
+기존 `herdr-chiikawa` 테마 ID와 선택 상태는 유지된다. Light와 Dark의 테마는
+각각 보존하며, 과거 Agent 테마 선택이 두 모드를 치이카와로 고정한 경우 저장된
+다크 테마(없으면 graphite)를 한 번 복구한다. Appearance 전환은 즉시 반영된다.
 
 ### 번들끼리의 의존
 

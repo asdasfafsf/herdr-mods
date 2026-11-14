@@ -2,7 +2,7 @@
 // a stack shows either the original terminal tree or the agent presentation.
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { layout, shared, setShared, run, props, theme, focused, panes, settings } from "herdr";
+import { layout, shared, setShared, run, props, theme, themes, focused, panes, settings } from "herdr";
 import { THEMES, VIEW_LAYOUTS } from "./themes.js";
 import { LEGACY_CHIIKAWA_COLORS } from "./legacy-theme.js";
 import { setThemeContrast } from "./theme-contrast.js";
@@ -45,6 +45,25 @@ function savedLook() {
   return base;
 }
 
+// Older Agent theme selection wrote one light theme into both appearance slots.
+// Repair only our saved selection once; native Settings choices remain untouched.
+export function migrateAppearanceTheme() {
+  if (!findViewStack()) return;
+  const key = `ag.themePairMigrated.${shared("layout") || "main"}`;
+  if (shared(key)) return;
+  const base = savedLook(), current = layout(), native = THEMES.chiikawa.native;
+  const fixed = current.theme === native || (current.theme?.light === native && current.theme?.dark === native);
+  if (fixed && (base || shared("ag.workspaceTheme") === "chiikawa")) {
+    const darkThemes = new Set(themes().filter((entry) => !entry.light).map((entry) => entry.name));
+    const previous = typeof base?.theme === "string" ? base.theme : base?.theme?.dark;
+    const dark = darkThemes.has(previous) ? previous : "graphite";
+    const next = JSON.parse(JSON.stringify(current));
+    next.theme = { light: native, dark };
+    run("layout.set", { layout: next });
+  }
+  setShared(key, true);
+}
+
 function clearLegacyColors(next, base) {
   if (!next.colors) return;
   // Remove only the values this mod used to inject. Preserve later user edits.
@@ -70,6 +89,7 @@ export function migrateWorkspaceTheme() {
 }
 
 export function initWorkspaceTheme(cx) {
+  migrateAppearanceTheme();
   migrateWorkspaceTheme();
   let previous, previousLook;
   const sync = (cx) => {
@@ -86,6 +106,7 @@ export function initWorkspaceTheme(cx) {
 
 export function applyModeTheme(skin) {
   if (!findViewStack() || !THEMES[skin]) return;
+  migrateAppearanceTheme();
   migrateWorkspaceTheme();
   const current = layout(), next = JSON.parse(JSON.stringify(current));
   let base = savedLook();
@@ -95,11 +116,18 @@ export function applyModeTheme(skin) {
       // every view read the same effective layout theme immediately afterward.
       base = { theme: next.theme, colors: next.colors };
       setShared(baseKey(), base);
-      next.theme = THEMES[skin].native;
+      // Native selection replaces only the theme's light/dark half, preserving
+      // the opposite appearance and the person's Appearance setting.
+      run("app.theme", { name: THEMES[skin].native });
+      return;
     } else {
       if (base?.theme == null) delete next.theme; else next.theme = base.theme;
       // A legacy backup may itself name our theme; Default must leave it.
       if (next.theme === THEMES.chiikawa.native) delete next.theme;
+      else if (next.theme && typeof next.theme === "object") {
+        if (next.theme.light === THEMES.chiikawa.native) next.theme.light = "paper";
+        if (next.theme.dark === THEMES.chiikawa.native) next.theme.dark = "graphite";
+      }
       setShared(baseKey(), null);
       localStorage.removeItem(baseKey());
     }

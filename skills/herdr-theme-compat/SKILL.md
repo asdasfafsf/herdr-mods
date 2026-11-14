@@ -30,9 +30,14 @@ Distinguish the report's three kinds of evidence:
   `compatible` means the pinned patch can be prepared; `already_applied` means
   those source files exactly match the packaged patch. Neither proves a build
   was installed. Exit code 2 signals an incompatible or modified source checkout.
-- `theme`: configuration evidence of a legacy palette override or duplicated
-  `ag.workspaceTheme` state. System appearance or unsaved live changes may make
-  the effective theme unknown. Diagnose that uncertainty rather than guessing.
+- `theme`: the configured `native_theme_slots.light` and `.dark`, plus evidence
+  of a legacy palette override or duplicated `ag.workspaceTheme` state. A single
+  theme name fills **both** slots. `chiikawa_dark_slot` flags Chiikawa in Dark;
+  `appearance_switch_pinned_to_chiikawa` means both slots use it, so changing
+  Appearance cannot choose a different theme. Check the slots even when
+  `legacy_native_migration_marked` is true: an old migration marker does not
+  prove this issue was repaired. System appearance or unsaved live changes may
+  make the effective theme unknown, while the configured slots remain inspectable.
 
 If Settings and Agent disagree, fix the mod's shared theme ownership first:
 Herdr's effective native theme must be the single authority. Do not add another

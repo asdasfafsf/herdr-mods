@@ -76,16 +76,20 @@ def check_source(checkout, manifest, assets=ASSETS):
     return {"status": "unsupported", "changed_files": changed}
 
 
-def pick_theme(choice, appearance):
+def theme_slots(choice):
     if isinstance(choice, str):
-        return choice
+        return {"light": choice, "dark": choice}
     if isinstance(choice, dict):
-        if appearance in ("light", "dark"):
-            value = choice.get(appearance)
-            return value if isinstance(value, str) else None
-        light, dark = choice.get("light"), choice.get("dark")
-        return light if isinstance(light, str) and light == dark else None
-    return None
+        return {slot: choice.get(slot) if isinstance(choice.get(slot), str) else None
+                for slot in ("light", "dark")}
+    return {"light": None, "dark": None}
+
+
+def pick_theme(choice, appearance):
+    slots = theme_slots(choice)
+    if appearance in ("light", "dark"):
+        return slots[appearance]
+    return slots["light"] if slots["light"] == slots["dark"] else None
 
 
 def check_theme(home, layout_name=None):
@@ -108,8 +112,12 @@ def check_theme(home, layout_name=None):
     choice = clicks.get("theme") if click_valid else None
     choice = choice or layout.get("theme") or settings.get("theme")
     appearance = settings.get("appearance", "system")
-    if choice is None and appearance in ("light", "dark"):
-        choice = "paper" if appearance == "light" else "graphite"
+    appearance = appearance if appearance in ("light", "dark", "system") else None
+    if choice is None:
+        choice = {"light": "paper", "dark": "graphite"}
+    slots = theme_slots(choice)
+    chiikawa_dark = slots["dark"] == "herdr-chiikawa" if slots["dark"] else None
+    pinned = slots["light"] == slots["dark"] == "herdr-chiikawa"
     name = pick_theme(choice, appearance)
     legacy = shared.get("ag.workspaceTheme")
     legacy = legacy if legacy in ("default", "chiikawa") else None
@@ -125,7 +133,11 @@ def check_theme(home, layout_name=None):
     legacy_overlay = len(matching) >= 3 and {"chrome", "foreground"}.issubset(matching)
     drift = legacy != native_skin if legacy is not None and native_skin is not None else None
     return {"status": "configuration_only", "layout": layout_name,
-            "native_theme_configured": name, "legacy_theme_state": legacy,
+            "appearance_configured": appearance, "native_theme_configured": name,
+            "native_theme_slots": slots, "chiikawa_dark_slot": chiikawa_dark,
+            "appearance_switch_pinned_to_chiikawa": pinned,
+            "legacy_native_migration_marked": shared.get(f"ag.nativeThemeMigrated.{layout_name}") is True,
+            "legacy_theme_state": legacy,
             "legacy_state_drift": drift, "legacy_palette_overlay": legacy_overlay,
             "read_errors": errors}
 
@@ -158,6 +170,13 @@ def main(argv=None):
             print(f"  Check: {name}")
         theme = report["theme"]
         print(f"Theme: {theme.get('native_theme_configured') or theme['status']}")
+        if "native_theme_slots" in theme:
+            slots = theme["native_theme_slots"]
+            print(f"  Appearance: {theme['appearance_configured'] or 'unknown'}; Light: {slots['light'] or 'unknown'}; Dark: {slots['dark'] or 'unknown'}")
+        if theme.get("chiikawa_dark_slot"):
+            print("  Dark slot uses the Chiikawa theme")
+        if theme.get("appearance_switch_pinned_to_chiikawa"):
+            print("  Both slots use Chiikawa: changing Appearance cannot select a different theme")
         if theme.get("legacy_state_drift"):
             print("  Legacy Agent theme state differs from the native theme")
         if theme.get("legacy_palette_overlay"):

@@ -158,6 +158,51 @@ class ThemeCompatibilityTests(unittest.TestCase):
             (home / "settings.json").write_text("not json")
             self.assertIn("settings", checker.check_theme(home)["read_errors"])
 
+    def test_single_chiikawa_pins_both_slots_despite_old_migration_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            put(home, "settings.json", {"appearance": "dark"})
+            put(home, "shared.json", {"layout": "custom", "ag.nativeThemeMigrated.custom": True})
+            put(home, "layouts/custom.json", {"theme": "herdr-chiikawa"})
+            before = snapshot(home)
+            report = checker.check_theme(home)
+            self.assertEqual(report["native_theme_slots"], {"light": "herdr-chiikawa", "dark": "herdr-chiikawa"})
+            self.assertEqual(report["appearance_configured"], "dark")
+            self.assertEqual(report["native_theme_configured"], "herdr-chiikawa")
+            self.assertTrue(report["legacy_native_migration_marked"])
+            self.assertTrue(report["chiikawa_dark_slot"])
+            self.assertTrue(report["appearance_switch_pinned_to_chiikawa"])
+            self.assertEqual(snapshot(home), before)
+
+    def test_native_pair_keeps_dark_theme_and_reports_slots_in_system_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            put(home, "shared.json", {"layout": "custom", "ag.nativeThemeMigrated.custom": True})
+            pair = {"light": "herdr-chiikawa", "dark": "ink"}
+            put(home, "layouts/custom.json", {"theme": pair})
+            for appearance, expected in [("light", "herdr-chiikawa"), ("dark", "ink"), ("system", None)]:
+                put(home, "settings.json", {"appearance": appearance})
+                report = checker.check_theme(home)
+                self.assertEqual(report["native_theme_slots"], pair)
+                self.assertEqual(report["native_theme_configured"], expected)
+                self.assertFalse(report["chiikawa_dark_slot"])
+                self.assertFalse(report["appearance_switch_pinned_to_chiikawa"])
+
+    def test_native_default_slots_and_persisted_dark_chiikawa_pick(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            put(home, "shared.json", {"layout": "custom"})
+            put(home, "settings.json", {"appearance": "dark"})
+            put(home, "layouts/custom.json", {})
+            report = checker.check_theme(home)
+            self.assertEqual(report["native_theme_slots"], {"light": "paper", "dark": "graphite"})
+            self.assertEqual(report["native_theme_configured"], "graphite")
+            put(home, "layouts/.state/custom.json", {"theme": {"light": "paper", "dark": "herdr-chiikawa"}, "file": {}})
+            report = checker.check_theme(home)
+            self.assertTrue(report["chiikawa_dark_slot"])
+            self.assertFalse(report["appearance_switch_pinned_to_chiikawa"])
+            self.assertEqual(report["native_theme_configured"], "herdr-chiikawa")
+
     def test_installed_skill_is_self_contained_and_keeps_unowned_skill(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

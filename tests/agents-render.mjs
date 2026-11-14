@@ -68,12 +68,23 @@ async function environment(data, revision) {
   }
   const theme = Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5'].map(k => [k, '#123456']));
   const host = {
+    themes: () => ['paper','herdr-chiikawa','graphite','ink','moss','atom-one-dark'].map(name=>({name,light:['paper','herdr-chiikawa'].includes(name)})),
     agents: () => cloneRead('agents', data.agents), terminals: () => cloneRead('terminals', data.terminals), panes: () => cloneRead('panes', data.panes), spaces: () => cloneRead('spaces', data.spaces),
     shared: key => cloneRead(`shared:${key}`, data.state[key]), setShared: (key, value) => { data.state[key] = structuredClone(value); writes.push([key,value]); },
     setAgentOrder: value => writes.push(['setAgentOrder',value]),
     focused: () => data.focused ?? ({agent:'t0',terminal:'t0',pane:'p0',tab:'b0'}), layout: () => data.layout ?? ({id:'root',type:'row',children:[{id:'sidebar',size:{px:data.collapsed ? 76 : 268}},{id:'main',type:'block',content:{tab:'active'}}]}), layouts:()=>data.layouts ?? ['main'], props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
     settings: () => ({theme: data.nativeTheme ?? (typeof data.layout?.theme === 'string' ? data.layout.theme : data.layout?.theme?.[data.dark ? 'dark' : 'light']) ?? (data.dark ? 'graphite' : 'paper'), dark: Boolean(data.dark)}),
     run: (...args) => {writes.push(['run',args]);if(args[0]==='layout.set') {data.layout=structuredClone(args[1].layout);delete data.nativeTheme;} if(args[0]==='layout.clone') {data.state.layout=args[1].as;data.layouts=['main',args[1].as];}if(args[0]==='layout.switch') data.state.layout=args[1].name; if(args[0]==='layout.select') findNode(data.layout,args[1].stack).active=args[1].child;}, openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => data.settingsRaw ?? '{}', writeTextFile: async (_path, text, expected) => { assert.equal(expected, data.settingsRaw ?? '{}'); data.settingsRaw=text; },
+  };
+  const runHost = host.run;
+  host.run = (...args) => {
+    runHost(...args);
+    if (args[0] === 'app.theme') {
+      const before = data.layout.theme;
+      const pair = typeof before === 'string' ? {light:before,dark:before} : {...before};
+      pair[host.themes().find(t=>t.name===args[1].name)?.light ? 'light' : 'dark'] = args[1].name;
+      data.layout.theme = pair; delete data.nativeTheme;
+    }
   };
   const store = new Map();
   const context = vm.createContext({ console, Date: class extends Date { static now() { return now + (data.elapsed ?? 0); } }, localStorage: { getItem:k => store.get(k), setItem:(k,v) => store.set(k,v), removeItem:k => store.delete(k) } });
@@ -326,7 +337,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   data.layout.theme='ink'; env.timers.get(50)();
   assert.equal(env.instance.skin,'default','leaving Chiikawa restores native presentation');
   env.mode.applyModeTheme('chiikawa'); env.timers.get(50)();
-  assert.equal(data.layout.theme,'herdr-chiikawa','village selection changes the native look');
+  assert.deepEqual(data.layout.theme,{light:'herdr-chiikawa',dark:'ink'},'native selection preserves the opposite appearance');
   env.mode.applyModeTheme('default'); env.timers.get(50)();
   assert.equal(data.layout.theme,'ink','Default restores the preceding native theme');
   assert.equal(env.agentTheme.agentTheme({foreground:'#abcdef'},'chiikawa').foreground,'#abcdef','native palette overrides reach cards and village');
@@ -344,6 +355,36 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   env.mode.applyModeTheme('default');
   assert.equal(data.layout.theme,'moss','Settings entry preserves the previously observed native theme');
   await Promise.all(env.tasks);
+// Legacy single-theme selections must not pin Dark to a light palette.
+for (const choice of ['herdr-chiikawa',{light:'herdr-chiikawa',dark:'herdr-chiikawa'}]) {
+  const data=fixture(1);data.props={mode:'overview',integrated:true};data.outside=[];
+  data.layout={...workspaceLayout('agent-world'),theme:choice};
+  data.state['ag.nativeThemeMigrated.main']=true;
+  data.state['overview.baseLook.main']={theme:{light:'herdr-chiikawa',dark:'atom-one-dark'}};
+  const env=await environment(data,null);
+  env.mode.migrateAppearanceTheme();
+  assert.deepEqual(data.layout.theme,{light:'herdr-chiikawa',dark:'atom-one-dark'});
+  const writes=env.writes.length;env.mode.migrateAppearanceTheme();
+  assert.equal(env.writes.length,writes,'appearance repair runs only once');
+  data.dark=true;env.timers.get(50)();
+  assert.equal(env.mode.workspaceTheme(),'default','Dark picks the original dark theme');
+  assert.equal(env.instance.skin,'default','Agent presentation follows the native dark theme');
+  data.dark=false;env.timers.get(50)();
+  assert.equal(env.instance.skin,'chiikawa','Light restores Chiikawa immediately');
+  env.mode.applyModeTheme('default');
+  assert.deepEqual(data.layout.theme,{light:'paper',dark:'atom-one-dark'},'Default removes Chiikawa from an old pair backup');
+  data.dark=true;env.mode.applyModeTheme('chiikawa');
+  assert.equal(data.dark,true,'theme selection never changes Appearance');
+  assert.deepEqual(data.layout.theme,{light:'herdr-chiikawa',dark:'atom-one-dark'},'native selection preserves the dark preference');
+}
+{
+  const data=fixture(1);data.props={mode:'overview',integrated:true};
+  data.layout={...workspaceLayout('agent-world'),theme:{light:'paper',dark:'moss'}};
+  data.state['overview.baseLook.main']={theme:'herdr-chiikawa'};
+  const env=await environment(data,null);env.mode.migrateAppearanceTheme();
+  assert.deepEqual(data.layout.theme,{light:'paper',dark:'moss'},'valid Settings choices are not migrated');
+}
+
 }
 
 
@@ -372,7 +413,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(data.layout.colors,undefined,'default restores the original layout palette');
   env.mode.applyModeTheme('chiikawa');env.timers.get(50)();
   env.mode.leaveAgentMode();
-  assert.equal(data.layout.theme,'herdr-chiikawa','whole-workspace native theme survives presentation changes');
+  assert.equal(env.mode.workspaceTheme(),'chiikawa','whole-workspace native theme survives presentation changes');
   assert.equal(data.state.layout,'herdr-worktrees','switching presentation keeps the same workspace');
   assert.equal(findNode(data.layout,'workspace-views').active,'main','terminal presentation restores the original tab tree');
   assert.equal(data.focused.terminal,'t1','presentation does not choose another session');
@@ -576,6 +617,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   const env = await environment(fixture(4),null);
   const tasks = [], commands = [];
   const cx = { spawn: fn => tasks.push(fn({})), notify: () => assert.fail('telemetry redraw') };
+export const themes=()=>[{name:'paper',light:true},{name:'herdr-chiikawa',light:true},{name:'graphite',light:false},{name:'atom-one-dark',light:false}];
   let complete;
   env.data.execHook = (...args) => { commands.push(args); return new Promise(resolve => {complete=resolve}); };
   env.render();
