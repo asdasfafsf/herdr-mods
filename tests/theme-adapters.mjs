@@ -168,7 +168,8 @@ for (const presentation of ['cards', 'village']) {
       assert.ok(element(output, 'agent-village'));
       assert.ok(element(output, 'village-notice-one'));
       assert.ok(element(output, 'village-notice-three'));
-      assert.ok(element(output, 'village-notice-two'), 'actual progress uses the same speech UI');
+      assert.equal(element(output, 'village-notice-two'), undefined, 'working progress stays out of speech bubbles');
+      assert.ok(element(output, 'village-status-two'), 'working keeps its compact status label');
       assert.ok(paths(output).includes('mods/agents-plus/speech-tail.svg'), 'speech geometry belongs to the common UI');
       const scenery = element(output, 'village-scenery');
       assert.equal(property(scenery, 'w'), 960); assert.equal(property(scenery, 'h'), 600);

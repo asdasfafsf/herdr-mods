@@ -16,7 +16,10 @@ import { beginDrag, moveDrag, finishDrag, isDragging, consumeDragClick, clampPos
 import { movementFacing } from "./sprite-directions.js";
 
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
-export const villageNotice = statusNotice;
+export function villageNotice(row) {
+  const notice = statusNotice(row);
+  return notice?.attention ? notice : null;
+}
 
 export function noticeBounds(actor, layout) {
   const width = Math.min(208, layout.width - 24);

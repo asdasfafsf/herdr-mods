@@ -618,7 +618,8 @@ console.log('agent cards: session identity, current work, active focus and disti
   data.elapsed=2100;
   output=JSON.stringify(env.render());
   assert.ok(!output.includes('village-notice-t1'),'seen removes unread bubble');
-  assert.ok(output.includes('village-notice-t3') && output.includes('Running unit checks'),'working shares actual progress in its bubble');
+  assert.ok(!output.includes('village-notice-t3'),'working progress does not show a speech bubble');
+  assert.ok(output.includes('village-status-t3') && output.includes('Working'),'working keeps its compact status label');
   assert.ok(output.includes('village-status-t1') && output.includes('Seen'));
   for(const width of [360,640,1100]) {
     const layout=env.village.villageLayout(width,600,24,24);
