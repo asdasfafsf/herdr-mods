@@ -93,3 +93,22 @@ synthetic host를 사용해야 한다. 그 전까지 위 자동 검증과 실제
 상태 표시만 남고 Done은 말풍선을 사용한다. 쿠리만쥬의 좌우 이동과 방향 전환에
 따른 그림 반전도 관찰했다. 연속 프레임 캡처로 반복 경계의 깜빡임을 측정한
 검사는 아니며, 승인 버튼 전송은 합성 transport 검증만 수행했다.
+
+같은 날 `52acb58`을 기준으로 두 worker worktree의 clean 상태, 원격과의 일치,
+최종 커밋의 main 포함을 직접 확인했다. 설치된 agents-plus 777개와 usage-bar
+4개의 비문서 추적 파일도 저장소와 일치했다. `--native --seed 20261116`으로
+22개 검사를 다시 통과했다.
+
+CUA로 moss 다크 팔레트와 Chiikawa 팩을 함께 사용했을 때 미선택 주민 이름이
+밝은 배경에 묻히는 문제를 발견했다. 공통 이름표에 `raised` 배경과 의미 토큰을
+적용하고, `agents-render.mjs --native --overview-only` 및 설치 검사를 통과한 뒤
+실앱의 light/dark 양쪽에서 대비 개선을 확인했다. 팩·Active 세션·터미널 분할은
+유지됐고 검증 후 기존 Light/Chiikawa 팔레트로 복원했다.
+
+직접 관찰한 잔여 문제도 있다. 주민이 가까워지면 그림이나 이름표가 다른
+이름표를 일부 가린다. 현재 이동 충돌 검사는 이름표 전체 영역을 예약하지 않는다.
+또한 다크 전환 후 기존 Codex 입력·사용자 메시지의 밝은 배경이 남았다.
+읽기 전용 theme compatibility checker는 light=`herdr-chiikawa`, dark=`moss`와
+중복 팔레트 상태 없음은 확인했지만, 설치 CLI 0.1.15의 native surface 기능은
+`unknown`으로 보고했다. 이를 앱 렌더러 지원이 확인된 것으로 해석하지 않는다.
+앱·core·실제 세션을 재시작하거나 입력하지 않았다.

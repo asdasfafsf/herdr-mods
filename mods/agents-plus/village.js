@@ -170,9 +170,10 @@ function resident(view, row, actor, layout, t, focusedAddress) {
       .child(div().text_size(10).text_color(color).child(status))))
     .child(spriteArt(sprite, `village-art-${row.id}-${sprite.name}`, art))
     .child(v_flex().id(`village-name-${row.id}`).absolute().top(size + 12).left(-6).w(size + 28).gap(2)
-      .when(selected, (el) => el.px(5).py(3).rounded(7).border(1).border_color(t.accent).bg(t.raised))
+      // Pack artwork has its own colors; keep labels on a palette-owned surface.
+      .px(5).py(3).rounded(7).border(1).border_color(selected ? t.accent : t.border).bg(t.raised)
       .child(div().truncate().text_center().text_size(11).font_semibold().text_color(t.foreground).child(row.title))
-      .child(div().truncate().text_center().text_size(9).text_color(selected ? t.accent : t.foreground).opacity(selected ? 1 : 0.75)
+      .child(div().truncate().text_center().text_size(9).text_color(selected ? t.accent : t.muted)
         .child(selected ? `${selectedLabel} · ${row.project}` : row.project)));
 }
 
