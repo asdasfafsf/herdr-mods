@@ -21,6 +21,13 @@ export function findViewStack(node = layout()) {
 }
 
 export const agentViewVisible = () => findViewStack()?.active === AGENT_VIEW;
+export const AGENT_SELECTION = "ag.selection";
+export function requestAgentSelection(id, address) {
+  if (!agentViewVisible()) return;
+  const sequence = (shared(AGENT_SELECTION)?.sequence || 0) + 1;
+  setShared(AGENT_SELECTION, { id, address, sequence, at: Date.now() });
+  return sequence;
+}
 const baseKey = () => `overview.baseLook.${shared("layout") || "main"}`;
 // The effective native theme is the only authority, including Settings picks.
 export function workspaceTheme() {

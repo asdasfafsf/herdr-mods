@@ -9,7 +9,8 @@ import { shownStatus, seenFor, statusMark, statusColor, button, footer, agoText,
 import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
 import { renderVillage, villageDetails } from "./village.js";
-import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible } from "./agent-mode.js";
+import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, AGENT_SELECTION } from "./agent-mode.js";
+import { internalAgents } from "./internal-agents.js";
 import { selectVillageResident } from "./village-chat.js";
 import { initSessionControls } from "./session-controls.js";
 
@@ -19,6 +20,18 @@ const PAGE_SIZE = 24; // Divisible into 1–4 columns; bound native element crea
 
 export function openAgentView(outside = []) {
   openAgentMode();
+}
+
+function revealResident(view, row, cx) {
+  const all = view.overviewRows.filter((item) => !statusInfo(item.status).quiet
+    || item.address === focused()?.terminal || item.id === row.id);
+  let matches = filterAgentRows(all, view.input.value(), view.statusFilter, view.sourceFilter);
+  if (!matches.some((item) => item.id === row.id)) {
+    view.input.set_value(""); view.statusFilter = "all"; view.sourceFilter = "all";
+    matches = all;
+  }
+  view.page = Math.max(0, Math.floor(matches.findIndex((item) => item.id === row.id) / PAGE_SIZE));
+  selectVillageResident(view, row, cx, false);
 }
 
 export function initAgentView(view, cx) {
@@ -33,14 +46,27 @@ export function initAgentView(view, cx) {
   initAgentTheme(view, cx);
   initSessionControls(view, cx);
   if (inAgentMode()) {
+    view.selectionSequence = shared(AGENT_SELECTION)?.sequence;
     cx.timer.every(250, (cx) => {
       if (!agentViewVisible()) return;
       const address = focused()?.terminal;
+      const requested = shared(AGENT_SELECTION);
+      if (requested && requested.sequence !== view.selectionSequence) {
+        if (Date.now() - requested.at > 5000) view.selectionSequence = requested.sequence;
+        // Wait for the host focus and activity snapshot to catch up to a click.
+        const row = requested.sequence !== view.selectionSequence && view.overviewRows?.find((row) => row.id === requested.id);
+        if (row && address === requested.address) {
+          view.selectionSequence = requested.sequence;
+          view.focusedResident = address;
+          revealResident(view, row, cx);
+          return;
+        }
+      }
       if (view.focusedResident === address) return;
       const row = view.overviewRows?.find((row) => row.address === address);
       if (address && !row) return;
       view.focusedResident = address;
-      if (row) selectVillageResident(view, row, cx, false);
+      if (row) revealResident(view, row, cx);
       else { view.villageSelected = null; cx.notify(); }
     });
   }
@@ -98,6 +124,15 @@ export function agentViewRows(outside = []) {
   };
   listed.forEach(add);
   all.filter((terminal) => terminal.state === "live" && (terminal.program?.agent || terminal.parent)).forEach(add);
+  const parents = new Map(rows.map((row) => [row.address, row]));
+  for (const child of internalAgents(listed, info)) {
+    const parent = parents.get(child.parentAddress);
+    if (!parent) continue;
+    rows.push({ ...child, pane: parent.pane, title: child.name,
+      agent: parent.agent, project: parent.project, branch: parent.branch,
+      cwd: child.cwd || parent.cwd, source: "child", sourceLabel: "Internal sub-agent",
+      context: `Managed by ${parent.title}`, activity: "" });
+  }
   for (const external of outside) {
     if (external.session && live[external.session] && seen.has(live[external.session])) continue;
     const id = `outside-${external.agent}-${external.session ?? external.pid}`;
@@ -124,6 +159,7 @@ function openRow(view, row) {
   if (inAgentMode()) leaveAgentMode();
   if (row.external) view.resume(row.external);
   else if (row.pane) run("pane.focus", { pane: row.pane });
+  else if (row.internal) run("pane.focus", { terminal: row.parentAddress });
   else view.peek(row.address);
 }
 
@@ -151,7 +187,7 @@ function agentCard(view, row, t) {
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child(`${row.project}${row.branch ? ` · ${row.branch}` : ""}`)))
       .child(h_flex().gap(8).items_center().pt(9).border_t(1).border_color(t.border)
         .child(div().flex_1().truncate().text_size(10.5).text_color(t.dim).child(`${row.sourceLabel}${row.at ? ` · ${agoText(row.at)}` : ""}`))
-        .child(div().text_size(11).text_color(t.accent).child("Open session →"))));
+        .child(div().text_size(11).text_color(t.accent).child(row.internal ? "Open parent session →" : "Open session →"))));
 }
 
 export function renderAgentView(view) {
@@ -163,7 +199,8 @@ export function renderAgentView(view) {
     view.overviewOutside = view.outside;
   }
   const focusedAddress = focused()?.terminal;
-  const all = inAgentMode() ? view.overviewRows.filter((row) => !statusInfo(row.status).quiet || row.address === focusedAddress) : view.overviewRows;
+  const all = inAgentMode() ? view.overviewRows.filter((row) => !statusInfo(row.status).quiet || row.address === focusedAddress
+    || row.id === view.villageSelected) : view.overviewRows;
   view.lastThemeRender = now;
   const scope = filterAgentRows(all, view.input.value(), "all", view.sourceFilter);
   const rows = filterAgentRows(scope, "", view.statusFilter);

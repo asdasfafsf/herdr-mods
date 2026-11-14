@@ -19,8 +19,9 @@ import { agents, terminals, panes, focused, spaces, run, theme, shared, setShare
 import { resumeArgv, AGENTS, runs } from "./resume.js";
 import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
-import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK, normalizeStatus } from "./ui.js";
-import { renderViewSwitch, initWorkspaceTheme } from "./agent-mode.js";
+import { statusMark, statusPill, statusColor, statusLabel, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK, normalizeStatus } from "./ui.js";
+import { renderViewSwitch, initWorkspaceTheme, agentViewVisible, AGENT_SELECTION, requestAgentSelection } from "./agent-mode.js";
+import { internalAgents } from "./internal-agents.js";
 import { RenderProfile } from "./render-profile.js";
 import { openAgentView, initAgentView, renderAgentView } from "./overview.js";
 
@@ -63,12 +64,13 @@ function title(tab, l) {
   return (tab.name === prog || !tab.named) && telling ? live : tab.name;
 }
 const RANK = STATUS_RANK;
-const ACTIVITY_EVERY = 3000; // how often working agents' current step is read (see readActivity)
+const ACTIVITY_EVERY = 3000; // current steps and internal child lifecycle (see readActivity)
 // A sub-agent without a pane isn't in agents(): its raw word, error counting as
-// blocked. It's never done: it reports to its parent, and the parent's done is the news.
+// blocked. Native children report completion through their parent; internal
+// Codex threads retain the explicit lifecycle state reported by their provider.
 const kidStatus = (k, listed) => {
   const s = listed.get(k.address) ?? k.status;
-  return normalizeStatus(s, true);
+  return normalizeStatus(s, !k.internal);
 };
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
@@ -151,8 +153,14 @@ export default class Agents extends View {
   // to this file; it reads only what changed). Drawn again only when it changed.
   readActivity(cx) {
     if (this.readingActivity) return;
-    const want = agents().filter((a) => a.status === "working" || a.status === "blocked" || a.status === "done").map((a) => ({ address: a.address }));
-    if (!want.length) { if (Object.keys(this.activity).length) { this.activity = {}; cx.notify(); } return; }
+    // A parent can be Idle/Seen while its internal child is still working.
+    const want = agents().filter((a) => ["working", "blocked", "done"].includes(a.status)
+      || [a.program?.key, a.program?.name].some((name) => name?.toLowerCase() === "codex"))
+      .map((a) => ({ address: a.address }));
+    if (!want.length) {
+      if (Object.keys(this.activity).length) { this.activity = {}; this.activityText = ""; this.share(); cx.notify(); }
+      return;
+    }
     this.readingActivity = true;
     cx.spawn(async (cx) => {
       try {
@@ -164,7 +172,8 @@ export default class Agents extends View {
   }
 
   // For other mods (⌘P's Agents view, picker-plus): shared("ag.info") = { address: { at (when
-  // its state last changed, ms), doing, said } }, written only when it changed.
+  // its state last changed, ms), doing, said, session_id, children } }, written
+  // only when it changed; all presentations consume the same child lifecycle.
   share(snapshot) {
     const out = {};
     // Async updates/clicks read fresh values; a render passes its own snapshot.
@@ -172,7 +181,8 @@ export default class Agents extends View {
     const acked = snapshot?.acked ?? shared(ACKED) ?? {};
     const duration = snapshot?.duration ?? seenFor();
     for (const [k, c] of Object.entries(this.changed ?? {})) out[k] = { at: c.at, ...(now - (this.seen?.[k] ?? 0) < duration ? { seen: this.seen[k] } : {}), ...(acked[k] ? { acked: acked[k] } : {}) };
-    for (const [k, x] of Object.entries(this.activity ?? {})) out[k] = { ...(out[k] ?? {}), doing: x.doing ?? null, said: x.said ?? null };
+    for (const [k, x] of Object.entries(this.activity ?? {})) out[k] = { ...(out[k] ?? {}), doing: x.doing ?? null, said: x.said ?? null,
+      session_id: x.session_id ?? null, children: x.children ?? [] };
     setIfChanged(AGENT_INFO, out, (this.sharedInfo ??= {}));
   }
 
@@ -312,6 +322,11 @@ export default class Agents extends View {
     run("terminal.peek", { terminal: addr });
   }
 
+  focusAgent(agent) {
+    run("pane.focus", agent.pane ? { pane: agent.pane } : { terminal: agent.address });
+    requestAgentSelection(agent.address, agent.address);
+  }
+
   // Live sub-agents, depth first. The render indexes live terminals by parent once;
   // recursive visits must not scan the entire terminal list again at every depth.
   tree(children, addr, lead = []) {
@@ -320,7 +335,7 @@ export default class Agents extends View {
       const last = i === kids.length - 1;
       return [
         { t: k, lines: [...lead, last ? "└" : "├"] },
-        ...this.tree(children, k.address, [...lead, last ? "" : "│"]),
+        ...this.tree(children, k.id || k.address, [...lead, last ? "" : "│"]),
       ];
     });
   }
@@ -329,9 +344,9 @@ export default class Agents extends View {
     const k = s.t;
     const st = kidStatus(k, this.listed);
     const pic = icon(k.program, 14, t.foreground);
-    const on = k.address === shown;
+    const on = k.internal ? this.selectedResident === k.id && k.parentAddress === shown : k.address === shown;
     return h_flex()
-      .id(`sub-${k.address}`)
+      .id(`sub-${k.id || k.address}`)
       .pl(39)
       .pr(8)
       .rounded(8)
@@ -342,12 +357,18 @@ export default class Agents extends View {
       .text_size(12.5)
       .when(on, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
-      .on_click(() => this.peek(k.address))
+      .tooltip(k.internal ? `${k.name} · ${statusLabel(st)}\nManaged by parent session ${k.parentAddress}` : k.name || k.address)
+      .on_click(() => {
+        if (!k.internal) return this.peek(k.address);
+        run("pane.focus", { terminal: k.parentAddress });
+        requestAgentSelection(k.id, k.parentAddress);
+      })
       .children(s.lines.map(l => div().self_start().mt(-4).w(9).h(17).mr(4).flex_none()
         .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
         .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
       .when(Boolean(pic), el => el.child(div().mr(8).child(pic)))
       .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(k.name || k.template || k.program?.name || k.address))
+      .when(k.internal, (el) => el.child(div().text_size(10).text_color(statusColor(t, st)).mr(5).child(statusLabel(st))))
       .child(this.status(t, { status: st }, compact));
   }
 
@@ -441,12 +462,14 @@ export default class Agents extends View {
     let list = agents();
     this.listed = new Map(list.map((a) => [a.address, a.status]));
     const all = terminals();
+    const internal = internalAgents(list, this.activity);
+    this.selectedResident = agentViewVisible() ? shared(AGENT_SELECTION)?.id : null;
     profile.counts({ agents: list.length, terminals: all.length, outside: this.outside.length,
       collapsed, sort: sort.id });
     profile.phase("state");
     const children = new Map();
-    for (const terminal of all) {
-      if (terminal.state !== "live") continue;
+    for (const terminal of [...all, ...internal]) {
+      if (!terminal.internal && terminal.state !== "live") continue;
       if (!children.has(terminal.parent)) children.set(terminal.parent, []);
       children.get(terminal.parent).push(terminal);
     }
@@ -567,7 +590,7 @@ export default class Agents extends View {
           .items_center()
           .gap(4)
           .hover((s) => s.bg(t.hover))
-          .on_click(() => run("pane.focus", { pane: a.pane }))
+          .on_click(() => this.focusAgent(a))
           .child(div().flex_1().min_w(0).whitespace_nowrap().text_right().text_color(t.muted).child(String(i + 1)))
           .child(h_flex().w(14).flex_none().items_center().justify_center().child(this.status(t, a, true, snapshot)));
       }
@@ -612,7 +635,7 @@ export default class Agents extends View {
           else if (this.hovered === a.address) this.hovered = null;
           cx.notify();
         })
-        .on_click(() => run("pane.focus", { pane: a.pane }))
+        .on_click(() => this.focusAgent(a))
         .when(Boolean(pic), el => el.child(div().id(`agent-fold-${a.address}`)
           .when(subs.length > 0, el => el.on_click((_e, cx) => {
             cx.stop_propagation();

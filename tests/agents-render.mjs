@@ -279,7 +279,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(env.writes.length,priorWrites,'selecting a resident does not navigate away');
   assert.match(JSON.stringify(env.render()),/village-details/);
   env.click('village-open-session');
-  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.filter(([kind])=>kind==='run').at(-1))),['run',['pane.focus',{pane:'p0'}]]);
   env.render();env.click('village-close');
   assert.ok(!JSON.stringify(env.render()).includes('village-details'),'details can be dismissed');
   assert.notEqual(env.agentTheme.spriteFrame('walk',0),env.agentTheme.spriteFrame('walk',500));
@@ -364,7 +364,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   output=JSON.stringify(env.render());
   assert.ok(output.includes('overview-t1') && !output.includes('overview-t2"'),'previous quiet selection disappears');
   env.click('overview-t0');
-  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.filter(([kind])=>kind==='run').at(-1))),['run',['pane.focus',{pane:'p0'}]]);
   env.mode.renderViewSwitch();env.click('overview-layout-cards');env.timers.get(50)();
   output=JSON.stringify(env.render());
   assert.ok(!output.includes('chiikawa-village') && output.includes('chiikawa/'),'cards keep the theme characters');
@@ -382,6 +382,85 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   env.render();env.click('overview-child-0-0');
   assert.equal(env.writes.some(([,args])=>args?.[0]==='terminal.peek'),false,'child selection must not expose a terminal');
   console.log('Agent mode: shared palette, cards/village, quiet visibility, bidirectional focus and exit passed');
+}
+
+// Internal threads share lifecycle data across sidebar/cards/village, without
+// inventing a terminal or routing messages/approvals to an internal thread ID.
+{
+  const data=fixture(4);data.outside=[];data.agents[0].status='idle';
+  data.agents[0].program={...data.agents[0].program,key:'codex',name:'Codex'};
+  const children=[
+    {id:'worker',parent_session_id:'parent',name:'Asset researcher',state:'working',updated:now},
+    {id:'finished',parent_session_id:'parent',name:'Theme reviewer',state:'done',updated:now-100},
+    {id:'nested',parent_session_id:'worker',name:'Nested worker',state:'error',updated:now},
+    {id:'native-child',parent_session_id:'parent',name:'Already has a pane',state:'working',updated:now},
+    {id:'native-grandchild',parent_session_id:'native-child',name:'Native descendant',state:'working',updated:now},
+    {id:'orphan',parent_session_id:'missing',name:'Disconnected',state:'working'},
+    {id:'cycle-a',parent_session_id:'cycle-b',name:'Cycle A',state:'working'},
+    {id:'cycle-b',parent_session_id:'cycle-a',name:'Cycle B',state:'working'},
+  ];
+  const activity={t0:{session_id:'parent',children},t2:{session_id:'native-child',children:children.slice(4,5)}};
+  const sidebar=await environment(data,null);
+  sidebar.instance.activity=structuredClone(activity);sidebar.instance.share();
+  const output=JSON.stringify(sidebar.render());
+  for(const name of ['Asset researcher','Theme reviewer','Nested worker','Native descendant']) assert.ok(output.includes(name));
+  assert.ok(!output.includes('Already has a pane') && !output.includes('Disconnected') && !output.includes('Cycle A'));
+  assert.deepEqual(data.state['ag.info'].t0.children,children,'the shared snapshot includes the provider lifecycle');
+  data.props={mode:'overview',integrated:true};data.layout={...workspaceLayout('agent-world'),theme:'herdr-chiikawa'};
+  const view=await environment(data,null);view.render();
+  let rows=view.overview.agentViewRows([]);
+  const internal=rows.filter(row=>row.internal);
+  assert.equal(internal.length,4,'overlapping/native children deduplicate and cycles/orphans are ignored');
+  assert.equal(internal.find(row=>row.id==='codex-thread:finished').status,'done');
+  assert.equal(internal.find(row=>row.id==='codex-thread:nested').status,'blocked');
+  assert.equal(internal.find(row=>row.id==='codex-thread:native-grandchild').parentAddress,'t2');
+  assert.ok(internal.every(row=>row.address===null),'an internal thread is never a terminal transport');
+  assert.ok(JSON.stringify(view.render()).includes('overview-codex-thread:worker'),'idle parents do not hide working children');
+  view.click('overview-codex-thread:worker');
+  assert.equal(data.state['ag.selection'].id,'codex-thread:worker','village selection publishes the same active child to the sidebar');
+  assert.equal(view.instance.villageChats.has('codex-thread:worker'),false,'internal child has no send/approval transport');
+  let detail=JSON.stringify(view.render());
+  assert.ok(detail.includes('internal-agent-info') && detail.includes('Open parent session'));
+  view.timers.get(250)();
+  assert.equal(view.instance.villageSelected,'codex-thread:worker','parent focus must not replace the selected internal child');
+  view.click('village-open-session');
+  assert.deepEqual(JSON.parse(JSON.stringify(view.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
+  assert.ok(!view.writes.some(([,args])=>args?.[0]==='terminal.peek'));
+  view.mode.openAgentMode();
+  // A fresh click reopens a closed panel even when the terminal was already focused.
+  sidebar.click('sub-codex-thread:worker');view.timers.get(250)();
+  assert.equal(view.instance.villageSelected,'codex-thread:worker');
+  view.render();view.click('village-close');view.timers.get(250)();
+  assert.equal(view.instance.villageSelected,null,'closing remains closed until another explicit click');
+  sidebar.click('sub-codex-thread:worker');view.timers.get(250)();
+  assert.equal(view.instance.villageSelected,'codex-thread:worker');
+  sidebar.instance.focusAgent(data.agents[0]);view.timers.get(250)();
+  assert.equal(view.instance.villageSelected,'t0','same focused native session reopens from its sidebar row');
+  // Child completion updates independently of the parent's state or transcript.
+  sidebar.instance.activity.t0.children[0].state='done';sidebar.instance.share();data.elapsed=2100;
+  view.render();rows=view.instance.overviewRows;
+  assert.equal(rows.find(row=>row.id==='codex-thread:worker').status,'done');
+  data.state['ag.presentation']='cards';view.timers.get(50)();
+  assert.ok(JSON.stringify(view.render()).includes('overview-codex-thread:worker'));
+  sidebar.instance.activity.t0.children.push(...Array.from({length:30},(_,i)=>({
+    id:`extra-${i}`,parent_session_id:'parent',name:`Zzz ${String(i).padStart(2,'0')}`,state:'working',updated:now,
+  })));
+  sidebar.instance.share();data.elapsed=4200;view.render();
+  view.instance.input.text='No match';view.instance.sourceFilter='outside';view.instance.statusFilter='done';
+  view.mode.requestAgentSelection('codex-thread:extra-29','t0');view.timers.get(250)();
+  assert.equal(view.instance.villageSelected,'codex-thread:extra-29');
+  assert.equal(view.instance.input.value(),'');
+  assert.equal(view.instance.sourceFilter,'all');assert.equal(view.instance.statusFilter,'all');
+  assert.ok(view.instance.page>0,'sidebar selection reveals a child beyond the first page');
+  assert.ok(JSON.stringify(view.render()).includes('village-details'),'the selected child remains visible after rendering');
+  // The poll still includes an idle Codex parent; absent parents clear shared children.
+  data.props={};sidebar.instance.readingActivity=false;
+  data.execHook=async()=>({code:0,stdout:JSON.stringify(activity)});
+  sidebar.instance.readActivity(sidebar.cx);await Promise.all(sidebar.tasks);
+  assert.ok(JSON.parse(sidebar.commands.at(-1)[1].at(-1)).some(row=>row.address==='t0'));
+  data.agents=[];sidebar.instance.readActivity(sidebar.cx);
+  assert.ok(Object.values(data.state['ag.info']).every(row=>!row.children?.length));
+  console.log('internal agents: shared lifecycle, native deduplication, idle parents, nested navigation, safe controls and repeated sidebar selection passed');
 }
 
 // Read-required bubbles follow host unread state without acknowledging on sight.
@@ -530,7 +609,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
 // Optional native GPUI smoke/limit check with the SAME synthetic data. No live app
 // state is read, and these temporary mods are never installed in the user's layout.
 if (process.argv.includes('--native')) {
-  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-approval']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
+  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-approval'],[4,1,'chiikawa-internal']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
     if (process.argv.includes('--overview-only') && mode === 'sidebar') continue;
     if (revision && mode !== 'sidebar') continue;
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
@@ -538,10 +617,14 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','internal-agents']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
+      if (mode==='chiikawa-internal') data.state['ag.info']={t0:{session_id:'parent',children:[
+        {id:'worker',parent_session_id:'parent',name:'Asset researcher',state:'working',updated:now},
+        {id:'finished',parent_session_id:'parent',name:'Theme reviewer',state:'done',updated:now},
+      ]}};
       writeFileSync(resolve(directory,'mock-herdr.js'),`
 const data=${JSON.stringify(data)};
 const copy=x=>JSON.parse(JSON.stringify(x??null));
@@ -562,7 +645,8 @@ export default class Probe extends Agents {
  init(_props,cx) { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={};
    if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.skin='${mode.startsWith('chiikawa')?'chiikawa':'default'}';this.presentation='${mode==='chiikawa-cards'?'cards':'village'}';this.themeClock=0;}
    ${!revision ? `if ('${mode}'==='chiikawa' && ${count}===40) {selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t0'),cx);this.villageFilters=true;}
-   if ('${mode}'==='chiikawa-approval') { selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t3'),cx); const chat=this.villageChats.get('t3');chat.request={address:'t3',text:'Run unit tests?\\n› 1. Yes\\n  2. No',fingerprint:'fixture',choices:[{number:1,label:'Yes',selected:true},{number:2,label:'No'}]}; }` : ''} }
+   if ('${mode}'==='chiikawa-approval') { selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t3'),cx); const chat=this.villageChats.get('t3');chat.request={address:'t3',text:'Run unit tests?\\n› 1. Yes\\n  2. No',fingerprint:'fixture',choices:[{number:1,label:'Yes',selected:true},{number:2,label:'No'}]}; }
+   if ('${mode}'==='chiikawa-internal') selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='codex-thread:worker'),cx);` : ''} }
  render(cx) { const start=Date.now();const result=super.render(cx);console.error('BENCH_RENDER_MS='+String(Date.now()-start));return result; }
 }
 `);
