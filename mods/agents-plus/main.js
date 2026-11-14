@@ -1,4 +1,4 @@
-// Agents in grouped or priority views; parents take their most urgent sub-agent's place.
+// Parent sessions in grouped or priority views.
 // A viewed done agent stays in Done until left.
 //
 // agents-plus (herdr-mods): a clone of the shipped `agents` that also lists the coding agents
@@ -19,11 +19,10 @@ import { agents, terminals, panes, focused, spaces, run, theme, shared, setShare
 import { resumeArgv, AGENTS, runs } from "./resume.js";
 import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
-import { statusMark, statusPill, statusColor, statusLabel, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK, normalizeStatus } from "./ui.js";
-import { renderViewSwitch, initWorkspaceTheme, agentViewVisible, AGENT_SELECTION, requestAgentSelection } from "./agent-mode.js";
-import { internalAgents } from "./internal-agents.js";
+import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
+import { renderViewSwitch, initWorkspaceTheme, requestAgentSelection } from "./agent-mode.js";
 import { RenderProfile } from "./render-profile.js";
-import { openAgentView, initAgentView, renderAgentView } from "./overview.js";
+import { openAgentView, initAgentView, renderAgentView, parentAgents } from "./overview.js";
 
 // The agents outside Herdr, read every OUTSIDE_EVERY ms while the window is in front.
 const OUTSIDE_EVERY = 10000;
@@ -64,14 +63,7 @@ function title(tab, l) {
   return (tab.name === prog || !tab.named) && telling ? live : tab.name;
 }
 const RANK = STATUS_RANK;
-const ACTIVITY_EVERY = 3000; // current steps and internal child lifecycle (see readActivity)
-// A sub-agent without a pane isn't in agents(): its raw word, error counting as
-// blocked. Native children report completion through their parent; internal
-// Codex threads retain the explicit lifecycle state reported by their provider.
-const kidStatus = (k, listed) => {
-  const s = listed.get(k.address) ?? k.status;
-  return normalizeStatus(s, !k.internal);
-};
+const ACTIVITY_EVERY = 3000; // current steps for active parent sessions (see readActivity)
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
   { id: "grouped", label: "Grouped by space", icon: "layers" },
@@ -153,9 +145,7 @@ export default class Agents extends View {
   // to this file; it reads only what changed). Drawn again only when it changed.
   readActivity(cx) {
     if (this.readingActivity) return;
-    // A parent can be Idle/Seen while its internal child is still working.
-    const want = agents().filter((a) => ["working", "blocked", "done"].includes(a.status)
-      || [a.program?.key, a.program?.name].some((name) => name?.toLowerCase() === "codex"))
+    const want = parentAgents().filter((a) => ["working", "blocked", "done"].includes(a.status))
       .map((a) => ({ address: a.address }));
     if (!want.length) {
       if (Object.keys(this.activity).length) { this.activity = {}; this.activityText = ""; this.share(); cx.notify(); }
@@ -172,8 +162,7 @@ export default class Agents extends View {
   }
 
   // For other mods (⌘P's Agents view, picker-plus): shared("ag.info") = { address: { at (when
-  // its state last changed, ms), doing, said, session_id, children } }, written
-  // only when it changed; all presentations consume the same child lifecycle.
+  // its state last changed, ms), doing, said } }, written only when it changed.
   share(snapshot) {
     const out = {};
     // Async updates/clicks read fresh values; a render passes its own snapshot.
@@ -181,8 +170,7 @@ export default class Agents extends View {
     const acked = snapshot?.acked ?? shared(ACKED) ?? {};
     const duration = snapshot?.duration ?? seenFor();
     for (const [k, c] of Object.entries(this.changed ?? {})) out[k] = { at: c.at, ...(now - (this.seen?.[k] ?? 0) < duration ? { seen: this.seen[k] } : {}), ...(acked[k] ? { acked: acked[k] } : {}) };
-    for (const [k, x] of Object.entries(this.activity ?? {})) out[k] = { ...(out[k] ?? {}), doing: x.doing ?? null, said: x.said ?? null,
-      session_id: x.session_id ?? null, children: x.children ?? [] };
+    for (const [k, x] of Object.entries(this.activity ?? {})) out[k] = { ...(out[k] ?? {}), doing: x.doing ?? null, said: x.said ?? null };
     setIfChanged(AGENT_INFO, out, (this.sharedInfo ??= {}));
   }
 
@@ -327,51 +315,6 @@ export default class Agents extends View {
     requestAgentSelection(agent.address, agent.address);
   }
 
-  // Live sub-agents, depth first. The render indexes live terminals by parent once;
-  // recursive visits must not scan the entire terminal list again at every depth.
-  tree(children, addr, lead = []) {
-    const kids = children.get(addr) ?? [];
-    return kids.flatMap((k, i) => {
-      const last = i === kids.length - 1;
-      return [
-        { t: k, lines: [...lead, last ? "└" : "├"] },
-        ...this.tree(children, k.id || k.address, [...lead, last ? "" : "│"]),
-      ];
-    });
-  }
-
-  subRow(t, s, shown, compact) {
-    const k = s.t;
-    const st = kidStatus(k, this.listed);
-    const pic = icon(k.program, 14, t.foreground);
-    const on = k.internal ? this.selectedResident === k.id && k.parentAddress === shown : k.address === shown;
-    return h_flex()
-      .id(`sub-${k.id || k.address}`)
-      .pl(39)
-      .pr(8)
-      .rounded(8)
-      .h(26)
-      .flex_none()
-      .gap(0)
-      .items_center()
-      .text_size(12.5)
-      .when(on, (el) => el.bg(t.raised))
-      .hover((s) => s.bg(t.hover))
-      .tooltip(k.internal ? `${k.name} · ${statusLabel(st)}\nManaged by parent session ${k.parentAddress}` : k.name || k.address)
-      .on_click(() => {
-        if (!k.internal) return this.peek(k.address);
-        run("pane.focus", { terminal: k.parentAddress });
-        requestAgentSelection(k.id, k.parentAddress);
-      })
-      .children(s.lines.map(l => div().self_start().mt(-4).w(9).h(17).mr(4).flex_none()
-        .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
-        .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
-      .when(Boolean(pic), el => el.child(div().mr(8).child(pic)))
-      .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(k.name || k.template || k.program?.name || k.address))
-      .when(k.internal, (el) => el.child(div().text_size(10).text_color(statusColor(t, st)).mr(5).child(statusLabel(st))))
-      .child(this.status(t, { status: st }, compact));
-  }
-
   // compact: a ! for blocked where a header already says "Needs you".
   // An agent's state: lib/ui.js's mark (the sidebar's and ⌘P's too); one needing you says so
   // in its pill where the row has room (not compact).
@@ -459,29 +402,12 @@ export default class Agents extends View {
     const t = theme();
     const collapsed = narrow();
     const sort = sortOf();
-    let list = agents();
-    this.listed = new Map(list.map((a) => [a.address, a.status]));
     const all = terminals();
-    const internal = internalAgents(list, this.activity);
-    this.selectedResident = agentViewVisible() ? shared(AGENT_SELECTION)?.id : null;
+    let list = parentAgents(agents(), all);
     profile.counts({ agents: list.length, terminals: all.length, outside: this.outside.length,
       collapsed, sort: sort.id });
     profile.phase("state");
-    const children = new Map();
-    for (const terminal of [...all, ...internal]) {
-      if (!terminal.internal && terminal.state !== "live") continue;
-      if (!children.has(terminal.parent)) children.set(terminal.parent, []);
-      children.get(terminal.parent).push(terminal);
-    }
-    // Urgency and visible rows use identical descendants in this render. Rebuild
-    // next render so a child starting, finishing or changing parent appears at once.
-    const descendants = new Map();
-    const subsOf = (a) => {
-      if (!descendants.has(a.address)) descendants.set(a.address, this.tree(children, a.address));
-      return descendants.get(a.address);
-    };
     this.migratePins(all);
-    const shown = focused()?.agent;
     const now = Date.now();
     const options = shared(OPTIONS) ?? {};
     const snapshot = { now, acked: shared(ACKED) ?? {}, duration: seenFor(options) };
@@ -494,7 +420,7 @@ export default class Agents extends View {
     this.hold(list);
     profile.phase("ordering");
     const byPriority = sort.id === "priority";
-    const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a, snapshot), ...subsOf(a).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
+    const urgency = new Map(list.map((a) => [a.address, this.rank(a, snapshot)]));
     const rankOf = (a) => urgency.get(a.address);
     if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
     const pinned = list.filter((a) => a.pinned);
@@ -502,39 +428,6 @@ export default class Agents extends View {
     list = [...pinned, ...rest];
     setAgentOrder(list.map((a) => a.address));
     profile.phase("labels");
-
-    const withKids = (a, i) => {
-      const subs = collapsed ? [] : subsOf(a);
-      const r = row(a, i, subs);
-      if (this.folded.has(a.address)) return [r];
-      return [r, ...subs.map((s) => this.subRow(t, s, shown, byPriority))];
-    };
-
-    // The fold chevron; folded, the count too, colored by the most urgent one.
-    const fold = (a, subs) => {
-      const sts = subs.map((s) => kidStatus(s.t, this.listed));
-      const top = sts.reduce((m, s) => ((RANK[s] ?? 0) > (RANK[m] ?? 0) ? s : m), null);
-      const open = !this.folded.has(a.address);
-      return div()
-        .id(`fold-${a.address}`)
-        .h(18)
-        .px(3)
-        .gap(3)
-        .flex()
-        .items_center()
-        .rounded(4)
-        .text_size(11)
-        .text_color(open ? t.dim : (t[top] ?? t.dim))
-        .cursor_pointer()
-        .hover((s) => s.bg(t.hover).text_color(t.foreground))
-        .on_click((_e, cx) => {
-          cx.stop_propagation();
-          open ? this.folded.add(a.address) : this.folded.delete(a.address);
-          cx.notify();
-        })
-        .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none())
-        .when(!open, (el) => el.child(String(subs.length)));
-    };
 
     // A row reads "space \u00b7 detail": the detail is a tab someone named or the
     // agent's own title, never an automatic tab number unless two rows would
@@ -570,7 +463,7 @@ export default class Agents extends View {
     // Rows that would read the same name get their repo and branch too.
     const named = {};
     for (const a of list) named[a.space_name] = (named[a.space_name] ?? 0) + 1;
-    const row = (a, i, subs = []) => {
+    const row = (a, i) => {
       const pic = icon(a.program, 16, t.foreground);
       const news = showNews ? this.news(a, t) : null;
       const repo = repos.get(a.space);
@@ -636,12 +529,7 @@ export default class Agents extends View {
           cx.notify();
         })
         .on_click(() => this.focusAgent(a))
-        .when(Boolean(pic), el => el.child(div().id(`agent-fold-${a.address}`)
-          .when(subs.length > 0, el => el.on_click((_e, cx) => {
-            cx.stop_propagation();
-            this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
-            cx.notify();
-          })).child(pic)))
+        .when(Boolean(pic), el => el.child(pic))
         .child(v_flex().flex_1().min_w(0).gap(1)
           .child(h_flex().min_w(0).gap(5).items_center()
             .when(Boolean(tag), (el) => el.child(repoTag(t, tag, 90, colors)))
@@ -652,7 +540,6 @@ export default class Agents extends View {
             .child(div().flex_none().text_color(news.color).child(news.mark))
             .child(div().flex_1().min_w(0).truncate().text_color(news.color).child(news.text)))))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
-        .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address && this.shown(a, snapshot) === "done", el => el.child(div().id(`ack-${a.address}`).flex_none().p(2).rounded(4).text_color(t.dim).cursor_pointer()
           .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Mark as seen, without opening it")
           .on_click((_e, cx) => { cx.stop_propagation(); ackDone([a.address]); this.share(); cx.notify(); })
@@ -736,8 +623,8 @@ export default class Agents extends View {
     setIfChanged(AGENT_ORDER, order, (this.sharedOrder ??= {}));
     profile.phase("rows");
     const rows = collapsed
-      ? list.flatMap(withKids)
-      : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : [...g.members.flatMap(withKids), ...this.outsideRows(g, t, paths, metadata)])]);
+      ? list.map(row)
+      : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : [...g.members.map(row), ...this.outsideRows(g, t, paths, metadata)])]);
 
     profile.counts({ groups: groups.length, rows: rows.length });
     profile.phase("container");

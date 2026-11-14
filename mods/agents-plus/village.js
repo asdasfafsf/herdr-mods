@@ -174,8 +174,8 @@ export function villageDetails(view, row, t, states, width, openRow) {
     .child(h_flex().gap(8).items_center()
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted)
         .tooltip([row.cwd, row.context, row.address].filter(Boolean).join("\n"))
-        .child(`${row.branch || row.sourceLabel} · ${row.internal ? row.context : row.address || "Outside session"}`))
-      .child(button("village-open-session", row.internal ? "Open parent session" : "Open session", () => openRow(view, row), t)))
+        .child(`${row.branch || row.sourceLabel} · ${row.address || "Outside session"}`))
+      .child(button("village-open-session", "Open session", () => openRow(view, row), t)))
     .when(Boolean(view.villageChats?.get(row.id)), (el) => el.child(renderSessionControls(view.villageChats.get(row.id), t))))
     .child(renderVillageChat(view, row, t)));
 }

@@ -4,19 +4,17 @@ its own session record, for the agents-plus mod.
 
     activity.py '<json [{"address": "t9"}, ...]>'
 
-Prints one JSON object keyed by terminal address, with doing/said summaries and
-session_id/children metadata when a local session is identified.
+Prints one JSON object: { "<address>": { "doing": str | null, "said": str | null } }.
 - doing: the tool call it's in the middle of ("Editing main.py", "Running npm test"); between
   calls, the last thing it said this turn (its own word for what it's on), else its last
   step and "thinking…"; null once it has answered.
   While it waits on the person, that pending call is what it asks to run.
 - said: the first line of its last answer.
-- children: Codex internal threads, refreshed independently of the parent's record.
 
-Which session a terminal runs: Herdr's restore record (~/.herdr/restore/last.json, kept by
-wt-restore), else the terminal's program (hc get): Claude Code names it in
-~/.claude/sessions/<pid>.json; Codex uses an open rollout or a unique full title/cwd
-match to a live daemon session. Records are read from
+Claude's session comes from Herdr's restore record (~/.herdr/restore/last.json, kept by
+wt-restore), else its foreground program and ~/.claude/sessions/<pid>.json.
+Codex checks the current foreground (hc get), then uses an open rollout or a unique
+full title/cwd match to a live daemon session. Records are read from
 their end only, and a record that hasn't changed since the last run isn't read again
 (~/.herdr/activity-cache.json). Everything stays on this computer; only short lines come out.
 """
@@ -32,7 +30,6 @@ import sys
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib")]
 from agentfiles import HERDR_STATE, load, save, json_lines, claude_running, claude_transcript, codex_rollout_of, codex_rollout  # noqa: E402
 from codex_live import resolve as codex_live_session  # noqa: E402
-from codex_children import children_for  # noqa: E402
 
 CACHE = os.path.join(HERDR_STATE, "activity-cache.json")
 RESTORE = os.path.join(HERDR_STATE, "restore", "last.json")
@@ -188,7 +185,7 @@ def session_of(address, restore, known):
             return {"agent": r.get("agent"), "session": r["session"], "cwd": r.get("cwd")}
         # Restore snapshots can lag a resumed/replaced client at the same
         # address. Verify Codex against its current foreground and live record
-        # before attaching any local children, even when restore has an ID.
+        # before reading its activity, even when restore has an ID.
     k = known.get(address)
     if k and remote_session(k):
         k = None
@@ -235,7 +232,7 @@ def main(argv):
     cache = load(CACHE, {}) or {}
     known, files = cache.get("map") or {}, cache.get("files") or {}
     restore = load(RESTORE, {}) or {}
-    out, new_map, new_files, parents = {}, {}, {}, {}
+    out, new_map, new_files = {}, {}, {}
     for w in wanted:
         if not isinstance(w, dict) or remote_session(w):
             continue
@@ -243,12 +240,6 @@ def main(argv):
         s = session_of(address, restore, known)
         if not s or remote_session(s):
             continue
-        new_map[address] = s
-        sid = s.get("session")
-        if sid and s.get("agent") in ("claude", "codex"):
-            out[address] = {"doing": None, "said": None, "session_id": sid, "children": []}
-            if s.get("agent") == "codex":
-                parents[address] = sid
         try:
             path = record_path(s)
             if not path:
@@ -262,15 +253,10 @@ def main(argv):
                 found = read_claude(path) if s.get("agent") == "claude" else read_codex(path)
         except (OSError, ValueError):
             continue
-        # Child lifecycle is never stored in the parent-file cache. A child may
-        # work or finish while that file's mtime and size stay unchanged.
+        # Keep only terminal summaries, including when reading older caches.
         found = {key: found.get(key) for key in ("doing", "said")}
         new_files[path] = {"mtime": st.st_mtime, "size": st.st_size, "found": found}
-        out[address] = {**out.get(address, {}), **found}
-    if parents:
-        children = children_for(list(dict.fromkeys(parents.values())))
-        for address, sid in parents.items():
-            out[address]["children"] = children.get(sid, [])
+        out[address] = found
     save(CACHE, {"map": new_map, "files": new_files})
     print(json.dumps(out, ensure_ascii=False))
     return 0

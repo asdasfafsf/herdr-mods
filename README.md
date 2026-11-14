@@ -21,7 +21,7 @@ KCD 계정으로 로그인해야 받을 수 있는 사내 레포다. Herdr 앱(`
 | 번들 | 하는 일 | mod |
 |---|---|---|
 | `worktrees` | 사이드바에 레포 → primary 체크아웃 → 워크트리(열린 것·안 열린 것 전부) → 그 밑 터미널을 트리로. 프로젝트 추가(폴더·clone·새로), 새 워크트리, 행 메뉴, 세션 목록, Sleep | `spaces-plus` `worktree-plus` `wt-menu` `wt-sessions` `project-add` |
-| `agents` | Agents 목록과 전체 Agent view: 프로젝트별 에이전트·하위 에이전트·Herdr 밖 Claude/Codex 검색과 상태 필터 | `agents-plus` |
+| `agents` | Agents 목록과 전체 Agent view: 프로젝트별 부모 에이전트·Herdr 밖 Claude/Codex 검색과 상태 필터 | `agents-plus` |
 | `chiikawa` | Agent view 없이도 사용할 수 있는 독립 치이카와 앱 테마. Settings → Look에서 선택 | (mod 없음) `themes/herdr-chiikawa.json` |
 | `palette` | ⌘P·⌘J 창에서 탭과 함께 워크트리도 찾고, 없으면 새로 만든다 | `picker-plus` |
 | `restore` | 재부팅·로그아웃·크래시로 Herdr core 가 내려갔다 오면, 돌던 에이전트 세션을 같은 탭에서 이어 연다 | `wt-restore` |
@@ -171,7 +171,7 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 - 마을 캐릭터는 치이카와·하치와레·우사기·랏코·모몽가·쿠리만쥬 6종이다. 각 세션에 배정된 캐릭터는 상태나 정렬이 바뀌어도 유지된다.
 - 마을의 캐릭터 아래에는 **세션명·프로젝트**가 항상 보인다. 긴 이름은 마우스를 올려 전체를 확인하며, 선택 상세에는 브랜치와 세션 주소도 표시한다. 상세의 **말 걸기**에서 `보내기` 또는 `⌘ Enter`로 해당 에이전트의 기존 세션에 메시지를 보낸다. Enter는 줄바꿈이며 캐릭터별 초안은 탭이 살아 있는 동안 유지한다. 전송 중 중복 전송을 막고 실패하거나 전송 중 편집한 초안을 보존한다. 새 답변은 기존 말풍선으로 확인한다. 입력·승인 대기 중인 세션은 `세션 열기`에서 확인하며, 외부 세션은 Herdr에서 이어 연 뒤 대화할 수 있다.
 
-- 로컬 Codex 내부 서브에이전트도 부모 아래 사이드바와 카드·마을에 표시한다. 부모가 Idle/Seen이어도 자식 상태는 따로 갱신하며, 네이티브 터미널로 이미 열린 자식은 중복 표시하지 않는다. 내부 에이전트는 부모 세션에서 지시·결과를 확인한다. 원격 Codex와 확인할 수 없는 세션은 로컬 기록에 임의로 연결하지 않는다.
+- 사이드바·카드·마을에는 부모 세션만 표시한다. 네이티브 자식과 Codex 내부 서브에이전트는 상태와 관계없이 숨기며, 내부 자식 목록도 수집하지 않는다. 닫은 상세창은 우측 부모 세션을 다시 클릭하면 열리고, 필터나 페이지 밖의 선택 세션도 드러낸다. 원격 Codex와 확인할 수 없는 세션은 로컬 기록에 임의로 연결하지 않는다.
 - 작업 영역 상단의 **터미널 / 에이전트**로 같은 작업공간의 표시만 전환한다. 에이전트 표시에서는 터미널을 숨기며, 기존 탭·사이드바·선택 세션·포커스를 공유한다. 별도 레이아웃이나 설정 항목은 만들지 않는다. 캐릭터/카드를 선택하면 같은 세션 포커스가 바뀌고, `세션 열기`는 그 세션의 터미널 표시로 전환한다. **치이카와 테마**는 독립 `chiikawa` 번들의 앱 전체 native 테마이며, 에이전트 화면은 그 선택에 맞춰 **Cards / Village** 표현을 제공한다. 치이카와 색상은 사이드바·탭·하단바·터미널까지 공통 토큰을 사용하고 표시 전환에도 유지된다. working·blocked·done·seen은 표시하고 **idle만 선택된 세션을 표시**한다. 검색·필터·정렬·24개 페이지와 메시지 초안은 보기 방식 전환에도 유지된다. 말풍선은 입력 대기/읽지 않은 답변 미리보기이며 캐릭터를 따라 움직인다. 선택·hover·상태와 관계없이 보이는 캐릭터는 모두 돌아다닌다. 마을은 세로 스크롤과 움직임 끄기를 지원한다. 리소스 출처는 [SOURCES.md](mods/agents-plus/assets/chiikawa/SOURCES.md)에 있다.
 
 - Herdr 의 Agents 목록에 Herdr 밖에서 도는 Claude Code·Codex 가 같은 상태 묶음(working·blocked·done·idle) 안에 섞여 나온다. 앱 이름 태그와 흐린 아이콘으로 구분한다. 창이 앞에 있을 때 10초마다 `ps`·`lsof` 와 `~/.claude/sessions` 로 찾는다.
@@ -226,7 +226,7 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 | `wt.sort` | wt-menu → spaces-plus | 워크트리 정렬 |
 | `wt.linkTemplate` | 사용자 → spaces-plus | 링크 주소 틀 |
 | `wt.results` | spaces-plus → hm | `create@` 요청별 결과 `{ ok, path, error, at }` (최근 20개) |
-| `ag.info` / `ag.order` | agents-plus → 카드·마을·picker-plus | 에이전트별 `{ at, doing, said, session_id, children }`, Agents 목록의 순서 |
+| `ag.info` / `ag.order` | agents-plus → 카드·마을·picker-plus | 에이전트별 `{ at, doing, said }`, Agents 목록의 순서 |
 | `md.panes` | md-view → lib/docs.js | md-view pane 별로 보여주는 파일 `{ file, on }` |
 
 | 명령 | 하는 일 |

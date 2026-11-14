@@ -10,12 +10,11 @@ import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
 import { renderVillage, villageDetails } from "./village.js";
 import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, AGENT_SELECTION } from "./agent-mode.js";
-import { internalAgents } from "./internal-agents.js";
 import { selectVillageResident } from "./village-chat.js";
 import { initSessionControls } from "./session-controls.js";
 
 const STATES = STATUS_FILTERS;
-const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"], ["child", "Sub-agents"]];
+const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"]];
 const PAGE_SIZE = 24; // Divisible into 1–4 columns; bound native element creation.
 
 export function openAgentView(outside = []) {
@@ -75,12 +74,17 @@ export function initAgentView(view, cx) {
   cx.timer.every(3000, (cx) => cx.notify());
 }
 
-// Index host snapshots once, including children without a visible pane. Shared
-// Codex daemons are keyed by session, never PID; a resumed session appears once.
+// Sidebar, activity polling and workspace views use the same parent-only list.
+export function parentAgents(listed = agents(), all = terminals()) {
+  const children = new Set(all.filter((terminal) => terminal.parent).map((terminal) => terminal.address));
+  return listed.filter((agent) => !agent.parent && !children.has(agent.address));
+}
+
+// Index host snapshots once. Internal threads and native child terminals do not
+// become independent sessions in the workspace.
 export function agentViewRows(outside = []) {
   const listed = agents(), all = terminals(), paneList = panes(), spaceList = spaces();
   const byAddress = new Map(all.map((terminal) => [terminal.address, terminal]));
-  const byAgent = new Map(listed.map((agent) => [agent.address, agent]));
   const byPane = new Map(paneList.map((pane) => [pane.terminal, pane]));
   const bySpace = new Map(spaceList.map((space) => [space.id, space]));
   const tabs = new Map(spaceList.flatMap((space) => space.tabs ?? []).map((tab) => [tab.id, tab]));
@@ -92,47 +96,28 @@ export function agentViewRows(outside = []) {
   const live = shared(LIVE) ?? {};
   const rows = [], seen = new Set();
   const add = (agent) => {
-    if (seen.has(agent.address)) return;
-    seen.add(agent.address);
     const terminal = byAddress.get(agent.address);
-    let parent = terminal?.parent, ancestor = null;
-    const visited = new Set([agent.address]);
-    while (parent && !visited.has(parent)) {
-      visited.add(parent);
-      ancestor = byAgent.get(parent) ?? ancestor;
-      if (ancestor) break;
-      parent = byAddress.get(parent)?.parent;
-    }
-    const pane = byPane.get(agent.address), owner = agent.space ? agent : ancestor;
-    const space = bySpace.get(owner?.space), tab = tabs.get(agent.tab ?? pane?.tab);
+    if (agent.parent || terminal?.parent || seen.has(agent.address)) return;
+    seen.add(agent.address);
+    const pane = byPane.get(agent.address);
+    const space = bySpace.get(agent.space), tab = tabs.get(agent.tab ?? pane?.tab);
     const cwd = pane?.cwd || terminal?.cwd || space?.folder || "";
-    const checkout = checkoutBySpace.get(owner?.space) ?? checkouts.find((c) => (c.machine ?? null) === (space?.machine ?? null) && c.path && cwd && inside(cwd, c.path));
+    const checkout = checkoutBySpace.get(agent.space) ?? checkouts.find((c) => (c.machine ?? null) === (space?.machine ?? null) && c.path && cwd && inside(cwd, c.path));
     const program = agent.program ?? terminal?.program;
     const name = (tab?.named && tab.name) || pane?.title || agent.title || terminal?.name || terminal?.template || program?.name || agent.address;
-    const child = Boolean(terminal?.parent);
-    const raw = normalizeStatus(agent.status, child);
+    const raw = normalizeStatus(agent.status);
     const activity = info[agent.address] ?? {};
     const status = shownStatus(raw, { ...activity, acked: acked[agent.address] }, now, duration);
     rows.push({ id: agent.address, address: agent.address, pane: agent.pane ?? pane?.pane ?? pane?.id,
       title: name, program, agent: program?.name || program?.key || "Agent", status,
       project: checkout?.repo || space?.name || agent.space_name || cwd.split("/").filter(Boolean).pop() || "No project",
       branch: checkout?.branch || "", cwd,
-      source: child ? "child" : "herdr", sourceLabel: child ? "Sub-agent" : space?.machine || "Herdr",
-      context: child ? `Child of ${ancestor?.title || ancestor?.space_name || terminal.parent}` : "",
+      source: "herdr", sourceLabel: space?.machine || "Herdr", context: "",
       activity: raw === "working" || raw === "blocked" ? activity.doing || "" : raw === "done" ? activity.said || "" : "",
       at: activity.at || 0 });
   };
-  listed.forEach(add);
-  all.filter((terminal) => terminal.state === "live" && (terminal.program?.agent || terminal.parent)).forEach(add);
-  const parents = new Map(rows.map((row) => [row.address, row]));
-  for (const child of internalAgents(listed, info)) {
-    const parent = parents.get(child.parentAddress);
-    if (!parent) continue;
-    rows.push({ ...child, pane: parent.pane, title: child.name,
-      agent: parent.agent, project: parent.project, branch: parent.branch,
-      cwd: child.cwd || parent.cwd, source: "child", sourceLabel: "Internal sub-agent",
-      context: `Managed by ${parent.title}`, activity: "" });
-  }
+  parentAgents(listed, all).forEach(add);
+  all.filter((terminal) => terminal.state === "live" && terminal.program?.agent && !terminal.parent).forEach(add);
   for (const external of outside) {
     if (external.session && live[external.session] && seen.has(live[external.session])) continue;
     const id = `outside-${external.agent}-${external.session ?? external.pid}`;
@@ -159,7 +144,6 @@ function openRow(view, row) {
   if (inAgentMode()) leaveAgentMode();
   if (row.external) view.resume(row.external);
   else if (row.pane) run("pane.focus", { pane: row.pane });
-  else if (row.internal) run("pane.focus", { terminal: row.parentAddress });
   else view.peek(row.address);
 }
 
@@ -187,7 +171,7 @@ function agentCard(view, row, t) {
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child(`${row.project}${row.branch ? ` · ${row.branch}` : ""}`)))
       .child(h_flex().gap(8).items_center().pt(9).border_t(1).border_color(t.border)
         .child(div().flex_1().truncate().text_size(10.5).text_color(t.dim).child(`${row.sourceLabel}${row.at ? ` · ${agoText(row.at)}` : ""}`))
-        .child(div().text_size(11).text_color(t.accent).child(row.internal ? "Open parent session →" : "Open session →"))));
+        .child(div().text_size(11).text_color(t.accent).child("Open session →"))));
 }
 
 export function renderAgentView(view) {

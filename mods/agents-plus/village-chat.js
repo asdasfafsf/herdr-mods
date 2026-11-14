@@ -22,10 +22,8 @@ export function selectVillageResident(view, row, cx, focusSession = true) {
     input.on("submit", (e, cx) => { if (e?.secondary) sendVillageMessage(chat, cx); });
   }
   if (inAgentMode() && focusSession) {
-    if (row.internal) view.focusedResident = row.parentAddress;
     if (row.pane) run("pane.focus", { pane: row.pane });
-    const target = row.parentAddress || row.address;
-    if (target) view.selectionSequence = requestAgentSelection(row.id, target);
+    if (row.address) view.selectionSequence = requestAgentSelection(row.id, row.address);
   }
   cx.notify();
 }
@@ -81,8 +79,6 @@ export function sendVillageMessage(chat, cx) {
 
 export function renderVillageChat(view, row, t) {
   const chat = view.villageChats?.get(row.id);
-  if (row.internal) return div().id("internal-agent-info").text_size(11).text_color(t.muted).whitespace_normal()
-    .child(`${row.context}. Open the parent session to give instructions or review this sub-agent's result.`);
   if (!row.address || row.external) return div().text_size(11).text_color(t.muted).whitespace_normal()
     .child("세션을 Herdr에서 이어 열면 마을에서도 말을 걸 수 있어요.");
   if (!chat) return null;
