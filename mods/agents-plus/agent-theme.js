@@ -72,11 +72,16 @@ function seed(text) {
   return n;
 }
 
-export function spriteFrame(skin, name, clock, facing) {
-  const definition = themeDefinition(skin), sprite = definition.sprites[name];
+export function spriteFrameIndex(sprite, clock) {
   let time = ((clock % sprite.duration) + sprite.duration) % sprite.duration;
   let frame = 0;
   while (frame < sprite.frames - 1 && time >= sprite.durations[frame]) time -= sprite.durations[frame++];
+  return frame;
+}
+
+export function spriteFrame(skin, name, clock, facing) {
+  const definition = themeDefinition(skin), sprite = definition.sprites[name];
+  const frame = spriteFrameIndex(sprite, clock);
   const file = String(frame + 1).padStart(3, "0");
   const nativeFacing = frameFacing(definition, name, frame);
   return nativeFacing && (facing === -1 || facing === 1) && facing !== nativeFacing
@@ -95,6 +100,15 @@ export function agentSprite(view, row, roaming = false, facing) {
   const direction = definition.facing?.[name];
   const directional = Array.isArray(direction) ? direction.some(Boolean) : Boolean(direction);
   const nativeAnimation = Boolean(sprite.animation && !directional && !view.motionPaused);
+  if (definition.frameAtlas && (!sprite.animation || directional)) {
+    const frame = spriteFrameIndex(sprite, clock), nativeFacing = frameFacing(definition, name, frame);
+    const targetFacing = roaming && (facing === -1 || facing === 1) ? facing : 0;
+    const columns = Math.ceil(Math.sqrt(sprite.frames));
+    const suffix = directional && targetFacing ? targetFacing < 0 ? "-left" : "-right" : "";
+    return { ...sprite, name, clock, path: `${definition.art}/${definition.frameAtlas}/${name}${suffix}.svg`,
+      atlas: { frame, columns, rows: Math.ceil(sprite.frames / columns) }, nativeAnimation: false,
+      mirrored: Boolean(nativeFacing && targetFacing && nativeFacing !== targetFacing) };
+  }
   const path = nativeAnimation ? `${definition.art}/${sprite.animation}` : spriteFrame(view.skin, name, clock, roaming ? facing : undefined);
   return { ...sprite, name, clock, path, nativeAnimation, mirrored: path.endsWith(".svg") };
 }

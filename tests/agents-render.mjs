@@ -265,7 +265,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(env.instance.page,page,'changing a theme keeps the current page');
   assert.deepEqual(ids(themed),ids(before),'themes show the same agents in the same order');
   assert.ok(themed.includes('agent-village'),'the Chiikawa theme displays the village');
-  assert.match(themed,/chiikawa\/(done|idle|hachiware|rakko|momonga|kurimanju)\/\d{3}\.png/);
+  assert.match(themed,/chiikawa\/atlases\/(done|idle|hachiware|rakko|momonga|kurimanju)(-left|-right)?\.svg/);
   const residents=new Set(env.instance.residentAssignments.values());
   for(const name of Array.from(new Set(env.instance.residentAssignments.values()))) assert.ok(residents.has(name),`resident ${name} is reachable`);
   const firstResidents=env.instance.overviewRows.slice(0,new Set(env.instance.residentAssignments.values()).size).map(row=>env.agentTheme.agentSprite(env.instance,row,true).name);
@@ -659,9 +659,23 @@ console.log('Options popover: cards/village dismissal preserves filters and sess
   assert.match([...paths][0],/originals\/hachiware-dance\.gif$/);
   output=JSON.stringify(env.render());
   assert.ok(output.includes(`village-art-${row.id}-hachiware-dance`),'native animation has stable row/resource identity');
+  for (const name of ['rakko','hachiware','idle','done','momonga','kurimanju','shisa','yoroi']) {
+    env.instance.residentAssignments.set(row.id,name);
+    for (const facing of [-1,1]) {
+      const sources=new Set(), frames=new Set();
+      for(let clock=0;clock<4000;clock+=25) {
+        env.instance.themeClock=clock;
+        const sprite=env.agentTheme.agentSprite(env.instance,row,true,facing);
+        sources.add(sprite.path);frames.add(sprite.atlas.frame);
+      }
+      assert.equal(sources.size,1,`${name} keeps its loaded atlas through repeated loops`);
+      assert.ok(frames.size>1,`${name} still animates inside that atlas`);
+    }
+  }
+  env.instance.residentAssignments.set(row.id,'hachiware-dance');
   env.click('village-filters');output=JSON.stringify(env.render());assert.ok(output.includes('overview-motion'));
   env.click('overview-motion');assert.match(env.agentTheme.agentSprite(env.instance,row,true).path,/hachiware-dance\/\d{3}\.png$/);
-  console.log('native animation: stable resource/image identity and pause fallback passed');
+  console.log('native animation: stable GIF/atlas resources over repeated loops and pause fallback passed');
 }
 
 // A child click can consume mouse-up before the viewport sees it. It must
@@ -801,7 +815,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','theme-chiikawa','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','theme-chiikawa','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);

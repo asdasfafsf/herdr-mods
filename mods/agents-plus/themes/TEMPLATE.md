@@ -32,7 +32,7 @@ export const MY_ADAPTER = {
 };
 ```
 
-For a neutral GIF, set `animation: "originals/first.gif"` in its sprite record and keep its original dimensions. The engine reuses one native animated image, avoiding per-frame cache eviction. Numbered PNG frames remain the pause fallback; resuming the native GIF restarts its loop. Directional poses and APNG sources use the numbered frame path because this host does not animate APNGs or transform GIFs.
+For a neutral GIF, set `animation: "originals/first.gif"` in its sprite record and keep its original dimensions. The engine reuses one native animated image, avoiding per-frame cache eviction. Numbered PNG frames remain the pause fallback; resuming the native GIF restarts its loop. For APNG and directional poses, set `frameAtlas: "atlases"` on the adapter and run `node scripts/build-sprite-atlases.mjs` (or `--check`). It embeds unchanged PNG bytes into one SVG grid per orientation. The shared renderer advances a clipped viewport, retaining the loaded image across loops and pause/resume. Caption frames keep their original orientation. Packs without this metadata retain the numbered-frame fallback.
 
 Frames are `first/001.png`, `first/002.png`, etc. Durations are milliseconds.
 `content` and optional `body` are `[x, y, width, height]`: layout bounds only,
