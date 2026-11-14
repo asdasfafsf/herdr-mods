@@ -130,10 +130,58 @@ CUA로 moss 다크 팔레트와 Chiikawa 팩을 함께 사용했을 때 미선�
 실앱의 light/dark 양쪽에서 대비 개선을 확인했다. 팩·Active 세션·터미널 분할은
 유지됐고 검증 후 기존 Light/Chiikawa 팔레트로 복원했다.
 
-직접 관찰한 잔여 문제도 있다. 주민이 가까워지면 그림이나 이름표가 다른
-이름표를 일부 가린다. 현재 이동 충돌 검사는 이름표 전체 영역을 예약하지 않는다.
+이 시점에는 주민이 가까워지면 그림이나 이름표가 다른 이름표를 일부 가리는
+문제가 남았다. 당시 이동 충돌 검사는 이름표 전체 영역을 예약하지 않았다.
 또한 다크 전환 후 기존 Codex 입력·사용자 메시지의 밝은 배경이 남았다.
 읽기 전용 theme compatibility checker는 light=`herdr-chiikawa`, dark=`moss`와
 중복 팔레트 상태 없음은 확인했지만, 설치 CLI 0.1.15의 native surface 기능은
 `unknown`으로 보고했다. 이를 앱 렌더러 지원이 확인된 것으로 해석하지 않는다.
 앱·core·실제 세션을 재시작하거나 입력하지 않았다.
+
+### 주민 간격 수정 통합 및 실제 화면 확인
+
+별도 `fix/resident-spacing`의 `28deb52`를 검토하고 `705bc96`으로 main에
+병합했다. 수정 전 `6616518`은 실제 village 엔진을 사용하는 접근 fixture에서
+frame 9, dx=135px에 이름표 교차를 재현했다. 수정본은 worker의
+`--native --seed 20261116`과 main의 `--native --seed 20261117`에서 각각
+22 passed, 0 failed였다. worker의 native Chiikawa 200명 초기 렌더는
+74ms, interrupted=false로 기존 실행 제한을 통과했다.
+
+`./install.sh agents` 후 실제 Herdr 화면을 CUA로 확인했다. Rakko의 돌출된
+글자 그림 위에 상태 표시가, 전체 그림 아래에 두 줄 이름표가 따로 표시됐다.
+선택한 Rakko를 Usagi 위로 드래그하면 놓은 직후에는 겹침이 보였으나,
+후속 관찰에서 Usagi가 벗어나 그림과 이름표가 분리됐다. Light/Chiikawa와
+Dark/Moss 모두 이름표의 두 줄이 잘리지 않고 읽혔다. 팩은 Chiikawa로 유지됐고,
+검사 후 Light/Chiikawa와 기존 main의 Active 세션으로 복원했다.
+설치된 agents-plus의 비문서 추적 파일 778개가 main과 일치했다. 두 수정
+브랜치를 main에 push한 뒤 Herdr 작업트리와 병합된 로컬·원격 브랜치를
+정리했으며 이 저장소에는 main 작업트리만 남았다.
+
+이는 실제 세 주민의 배치·이동·드래그 복구를 확인한 것이다. 좁은 장면과
+4/24명 밀도는 위 자동 검사 범위이며, 모든 GPU 프레임이나 장시간 배회를
+측정한 결과로 확대 해석하지 않는다. selected/dragged 주민끼리의 겹침은
+선택과 포인터 소유권을 우선하고 잠금 해제 후 복구한다.
+
+### 터미널 배경 진단과 적용 대기
+
+별도 `fix/terminal-surfaces`의 `212e90d`는 실행 파일 경로·해시 증거와
+native 회귀 검사를 보강했다. 실행 중인 앱과 PATH의 `herdr-app`은 같은
+symlink target 및 SHA256(`31ae7a64…`)였다. 0.1.15의 버전 응답만으로
+renderer 지원을 확정할 수 없으며 실제 앱은 capability를 광고하지 않았다.
+모드 API만으로 이미 기록된 Codex RGB 배경을 바꾸는 live fix는 불가능했다.
+CUA의 Dark/Moss 전환에서도 기존 입력·사용자 메시지의 밝은 배경이 남았다.
+
+기존 optional native renderer는 정확한 Chiikawa → Moss 전환에서 추가
+PTY 출력 없이 기존 입력과 scrollback을 다시 칠하고 ANSI 구문색을 보존하는
+회귀 검사를 통과했다. checker Python 13개, standalone Rust 9개와 native
+필터 9/8/1개가 통과했고 offline/locked arm64 빌드를 완료했다. 메인 담당자도
+Python 13개와 정확한 전환 native 회귀를 직접 다시 통과했다.
+
+검증한 dev 실행 파일과 manifest, patch, LICENSE, 보고서는 로컬
+`~/.local/share/herdr-mods/artifacts/native-surfaces-212e90d/`에 보관했다.
+실행 파일 SHA256은
+`953b605b0b2d83d5ac6200269e07d228376d00d3492d7cf5335ca667f52950ef`이며
+두 surface capability가 supported다. 공식 서명된 배포 앱 번들이 아니며
+이 실행 파일의 실제 GUI 검증은 아직 하지 않았다. 기존 앱을 교체하거나
+재시작하지 않았고, 활성화는 별도 확인을 기다린다. 활성화 후에는 해당
+Codex PID가 Chiikawa opt-in을 관찰한 뒤 Moss로 전환하는 경로를 확인해야 한다.
