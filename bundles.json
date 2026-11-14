@@ -36,6 +36,9 @@
           "from": "agents",
           "to": "agents-plus"
         }
+      },
+      {
+        "workspace_views": {}
       }
     ],
     "keys": {}

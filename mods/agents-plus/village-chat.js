@@ -1,15 +1,16 @@
 // One retained editor per resident. Selection, rendering and drafts never send.
 import { div } from "gpui-kit";
 import { h_flex, v_flex, TextareaState, Textarea } from "gpui-base";
-import { agents, terminals, exec } from "herdr";
+import { agents, terminals, exec, run } from "herdr";
 import { button } from "./ui.js";
+import { inAgentMode } from "./agent-mode.js";
 
 const BLOCKED = "승인이나 질문은 세션을 열어 확인해주세요.";
 const UNAVAILABLE = "지금 대화할 수 없는 세션이에요. 세션을 열어 확인해주세요.";
 const UNCERTAIN = "전송을 확인하지 못했어요. 세션에서 도착 여부를 확인한 뒤 다시 보내주세요.";
 const LIMIT = 16000;
 
-export function selectVillageResident(view, row, cx) {
+export function selectVillageResident(view, row, cx, focusSession = true) {
   view.villageSelected = row.id;
   const chats = view.villageChats ??= new Map();
   if (row.address && !row.external && !chats.has(row.id)) {
@@ -19,6 +20,9 @@ export function selectVillageResident(view, row, cx) {
     input.on("change", (_e, cx) => { chat.version++; chat.error = ""; chat.receipt = ""; cx.notify(); });
     // Plain Enter stays a newline; only the editor's secondary submit sends.
     input.on("submit", (e, cx) => { if (e?.secondary) sendVillageMessage(chat, cx); });
+  }
+  if (inAgentMode() && focusSession) {
+    if (row.pane) run("pane.focus", { pane: row.pane });
   }
   cx.notify();
 }

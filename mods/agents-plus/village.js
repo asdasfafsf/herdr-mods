@@ -150,7 +150,7 @@ function scenery(layout) {
     .child(image(`${SCENERY}/stump.png`).absolute().left(width * 0.65).top(height * 0.72).w(64).h(25));
 }
 
-function details(view, row, t, states, width, openRow) {
+export function villageDetails(view, row, t, states, width, openRow) {
   const panelWidth = Math.min(500, width - 32);
   const note = row.activity || (row.status === "working" ? "작업을 진행하고 있어요" : row.status === "blocked" ? "입력을 기다리고 있어요" : row.status === "done" ? "작업을 마쳤어요" : "다음 작업을 기다리고 있어요");
   return v_flex().id("village-details").absolute().left((width - panelWidth) / 2).bottom(20).w(panelWidth)
@@ -192,9 +192,8 @@ export function renderVillage(view, state) {
       .child(h_flex().items_center().gap(12)
         .child(div().text_size(18).font_semibold().text_color(t.foreground).child("치이카와 마을"))
         .child(div().flex_1().text_size(11).text_color(t.muted).child(`${rows.length}명`))
-        .child(button("village-filters", filtering ? "검색·필터 적용 중" : "검색·필터", (cx) => { view.villageFilters = !view.villageFilters; cx.notify(); }, t))
-        .when(!narrow, (el) => el.child(themeControls(view, t))))
-      .when(narrow, (el) => el.child(themeControls(view, t)))
+        .child(button("village-filters", filtering ? "검색·필터 적용 중" : "검색·필터", (cx) => { view.villageFilters = !view.villageFilters; cx.notify(); }, t)))
+      .child(themeControls(view, t))
       .when(view.villageFilters, (el) => el.child(v_flex().id("village-filter-panel").gap(10).pt(4)
         .child(Input.new(view.input).h(34).px(10).items_center().rounded(7).border(1).border_color(t.border).bg(t.raised).text_color(t.foreground))
         .child(h_flex().gap(5).flex_wrap().children(states.map(([key, label]) => {
@@ -223,7 +222,7 @@ export function renderVillage(view, state) {
           .when(visible.length === 0, (el) => el.child(div().absolute().top(layout.height / 2).left(24).w(width - 48).text_center().text_size(13).text_color(t.foreground)
             .child(all.length ? "검색된 에이전트가 없어요. 검색어나 필터를 바꿔보세요." : "에이전트가 작업을 시작하면 이곳에 나타나요.")))))
       .child(Scrollbar.vertical(scrollId).absolute().inset_0())
-      .when(Boolean(selected), (el) => el.child(details(view, selected, t, states, width, openRow)))
+      .when(Boolean(selected), (el) => el.child(villageDetails(view, selected, t, states, width, openRow)))
       .when(!selected && pages === 1, (el) => el.child(div().absolute().bottom(16).left(16).text_size(11).text_color(t.foreground).opacity(0.65).child("캐릭터를 눌러 작업을 보고 말을 걸어보세요"))))
     .when(pages > 1, (el) => el.child(h_flex().px(24).py(7).gap(12).items_center().border_t(1).border_color(t.border).flex_none()
       .child(div().text_size(11).text_color(t.muted).child(`${start + 1}–${start + visible.length} of ${rows.length} agents`))

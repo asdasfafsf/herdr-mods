@@ -219,6 +219,30 @@ def uses(layout, mod):
 def patch(layout, step):
     """Applies one bundle layout step; returns what it did, or None if already there."""
     kind, spec = next(iter(step.items()))
+    if kind == "workspace_views":
+        if any(n.get("id") == "workspace-views" for n, _ in blocks(layout)):
+            return None
+        for n, siblings in blocks(layout):
+            if (n.get("content") or {}).get("tab") != "active" or siblings is None:
+                continue
+            # Keep the native tab tree and all of its pane options intact. Both
+            # presentations use the host's existing session focus and settings.
+            terminal = dict(n)
+            size = terminal.pop("size", {"weight": 1})
+            siblings[siblings.index(n)] = {
+                "id": "workspace-presentation", "type": "column", "size": size, "resizable": False,
+                "children": [
+                    {"id": "workspace-view-switch", "type": "block", "size": {"px": 38},
+                     "content": {"mod": "agents-plus", "props": {"mode": "view-switch"}}},
+                    {"id": "workspace-views", "type": "stack", "active": terminal["id"], "children": [
+                        terminal,
+                        {"id": "agent-world", "type": "block", "content": {
+                            "mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}}
+                    ]}
+                ]
+            }
+            return "terminal / agent presentations in the existing workspace"
+        return "(no active tab block for workspace presentations)"
     if kind == "swap":
         hits = [n for n, _ in blocks(layout) if (n.get("content") or {}).get("mod") == spec["from"]]
         for n in hits:
@@ -249,6 +273,34 @@ def patch(layout, step):
             return f'{spec["mod"]} beside the bottom bar'
         return f'(no bottom bar for {spec["mod"]})'
     return f"(unknown layout step {kind})"
+
+
+def archive_legacy_agent_layout(dry):
+    """Retire only our short-lived split-view layout, retaining a full backup."""
+    shown = (load(os.path.join(HOME, "shared.json"), {}) or {}).get("layout")
+    path = os.path.join(HOME, "layouts", "herdr-agents.json")
+    old = load(path)
+    if shown == "herdr-agents" or not isinstance(old, dict):
+        return
+    nodes = [n for n, _ in blocks(old)]
+    owned = any(n.get("id") == "agent-workspace" and n.get("type") == "row" for n in nodes)
+    owned = owned and any(n.get("id") == "agent-world" and n.get("content") == {
+        "mod": "agents-plus", "props": {"mode": "overview", "integrated": True}} for n in nodes)
+    # An early queued palette write could overwrite the split tree with its
+    # original clone. Recognize that exact experimental palette as well.
+    colors = old.get("colors", {})
+    painted_clone = old.get("theme") == "paper" and uses(old, "agents-plus") and all(
+        colors.get(key) == value for key, value in {
+            "background": "#f8f5ec", "chrome": "#f4ecdb", "accent": "#8b6744",
+            "foreground": "#503c2e", "terminal_foreground": "#503c2e"}.items())
+    owned = owned or painted_clone
+    if not owned:
+        return
+    if not dry:
+        os.makedirs(BACKUPS, exist_ok=True)
+        destination = os.path.join(BACKUPS, f"herdr-agents-retired-{time.time_ns()}.json")
+        shutil.move(path, destination)
+    say("layout", "retired the separate agent layout (backup retained)")
 
 
 def target_layout(name, dry):
@@ -364,6 +416,8 @@ def main(argv):
             say("layout", f"{name}: {d}")
         if done:
             save(path, layout, dry)
+        if "agents" in picked and name != "herdr-agents":
+            archive_legacy_agent_layout(dry)
 
     keys_path = os.path.join(HOME, "keys.json")
     keys = load(keys_path, {}) or {}

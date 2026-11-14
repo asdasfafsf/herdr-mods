@@ -3,14 +3,17 @@ import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { props, panes, focused } from "herdr";
 import { SPRITES } from "./theme-assets.js";
+import { THEMES, VIEW_LAYOUTS, themeTokens } from "./themes.js";
+import { inAgentMode, agentViewVisible, applyModeTheme, workspaceTheme } from "./agent-mode.js";
 
 const ART = "mods/agents-plus/assets/chiikawa";
-const SKINS = [["default", "기본 테마"], ["chiikawa", "치이카와 마을"]];
-export const RESIDENTS = ["done", "hachiware", "idle", "rakko", "momonga", "kurimanju"];
+const SKINS = Object.entries(THEMES).map(([key, value]) => [key, value.label]);
+export const RESIDENTS = THEMES.chiikawa.residents;
 
 export function initAgentTheme(view, cx) {
-  const saved = props()?.skin || localStorage.getItem("overview.theme");
+  const saved = inAgentMode() ? workspaceTheme() : props()?.skin || localStorage.getItem("overview.theme");
   view.skin = SKINS.some(([key]) => key === saved) ? saved : "default";
+  view.presentation = localStorage.getItem("overview.chiikawaLayout") === "cards" ? "cards" : "village";
   view.themeClock = 0;
   view.motionPaused = localStorage.getItem("overview.motionPaused") === "true";
   view.overviewTab = panes().find((pane) => pane.mod === "agents-plus")?.tab;
@@ -18,35 +21,40 @@ export function initAgentTheme(view, cx) {
   cx.timer.every(50, (cx) => {
     const now = Date.now(), elapsed = Math.min(160, now - previous);
     previous = now;
+    const saved = inAgentMode() ? workspaceTheme() : localStorage.getItem("overview.theme");
+    if (inAgentMode() && THEMES[saved] && saved !== view.skin) { view.skin = saved; cx.notify(); }
     if (view.skin !== "chiikawa" || view.motionPaused) return;
     // A slow render is not a hidden pane. In particular, typing or another
     // busy mod may leave a gap longer than 300ms while this tab is still shown.
-    view.overviewTab ??= panes().find((pane) => pane.mod === "agents-plus")?.tab;
-    if (view.overviewTab ? focused()?.tab !== view.overviewTab : now - (view.lastThemeRender ?? 0) > 300) return;
+    if (inAgentMode()) { if (!agentViewVisible()) return; }
+    else {
+      view.overviewTab ??= panes().find((pane) => pane.mod === "agents-plus")?.tab;
+      if (view.overviewTab ? focused()?.tab !== view.overviewTab : now - (view.lastThemeRender ?? 0) > 300) return;
+    }
     view.themeClock += elapsed;
     cx.notify();
   });
 }
 
 export function agentTheme(base, skin) {
-  if (skin !== "chiikawa") return base;
-  return { ...base, foreground: "#503c2e", muted: "#7b6957", dim: "#95816b",
-    background: "#f8f5ec", raised: "#fffaf0", chrome: "#f4ecdb", border: "#d7c8ad",
-    hover: "#f4ecd9", selected: "#f1dfbd", accent: "#8b6744",
-    working: "#58764b", blocked: "#ba5b4a", done: "#488aa0", idle: "#a09680" };
+  return themeTokens(base, skin);
 }
 
 export function themeControls(view, t) {
-  return h_flex().gap(4).items_center().flex_none()
-    .child(h_flex().p(2).rounded(7).border(1).border_color(t.border)
+  return h_flex().gap(4).items_center().flex_none().flex_wrap()
+    .when(!inAgentMode(), (el) => el.child(h_flex().p(2).rounded(7).border(1).border_color(t.border)
       .children(SKINS.map(([key, label]) => div().id(`overview-theme-${key}`).px(9).py(5).rounded(5)
         .text_size(11).text_color(view.skin === key ? t.foreground : t.muted)
         .when(view.skin === key, (el) => el.bg(t.selected)).cursor_pointer().hover((el) => el.bg(t.hover))
-        .on_click((_e, cx) => { view.skin = key; localStorage.setItem("overview.theme", key); cx.notify(); }).child(label))))
+        .on_click((_e, cx) => { view.skin = key; localStorage.setItem("overview.theme", key); applyModeTheme(key); cx.notify(); }).child(label)))))
+    .when(view.skin === "chiikawa", (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
+      .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(8).py(5).rounded(5).text_size(11)
+        .text_color(t.foreground).when(view.presentation === key, (el) => el.bg(t.selected)).cursor_pointer()
+        .on_click((_e, cx) => { view.presentation = key; localStorage.setItem("overview.chiikawaLayout", key); cx.notify(); }).child(label)))))
     .when(view.skin === "chiikawa", (el) => el.child(div().id("overview-motion").px(8).py(5).rounded(5)
       .text_size(11).text_color(t.muted).cursor_pointer().hover((el) => el.bg(t.hover))
       .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; localStorage.setItem("overview.motionPaused", String(view.motionPaused)); cx.notify(); })
-      .child(view.motionPaused ? "움직임 켜기" : "움직임 끄기")));
+      .child(view.motionPaused ? "Resume motion" : "Pause motion")));
 }
 
 function seed(text) {

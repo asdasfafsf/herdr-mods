@@ -30,6 +30,12 @@ function fixture(count, grouped = false, collapsed = false, depth = 1) {
   }
   return { state, agents, spaces, panes, terminals, outside, collapsed };
 }
+function workspaceLayout(active='main') {
+  return {id:'root',type:'row',children:[{id:'sidebar',size:{px:268}},{id:'workspace-views',type:'stack',active,children:[{id:'main',type:'block',content:{tab:'active',pane:{gap:8}}},{id:'agent-world',type:'block',content:{mod:'agents-plus',props:{mode:'overview',integrated:true}}}]}]};
+}
+function findNode(node,id) {
+  return node?.id===id ? node : node?.children?.map(child=>findNode(child,id)).find(Boolean);
+}
 async function environment(data, revision) {
   const calls = {}, writes = [], handlers = new Map(), timers = new Map(), tasks = [], commands = [];
   const cloneRead = (key, value) => {
@@ -65,8 +71,8 @@ async function environment(data, revision) {
     agents: () => cloneRead('agents', data.agents), terminals: () => cloneRead('terminals', data.terminals), panes: () => cloneRead('panes', data.panes), spaces: () => cloneRead('spaces', data.spaces),
     shared: key => cloneRead(`shared:${key}`, data.state[key]), setShared: (key, value) => { data.state[key] = structuredClone(value); writes.push([key,value]); },
     setAgentOrder: value => writes.push(['setAgentOrder',value]),
-    focused: () => data.focused ?? ({agent:'t0',tab:'b0'}), layout: () => ({id:'sidebar',size:{px:data.collapsed ? 76 : 268}}), props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
-    run: (...args) => writes.push(['run',args]), openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => '',
+    focused: () => data.focused ?? ({agent:'t0',terminal:'t0',pane:'p0',tab:'b0'}), layout: () => data.layout ?? ({id:'root',type:'row',children:[{id:'sidebar',size:{px:data.collapsed ? 76 : 268}},{id:'main',type:'block',content:{tab:'active'}}]}), layouts:()=>data.layouts ?? ['main'], props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
+    run: (...args) => {writes.push(['run',args]);if(args[0]==='layout.set') data.layout=structuredClone(args[1].layout); if(args[0]==='layout.clone') {data.state.layout=args[1].as;data.layouts=['main',args[1].as];}if(args[0]==='layout.switch') data.state.layout=args[1].name; if(args[0]==='layout.select') findNode(data.layout,args[1].stack).active=args[1].child;}, openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => '',
   };
   const store = new Map();
   const context = vm.createContext({ console, Date: class extends Date { static now() { return now + (data.elapsed ?? 0); } }, localStorage: { getItem:k => store.get(k), setItem:(k,v) => store.set(k,v), removeItem:k => store.delete(k) } });
@@ -99,7 +105,7 @@ async function environment(data, revision) {
   instance.activity=Object.fromEntries(data.agents.map(a=>[a.address,{doing:'Editing example',said:'Example result'}]));
   const render = () => { handlers.clear(); return JSON.parse(JSON.stringify(instance.render(cx))); };
   const click = id => { assert.ok(handlers.has(id),`missing click target ${id}`); handlers.get(id)({},cx); };
-  return {instance,calls,writes,render,data,click,timers,tasks,commands,cx,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace,chat:modules.get('mods/agents-plus/village-chat.js')?.namespace};
+  return {instance,calls,writes,render,data,click,timers,tasks,commands,cx,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace,chat:modules.get('mods/agents-plus/village-chat.js')?.namespace,mode:modules.get('mods/agents-plus/agent-mode.js')?.namespace};
 }
 for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],['grouped',40,true,false,1],['rail',40,false,true,1],['large',200,false,false,1],['deep',120,false,false,5]]) {
   const data = fixture(count,grouped,collapsed,depth);
@@ -201,14 +207,16 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   const filtered=JSON.stringify(env.render());
   assert.ok(filtered.includes('overview-t3'));
   assert.ok(!filtered.includes('overview-t0"'));
-  const sidebar=await environment(fixture(1),null);
+  const sidebarData=fixture(1);sidebarData.layout=workspaceLayout();sidebarData.state.layout='herdr-worktrees';
+  const sidebar=await environment(sidebarData,null);
   sidebar.render();sidebar.click('ag-view');
-  assert.equal(sidebar.writes.at(-1)[1][0],'tab.new');
-  assert.equal(sidebar.writes.at(-1)[1][1].props.mode,'overview');
+  assert.equal(sidebar.writes.some(([,args])=>args[0]==='layout.clone'),false,'view switching must not create a layout');
+  assert.match(JSON.stringify(sidebar.data.layout),/agent-world/);
+  assert.equal(sidebar.writes.some(([,args])=>args[0]==='tab.new'),false,'Agent mode must not add a tab');
   sidebar.data.panes.push({pane:'board',mod:'agents-plus',tab:'board-tab'});
   sidebar.render();sidebar.click('ag-view');
-  assert.equal(sidebar.writes.at(-1)[1][0],'pane.focus');
-  assert.equal(sidebar.writes.at(-1)[1][1].pane,'board','reuse the full-page tab');
+  assert.equal(sidebar.data.state.layout,'herdr-worktrees');
+  assert.equal(findNode(sidebar.data.layout,'workspace-views').active,'agent-world');
   console.log('agent overview: all projects, child agents, shared-PID sessions, deduplication, filters and navigation passed');
   const many=fixture(60);many.props={mode:'overview',presentation:'cards'};
   const paged=await environment(many,null);
@@ -298,6 +306,43 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
     }
   }
   console.log('agent themes: shared sessions, opt-in filters/details, roaming bounds, motion pause, selection and navigation passed');
+}
+
+// Integrated mode uses the same rows, with quiet residents following native focus.
+{
+  const data=fixture(4);data.props={mode:'overview',integrated:true,skin:'chiikawa'};
+  data.state.layout='herdr-worktrees';data.state['ag.workspaceTheme']='chiikawa';data.layout=workspaceLayout('agent-world');data.outside=[];
+  const env=await environment(data,null);
+  let output=JSON.stringify(env.render());
+  assert.ok(output.includes('overview-t0') && output.includes('overview-t3'));
+  assert.ok(output.includes('overview-t1'),'seen agents stay visible');
+  assert.ok(!output.includes('overview-t2"'),'idle agents are absent until focused');
+  assert.equal(data.layout.theme,'paper');assert.equal(data.layout.colors.chrome,'#f4ecdb','the shared layout gets the same theme tokens');
+  data.focused={terminal:'t2',pane:'p2',tab:'b2'};env.timers.get(250)();
+  output=JSON.stringify(env.render());
+  assert.ok(output.includes('overview-t2') && output.includes('village-message-t2'));
+  data.focused={terminal:'t1',pane:'p1',tab:'b1'};env.timers.get(250)();
+  output=JSON.stringify(env.render());
+  assert.ok(output.includes('overview-t1') && !output.includes('overview-t2"'),'previous quiet selection disappears');
+  env.click('overview-t0');
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
+  env.render();env.click('overview-layout-cards');
+  output=JSON.stringify(env.render());
+  assert.ok(!output.includes('chiikawa-village') && output.includes('chiikawa/'),'cards keep the theme characters');
+  env.click('overview-layout-village');env.mode.renderViewSwitch();env.click('workspace-theme-default');env.timers.get(50)();
+  assert.equal(data.layout.colors,undefined,'default restores the original layout palette');
+  env.mode.renderViewSwitch();env.click('workspace-theme-chiikawa');env.timers.get(50)();
+  env.mode.leaveAgentMode();
+  assert.equal(data.layout.colors.chrome,'#f4ecdb','whole-workspace theme survives presentation changes');
+  assert.equal(data.state.layout,'herdr-worktrees','switching presentation keeps the same workspace');
+  assert.equal(findNode(data.layout,'workspace-views').active,'main','terminal presentation restores the original tab tree');
+  assert.equal(data.focused.terminal,'t1','presentation does not choose another session');
+  assert.equal(env.writes.some(([,args])=>['layout.clone','layout.switch','tab.new'].includes(args[0])),false);
+  env.mode.openAgentMode();
+  assert.equal(findNode(data.layout,'workspace-views').active,'agent-world');
+  env.render();env.click('overview-child-0-0');
+  assert.equal(env.writes.some(([,args])=>args[0]==='terminal.peek'),false,'child selection must not expose a terminal');
+  console.log('Agent mode: shared palette, cards/village, quiet visibility, bidirectional focus and exit passed');
 }
 
 // Read-required bubbles follow host unread state without acknowledging on sight.
@@ -446,7 +491,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
 // Optional native GPUI smoke/limit check with the SAME synthetic data. No live app
 // state is read, and these temporary mods are never installed in the user's layout.
 if (process.argv.includes('--native')) {
-  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
+  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
     if (process.argv.includes('--overview-only') && mode === 'sidebar') continue;
     if (revision && mode !== 'sidebar') continue;
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
@@ -454,7 +499,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','agent-theme','theme-assets','village','village-chat']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','agent-theme','theme-assets','themes','agent-mode','village','village-chat']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
@@ -463,7 +508,7 @@ const data=${JSON.stringify(data)};
 const copy=x=>JSON.parse(JSON.stringify(x??null));
 export const agents=()=>copy(data.agents), terminals=()=>copy(data.terminals), spaces=()=>copy(data.spaces), panes=()=>copy(data.panes);
 export const shared=k=>copy(data.state[k]), setShared=(k,v)=>{data.state[k]=v}, setAgentOrder=()=>{};
-export const focused=()=>({agent:'t0',tab:'b0'}), layout=()=>({id:'sidebar',size:{px:268}}), props=()=>({mode:'${mode==='chiikawa'?'overview':mode}'}), window=()=>({active:true});
+export const focused=()=>({agent:'t0',terminal:'t0',tab:'b0'}), layout=()=>({id:'sidebar',size:{px:268}}), layouts=()=>['main'], props=()=>({mode:'${mode.startsWith('chiikawa')?'overview':mode}'}), window=()=>({active:true});
 export const theme=()=>Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5','popover','background'].map(k=>[k,'#123456']));
 export const run=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'';
 export const outside=data.outside;
@@ -475,7 +520,7 @@ import { InputState } from 'gpui-base';
 ${!revision ? "import { selectVillageResident } from './village-chat.js';\nimport { agentViewRows } from './overview.js';" : ''}
 export default class Probe extends Agents {
  init(_props,cx) { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={};
-   if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.skin='${mode==='chiikawa'?'chiikawa':'default'}';this.themeClock=0;}
+   if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.skin='${mode.startsWith('chiikawa')?'chiikawa':'default'}';this.presentation='${mode==='chiikawa-cards'?'cards':'village'}';this.themeClock=0;}
    ${!revision ? `if ('${mode}'==='chiikawa' && ${count}===40) {selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t0'),cx);this.villageFilters=true;}` : ''} }
  render(cx) { const start=Date.now();const result=super.render(cx);console.error('BENCH_RENDER_MS='+String(Date.now()-start));return result; }
 }

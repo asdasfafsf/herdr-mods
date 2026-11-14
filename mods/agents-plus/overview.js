@@ -6,8 +6,10 @@ import { agents, terminals, panes, spaces, focused, shared, theme, props, run, w
 import { AGENT_INFO, ACKED, OPTIONS, TREES, LIVE } from "./state.js";
 import { shownStatus, seenFor, statusMark, statusColor, button, footer, agoText } from "./ui.js";
 import { inside } from "./places.js";
-import { initAgentTheme, agentTheme, themeControls } from "./agent-theme.js";
-import { renderVillage } from "./village.js";
+import { initAgentTheme, agentTheme, themeControls, agentSprite } from "./agent-theme.js";
+import { renderVillage, villageDetails } from "./village.js";
+import { openAgentMode, leaveAgentMode, inAgentMode, applyModeTheme, agentViewVisible } from "./agent-mode.js";
+import { selectVillageResident } from "./village-chat.js";
 
 const STATES = [["all", "All"], ["blocked", "Needs you"], ["working", "Working"], ["done", "Done"], ["seen", "Seen"], ["idle", "Idle"]];
 const PRIORITY = { blocked: 5, done: 4, working: 3, seen: 2, idle: 1 };
@@ -15,9 +17,7 @@ const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outsid
 const PAGE_SIZE = 24; // Divisible into 1–4 columns; bound native element creation.
 
 export function openAgentView(outside = []) {
-  const existing = panes().find((pane) => pane.mod === "agents-plus");
-  if (existing) return run("pane.focus", { pane: existing.pane });
-  run("tab.new", { name: "Agent view", mod: "agents-plus", props: { mode: "overview", outside, returnPane: focused()?.pane } });
+  openAgentMode();
 }
 
 export function initAgentView(view, cx) {
@@ -30,6 +30,19 @@ export function initAgentView(view, cx) {
   view.handle = cx.focus_handle();
   view.input.focus();
   initAgentTheme(view, cx);
+  if (inAgentMode()) {
+    applyModeTheme(view.skin);
+    cx.timer.every(250, (cx) => {
+      if (!agentViewVisible()) return;
+      const address = focused()?.terminal;
+      if (view.focusedResident === address) return;
+      const row = view.overviewRows?.find((row) => row.address === address);
+      if (address && !row) return;
+      view.focusedResident = address;
+      if (row) selectVillageResident(view, row, cx, false);
+      else { view.villageSelected = null; cx.notify(); }
+    });
+  }
   view.readOutside(cx);
   cx.timer.every(10000, (cx) => { if (window().active) view.readOutside(cx); });
   cx.timer.every(3000, (cx) => cx.notify());
@@ -107,6 +120,7 @@ export function filterAgentRows(rows, query, status = "all", source = "all") {
 }
 
 function openRow(view, row) {
+  if (inAgentMode()) leaveAgentMode();
   if (row.external) view.resume(row.external);
   else if (row.pane) run("pane.focus", { pane: row.pane });
   else view.peek(row.address);
@@ -116,9 +130,10 @@ function agentCard(view, row, t) {
   const pic = row.program?.icon;
   const note = row.activity || (row.status === "working" ? "Working on this task…" : row.status === "blocked" ? "Waiting for your input" : row.status === "done" ? "Task finished. Open the session to review." : "Ready for the next task");
   const color = statusColor(t, row.status) ?? t.dim;
+  const themed = view.skin === "chiikawa", sprite = themed ? agentSprite(view, row, true) : null;
   return v_flex().id(`overview-${row.id}`).flex_1().min_w(0).h(232).rounded(10).border(1).border_color(t.border).bg(t.raised ?? t.chrome).overflow_hidden().cursor_pointer()
     .hover((style) => style.border_color(color).bg(t.hover)).tooltip([row.title, row.cwd, row.context, row.activity].filter(Boolean).join("\n"))
-    .on_click(() => openRow(view, row))
+    .on_click((_e, cx) => { cx.stop_propagation(); if (themed || inAgentMode()) selectVillageResident(view, row, cx); else openRow(view, row); })
     .child(div().h(3).flex_none().bg(color))
     .child(v_flex().flex_1().min_h(0).p(16).gap(12)
       .child(h_flex().gap(8).items_center()
@@ -128,6 +143,7 @@ function agentCard(view, row, t) {
         .child(div().text_size(11).text_color(color).child(STATES.find(([key]) => key === row.status)?.[1] || "Unknown")))
       .child(div().truncate().text_size(15).font_semibold().text_color(t.foreground).child(row.title))
       .child(h_flex().flex_1().min_h(0).gap(8).items_start().overflow_hidden()
+        .when(themed, (el) => el.child(image(sprite.path).w(82 * sprite.width / sprite.height).h(82).flex_none()))
         .child(div().flex_1().min_w(0).overflow_hidden().whitespace_normal().text_size(12).text_color(t.muted).child(note)))
       .child(h_flex().min_w(0).gap(6).items_center()
         .child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none().text_color(t.dim))
@@ -145,7 +161,8 @@ export function renderAgentView(view) {
     view.overviewRowsAt = now;
     view.overviewOutside = view.outside;
   }
-  const all = view.overviewRows;
+  const focusedAddress = focused()?.terminal;
+  const all = inAgentMode() ? view.overviewRows.filter((row) => row.status !== "idle" || row.address === focusedAddress) : view.overviewRows;
   view.lastThemeRender = now;
   const scope = filterAgentRows(all, view.input.value(), "all", view.sourceFilter);
   const rows = filterAgentRows(scope, "", view.statusFilter);
@@ -155,7 +172,7 @@ export function renderAgentView(view) {
   const visible = rows.slice(start, start + PAGE_SIZE);
   const back = props()?.returnPane;
   const canGoBack = Boolean(back && panes().some((pane) => pane.pane === back));
-  if (view.skin === "chiikawa") return renderVillage(view, { t, all, scope, rows, visible, start, pages, back, canGoBack, states: STATES, sources: SOURCES, openRow });
+  if (view.skin === "chiikawa" && view.presentation !== "cards") return renderVillage(view, { t, all, scope, rows, visible, start, pages, back, canGoBack, states: STATES, sources: SOURCES, openRow });
   const columns = Math.max(1, Math.min(4, Math.floor(((view.width ?? 1100) - 48) / 310)));
   const cardRows = [];
   for (let i = 0; i < visible.length; i += columns) {
@@ -165,10 +182,10 @@ export function renderAgentView(view) {
   }
   return v_flex().id("agent-view").track_focus(view.handle).relative().size_full().p(24).gap(18).bg(t.background).text_size(12.5)
     .on_size_change((size, cx) => { if (view.width !== size.width) { view.width = size.width; cx.notify(); } })
-    .child(h_flex().items_center().gap(12)
+    .child(h_flex().items_center().gap(12).flex_wrap()
       .child(v_flex().flex_1().gap(5)
-        .child(div().text_size(24).font_semibold().text_color(t.foreground).child("Agent view"))
-        .child(div().text_size(12).text_color(t.muted).child("Every agent. Every project. Live activity in one place.")))
+        .child(div().text_size(24).font_semibold().text_color(t.foreground).child("Agents"))
+        .child(div().text_size(12).text_color(t.muted).child(inAgentMode() ? "Sessions and activity in this workspace" : "Every agent. Every project. Live activity in one place.")))
       .child(themeControls(view, t))
       .when(canGoBack, (el) => el.child(button("overview-back", "Back to work", () => run("pane.focus", { pane: back }), t)))
       .child(button("overview-refresh", view.readingOutside ? "Refreshing…" : "Refresh", (cx) => view.readOutside(cx), t, { disabled: view.readingOutside })))
@@ -197,5 +214,6 @@ export function renderAgentView(view) {
       .child(Scrollbar.vertical(`overview-list-${view.page}`).absolute().inset_0()))
     .child(footer(rows.length ? `${start + 1}–${start + visible.length} of ${rows.length} agents · Activity updates automatically` : "Activity updates automatically", t,
       ...(pages > 1 ? [button("overview-prev", "Previous", (cx) => { view.page--; cx.notify(); }, t, { disabled: view.page === 0 }),
-        button("overview-next", "Next", (cx) => { view.page++; cx.notify(); }, t, { disabled: view.page === pages - 1 })] : [])));
+        button("overview-next", "Next", (cx) => { view.page++; cx.notify(); }, t, { disabled: view.page === pages - 1 })] : [])))
+    .when(Boolean(visible.find((row) => row.id === view.villageSelected)), (el) => el.child(villageDetails(view, visible.find((row) => row.id === view.villageSelected), t, STATES, view.width || 1100, openRow)));
 }

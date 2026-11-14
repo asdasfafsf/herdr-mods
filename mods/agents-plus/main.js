@@ -20,6 +20,7 @@ import { resumeArgv, AGENTS, runs } from "./resume.js";
 import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
 import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag } from "./ui.js";
+import { renderViewSwitch } from "./agent-mode.js";
 import { RenderProfile } from "./render-profile.js";
 import { openAgentView, initAgentView, renderAgentView } from "./overview.js";
 
@@ -94,6 +95,7 @@ function icon(p, size, color) {
 
 export default class Agents extends View {
   init(_props, cx) {
+    if (props()?.mode === "view-switch") return;
     if (props()?.sortMenu) return;
     // Themes share the same overview state: default cards or a Chiikawa village.
     if (props()?.mode === "overview") return initAgentView(this, cx);
@@ -417,6 +419,7 @@ export default class Agents extends View {
   }
 
   render(cx) {
+    if (props()?.mode === "view-switch") return renderViewSwitch();
     if (props()?.sortMenu) return this.sortMenu(theme());
     if (props()?.mode === "overview") return renderAgentView(this);
     const profile = this.renderProfile ??= new RenderProfile();
@@ -730,9 +733,9 @@ export default class Agents extends View {
             .items_center()
             .justify_between()
             .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents"))
-            .child(div().id("ag-view").px(7).py(3).rounded(5).text_size(11).text_color(t.muted).cursor_pointer()
+            .child(h_flex().id("ag-view").gap(4).items_center().px(7).py(3).rounded(5).text_size(11).text_color(t.muted).cursor_pointer()
               .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("All agents across every project")
-              .on_click(() => openAgentView(this.outside)).child("View all"))
+              .on_click(() => openAgentView(this.outside)).child(svg("mods/workspace-chrome/layers.svg").size(12)).child("Agent view"))
             .child(
               div()
                 .id("ag-sort")
