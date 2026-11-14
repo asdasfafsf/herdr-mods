@@ -15,13 +15,16 @@
 // with the same background and border so the two read as one bar.
 
 import { View, div, image, svg } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, Accordion, AccordionItem, AccordionHeader, AccordionTrigger, AccordionPanel } from "gpui-base";
 import { exec, appHome, theme, props, openOverlay, closeOverlay } from "herdr";
 import { agoText, button } from "./ui.js";
 
 const EVERY = 30000;
 const AGENTS = [["claude", "Claude", "icons/claude.svg"], ["codex", "Codex", "icons/codex.svg"]];
 const P = () => props() ?? {};
+const resetCount = (summary) => Number.isInteger(summary?.availableCount) && summary.availableCount >= 0 ? summary.availableCount : null;
+const resetCountLabel = (count) => count === null ? "Unavailable" : `${count} available`;
+const resetCreditTip = (summary) => `Reset credits: ${resetCountLabel(resetCount(summary))}${resetCount(summary) !== null && Number.isFinite(summary?.updated) ? ` (as of ${agoText(summary.updated)})` : ""}`;
 
 const when = (s) => {
   if (!s) return "";
@@ -54,6 +57,8 @@ const until = (s) => {
 export default class UsageBar extends View {
   init(_props, cx) {
     this.usage = P().usage ?? null; // the detail popup starts with what the bar read
+    this.resetCreditsExpanded = false; // local to this popup; reopening starts with the count
+    if (P().mode === "detail") this.resetCreditsFocus = cx.focus_handle();
     // ...and reads on as the bar does, so one left open doesn't show numbers from when it opened.
     this.read(cx);
     cx.timer.every(EVERY, (cx) => this.read(cx));
@@ -100,7 +105,7 @@ export default class UsageBar extends View {
 
   tip(name, u) {
     const lines = u.windows.map((w) => `${w.name}: ${passed(w) ? "reset since" : `${Math.round(w.used)}% used`}${w.resets ? `, ${passed(w) ? `reset at ${when(w.resets)}` : `resets in ${until(w.resets)} (${at(w.resets)})`}` : ""}`);
-    if (u.resetCredits) lines.push(`Reset credits: ${u.resetCredits.availableCount} available (as of ${agoText(u.resetCredits.updated)})`);
+    if (name === "Codex") lines.push(resetCreditTip(u.resetCredits));
     return `${name}${u.plan ? ` (${u.plan})` : ""}\n${lines.join("\n")}\nas of ${agoText(u.updated)}`;
   }
 
@@ -120,10 +125,9 @@ export default class UsageBar extends View {
           .child(div().text_color(t.foreground).child(until(w.resets)))));
     };
     // One agent's part of the pill (see pill): its icon, then its windows; its own hover.
-    return h_flex().id(`usage-${key}`).gap(9).items_center().tooltip(this.tip(name, u))
+    return h_flex().id(`usage-${key}`).flex_none().gap(9).items_center().tooltip(this.tip(name, u))
       .child(image(icon).size(12).flex_none())
       .children(u.windows.flatMap((w, i) => [...(i ? [div().text_color(t.dim).child("·")] : []), win(w)]))
-      .when(Boolean(u.resetCredits) && !narrow, (el) => el.child(div().flex_none().text_color(t.accent).child(`↺ ${u.resetCredits.availableCount}`)))
       .when(old, (el) => el.opacity(0.55));
   }
 
@@ -136,12 +140,21 @@ export default class UsageBar extends View {
     // windows already overflow a 720px block with full countdown labels. On narrower
     // blocks keep names and percentages; reset times remain on hover and in detail.
     const count = parts.reduce((n, [k]) => n + u[k].windows.length, 0);
-    const width = (this.width ?? 720) - (u.codex?.resetCredits ? 45 : 0);
+    const width = (this.width ?? 720) - (u.codex ? 45 : 0);
     const compact = width < 120 + count * 180;
     const narrow = width < 120 + count * 125;
-    return h_flex().id("usage-pill").flex_none().h(20).px(9).rounded(6).bg(t.hover).hover((s) => s.bg(t.selected)).gap(10).items_center().cursor_pointer()
-      .on_click(() => openOverlay({ mod: "usage-bar", kind: "popup", width: 380, height: Math.min(680, 130 + parts.length * 44 + count * 62 + (u.codex ? 150 + (u.codex.resetCredits?.credits?.length ?? 0) * 88 : 0)), props: { mode: "detail", usage: this.usage } }))
-      .children(parts.flatMap(([k, name, icon], i) => [...(i ? [div().w(1).h(12).flex_none().bg(t.border)] : []), this.item(k, name, icon, u[k], t, compact, narrow)]));
+    // Bound the pill so Refresh stays visible. Limits can scroll horizontally;
+    // the reset count stays pinned at the trailing edge, even in a narrow block.
+    return h_flex().id("usage-pill").min_w(0).max_w(Math.max(100, (this.width ?? 720) - 116)).h(20).px(9).rounded(6).bg(t.hover).hover((s) => s.bg(t.selected)).gap(10).items_center().cursor_pointer()
+      // Size for the collapsed summary, never for a potentially long credit list.
+      .on_click(() => openOverlay({ mod: "usage-bar", kind: "popup", width: 380, height: Math.min(680, 130 + parts.length * 44 + count * 62 + (u.codex ? 62 : 0)), props: { mode: "detail", usage: this.usage } }))
+      .child(h_flex().id("usage-limits").min_w(0).overflow_x_scroll().gap(10).items_center()
+        .tooltip("Scroll horizontally for more limits; click for details")
+        .children(parts.flatMap(([k, name, icon], i) => [...(i ? [div().w(1).h(12).flex_none().bg(t.border)] : []), this.item(k, name, icon, u[k], t, compact, narrow)])))
+      .when(Boolean(u.codex), (el) => el.child(div().id("usage-reset-count").flex_none().pl(8).border_l(1).border_color(t.border)
+        .text_color(resetCount(u.codex.resetCredits) > 0 ? t.accent : t.muted)
+        .tooltip(`Codex · ${resetCreditTip(u.codex.resetCredits)}`)
+        .child(`↺ ${resetCount(u.codex.resetCredits) ?? "—"}`)));
   }
 
   renderDetail(t) {
@@ -156,11 +169,11 @@ export default class UsageBar extends View {
         .when(Boolean(w.resets), (el) => el.child(div().text_size(10.5).text_color(t.dim).child(passed(w) ? `reset at ${when(w.resets)}` : `resets in ${until(w.resets)} · ${at(w.resets)}`)));
     };
     return v_flex().id("usage-detail").size_full().p(14).gap(14).bg(t.popover).text_size(12.5)
-      .child(h_flex().items_center().gap(8)
+      .child(h_flex().flex_none().items_center().gap(8)
         .child(div().flex_1().font_semibold().text_color(t.foreground).child("Usage & limits"))
         .child(button("usage-close", "Close", () => closeOverlay(P().overlay), t, { disabled: this.resetting })))
       .child(v_flex().id("usage-detail-scroll").flex_1().min_h(0).overflow_y_scroll().gap(14)
-      .children(AGENTS.filter(([k]) => u[k]).map(([k, name, icon]) => v_flex().gap(8)
+      .children(AGENTS.filter(([k]) => u[k]).map(([k, name, icon]) => v_flex().flex_none().min_w(0).gap(8)
         .child(h_flex().gap(7).items_center()
           .child(image(icon).size(14).flex_none())
           .child(div().flex_1().font_semibold().text_color(t.foreground).child(`${name}${u[k].plan ? ` · ${u[k].plan}` : ""}`))
@@ -172,29 +185,64 @@ export default class UsageBar extends View {
       .when(!AGENTS.some(([k]) => u[k]), (el) => el.child(div().text_color(t.dim).child("No usage seen yet: it shows once Claude Code or Codex has run."))))
       .when(Boolean(this.resetNotice), (el) => el.child(div().whitespace_normal().text_size(11).text_color(this.resetFailed ? t.working : t.accent).child(this.resetNotice)))
       .when(Boolean(this.resetLogPath), (el) => el.child(div().truncate().tooltip(this.resetLogPath).text_size(10.5).text_color(t.dim).child(`Reset log: ${this.resetLogPath}`)))
-      .when(Boolean(this.resetChoice), (el) => el.child(v_flex().p(10).gap(8).rounded(6).bg(t.hover)
+      .when(this.resetCreditsExpanded && Boolean(this.resetChoice), (el) => el.child(v_flex().p(10).gap(8).rounded(6).bg(t.hover)
         .child(div().whitespace_normal().text_size(12).text_color(t.foreground).child(`Use “${this.resetChoice.title || "Reset credit"}” to reset Codex limits?`))
         .child(h_flex().gap(6).justify_end()
           .child(button("reset-cancel", "Cancel", (cx) => { this.resetChoice = null; cx.notify(); }, t, { disabled: this.resetting }))
           .child(button("reset-confirm", this.resetting ? "Resetting…" : "Use reset credit", (cx) => this.useResetCredit(cx), t, { kind: "primary", disabled: this.resetting || this.reading })))))
-      .child(h_flex().justify_end().child(this.refreshButton(t)));
+      .child(h_flex().flex_none().justify_end().child(this.refreshButton(t)));
   }
 
   renderResetCredits(summary, t) {
+    const expanded = Boolean(this.resetCreditsExpanded);
+    const count = resetCount(summary);
+    const action = expanded ? "Hide details" : "Show details";
+    // The native trigger carries expanded semantics but its materializer does
+    // not bind focus/key handlers or state styles. Put those on a plain child.
+    const control = h_flex().id("reset-credits-control").w_full().h(44).px(10).items_center().gap(8).rounded(8)
+      .bg(t.hover).border(1).border_color(t.border).cursor_pointer()
+      .hover((s) => s.bg(t.selected)).focus((s) => s.border_color(t.accent))
+      .when(Boolean(this.resetCreditsFocus), (el) => el.track_focus(this.resetCreditsFocus).tab_stop(true))
+      .role("group").accessibility_label(`Reset credits: ${resetCountLabel(count)}. ${expanded ? "Expanded" : "Collapsed"}. ${action}`)
+      .on_key_down((event, cx) => {
+        if (!["enter", "space", " "].includes(event.key) || Object.values(event.modifiers ?? {}).some(Boolean)) return;
+        cx.stop_propagation();
+        if (!event.is_held) this.setResetCreditsExpanded(!this.resetCreditsExpanded, cx);
+      })
+      .child(div().flex_1().font_semibold().text_color(t.foreground).child("Reset credits"))
+      .child(div().flex_none().px(6).py(2).rounded(5).bg(t.popover).text_size(11)
+        .font_medium().text_color(count > 0 ? t.accent : t.muted).child(resetCountLabel(count)))
+      .child(div().flex_none().text_size(10.5).text_color(t.muted).child(action))
+      .child(div().flex_none().text_color(t.muted).child(expanded ? "▾" : "▸"));
+    return Accordion.new("reset-credits").w_full().flex_none().mt(4)
+      .child(AccordionItem.new().open(expanded).disabled(Boolean(this.resetting)).flex().flex_col().gap(8)
+        .header(AccordionHeader.new(AccordionTrigger.new("reset-credits-toggle")
+          .w_full().on_change((open, cx) => {
+            this.resetCreditsFocus?.focus();
+            this.setResetCreditsExpanded(open, cx);
+          }).child(control)).id("reset-credits-heading"))
+        // Do not even describe credit details or their controls while collapsed.
+        .panel(AccordionPanel.new().id("reset-credits-region").when(expanded, (el) => el.child(this.renderResetCreditDetails(count === null ? null : summary, t)))));
+  }
+
+  setResetCreditsExpanded(open, cx) {
+    if (this.resetting || Boolean(this.resetCreditsExpanded) === open) return;
+    this.resetCreditsExpanded = open;
+    cx.notify();
+  }
+
+  renderResetCreditDetails(summary, t) {
     const credits = summary?.credits;
     const date = (s) => s ? new Date(s * 1000).toLocaleString() : "Unknown";
-    return v_flex().id("reset-credits").mt(4).pt(12).border_t(1).border_color(t.border).gap(8)
-      .child(h_flex().items_center().gap(8)
-        .child(div().flex_1().font_semibold().text_color(t.foreground).child("Reset credits"))
-        .child(div().text_color(summary ? t.accent : t.dim).child(summary ? `${summary.availableCount} available` : "Unavailable")))
+    return v_flex().id("reset-credits-details").flex_none().gap(8).pb(2)
       .when(Boolean(summary), (el) => el.child(div().text_size(10.5).text_color(t.dim).child(`As of ${agoText(summary.updated)}`)))
       .when(!summary, (el) => el.child(div().text_size(11).text_color(t.muted).child("Reset credit information isn't available. Try Refresh.")))
       .when(summary?.availableCount === 0, (el) => el.child(div().text_size(11).text_color(t.muted).child("No reset credits available.")))
-      .children((credits ?? []).map((credit, i) => v_flex().id(`reset-credit-${credit.id}`).p(10).gap(5).rounded(6).bg(t.hover)
-        .child(h_flex().gap(8).items_center()
-          .child(div().flex_1().min_w(0).truncate().font_medium().text_color(t.foreground).tooltip(credit.title || "Reset credit").child(credit.title || `Reset credit ${i + 1}`))
-          .child(div().flex_none().text_size(10.5).text_color(t.muted).child(({ available: "Available", redeeming: "Redeeming", redeemed: "Redeemed" })[credit.status] || "Unknown")))
-        .when(Boolean(credit.description), (el) => el.child(div().truncate().tooltip(credit.description).text_size(11).text_color(t.muted).child(credit.description)))
+      .children((credits ?? []).map((credit, i) => v_flex().id(`reset-credit-${credit.id}`).flex_none().p(12).gap(7).rounded(8).bg(t.popover).border(1).border_color(t.border)
+        .child(h_flex().gap(8).items_start()
+          .child(div().flex_1().min_w(0).whitespace_normal().font_medium().text_color(t.foreground).child(credit.title || `Reset credit ${i + 1}`))
+          .child(div().flex_none().px(6).py(2).rounded(5).bg(t.hover).text_size(10.5).text_color(t.muted).child(({ available: "Available", redeeming: "Redeeming", redeemed: "Redeemed" })[credit.status] || "Unknown")))
+        .when(Boolean(credit.description), (el) => el.child(div().whitespace_normal().text_size(11).text_color(t.muted).child(credit.description)))
         .child(div().text_size(10.5).text_color(t.dim).child(`Granted ${date(credit.grantedAt)}`))
         .child(div().text_size(11).text_color(credit.expiresAt && credit.expiresAt * 1000 <= Date.now() ? t.working : t.muted)
           .child(credit.expiresAt ? `${credit.expiresAt * 1000 <= Date.now() ? "Expired" : "Expires"} ${date(credit.expiresAt)}` : "No expiration"))
