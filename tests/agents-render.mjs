@@ -65,7 +65,7 @@ async function environment(data, revision) {
     agents: () => cloneRead('agents', data.agents), terminals: () => cloneRead('terminals', data.terminals), panes: () => cloneRead('panes', data.panes), spaces: () => cloneRead('spaces', data.spaces),
     shared: key => cloneRead(`shared:${key}`, data.state[key]), setShared: (key, value) => { data.state[key] = structuredClone(value); writes.push([key,value]); },
     setAgentOrder: value => writes.push(['setAgentOrder',value]),
-    focused: () => ({agent:'t0',tab:'b0'}), layout: () => ({id:'sidebar',size:{px:data.collapsed ? 76 : 268}}), props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
+    focused: () => data.focused ?? ({agent:'t0',tab:'b0'}), layout: () => ({id:'sidebar',size:{px:data.collapsed ? 76 : 268}}), props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
     run: (...args) => writes.push(['run',args]), openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => '',
   };
   const store = new Map();
@@ -249,6 +249,13 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(env.instance.themeClock,600,'a hidden overview stops playback');
   env.render();data.elapsed=1050;env.timers.get(50)();
   assert.equal(env.instance.themeClock,650,'playback resumes when the overview is rendered again');
+  data.panes.push({pane:'village',mod:'agents-plus',tab:'village-tab'});
+  data.focused={pane:'village',tab:'village-tab'};
+  data.elapsed+=4000;env.timers.get(50)();
+  assert.equal(env.instance.themeClock,810,'a slow render does not freeze the visible village');
+  data.focused={pane:'p0',tab:'b0'};
+  data.elapsed+=50;env.timers.get(50)();
+  assert.equal(env.instance.themeClock,810,'a different active tab suspends the village');
   env.render();env.click('overview-theme-default');
   assert.equal(env.instance.skin,'default');
   assert.deepEqual(ids(JSON.stringify(env.render())),ids(before));

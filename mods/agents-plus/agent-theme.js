@@ -1,7 +1,7 @@
 // Both themes share the overview's sessions, filters, pagination and actions.
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { props } from "herdr";
+import { props, panes, focused } from "herdr";
 import { SPRITES } from "./theme-assets.js";
 
 const ART = "mods/agents-plus/assets/chiikawa";
@@ -12,12 +12,16 @@ export function initAgentTheme(view, cx) {
   view.skin = SKINS.some(([key]) => key === saved) ? saved : "default";
   view.themeClock = 0;
   view.motionPaused = localStorage.getItem("overview.motionPaused") === "true";
+  view.overviewTab = panes().find((pane) => pane.mod === "agents-plus")?.tab;
   let previous = Date.now();
   cx.timer.every(50, (cx) => {
     const now = Date.now(), elapsed = Math.min(160, now - previous);
     previous = now;
-    if (view.skin !== "chiikawa" || view.motionPaused
-      || now - (view.lastThemeRender ?? 0) > 300) return;
+    if (view.skin !== "chiikawa" || view.motionPaused) return;
+    // A slow render is not a hidden pane. In particular, typing or another
+    // busy mod may leave a gap longer than 300ms while this tab is still shown.
+    view.overviewTab ??= panes().find((pane) => pane.mod === "agents-plus")?.tab;
+    if (view.overviewTab ? focused()?.tab !== view.overviewTab : now - (view.lastThemeRender ?? 0) > 300) return;
     view.themeClock += elapsed;
     cx.notify();
   });

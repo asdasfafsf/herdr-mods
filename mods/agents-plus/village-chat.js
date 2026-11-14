@@ -80,13 +80,15 @@ export function renderVillageChat(view, row, t) {
   const blocked = row.status === "blocked";
   const disabled = chat.sending || blocked || !chat.input.value().trim() || chat.input.value().length > LIMIT;
   const note = chat.error || (chat.sending ? "전달 중이에요. 터미널에서 작성 중이면 기다려요." : blocked ? BLOCKED : chat.receipt);
-  return v_flex().id("village-chat").gap(7).pt(3)
-    .child(Textarea.new(chat.input).id(`village-message-${row.id}`).h(72).p(10).rounded(8).border(1)
-      .border_color(t.border).bg(t.background).text_size(12).text_color(t.foreground)
-      .accessibility_label(`${row.agent}에게 보낼 메시지`))
+  return v_flex().id("village-chat").flex_none().gap(7).pt(3)
+    // Padding belongs to a separate frame: the native editor needs its full
+    // three-line height for text, selection and the IME composition underline.
+    .child(div().flex_none().p(10).rounded(8).border(1).border_color(t.border).bg(t.background)
+      .child(Textarea.new(chat.input).id(`village-message-${row.id}`).w_full().h(72).min_h(72).flex_none()
+        .text_size(12).line_height(1.5).text_color(t.foreground).accessibility_label(`${row.agent}에게 보낼 메시지`)))
     .when(Boolean(note), (el) => el.child(div().id("village-chat-feedback").text_size(11).line_height(1.4)
       .text_color(chat.error ? t.blocked : t.muted).whitespace_normal().child(note)))
-    .child(h_flex().items_center().gap(8)
+    .child(h_flex().flex_none().items_center().gap(8)
       .child(div().flex_1().text_size(10).text_color(t.muted).child("⌘ Enter로 보내기"))
       .child(button("village-send", chat.sending ? "전달 중…" : "보내기", (cx) => sendVillageMessage(chat, cx), t, { kind: "primary", disabled })));
 }

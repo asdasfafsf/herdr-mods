@@ -153,11 +153,12 @@ function scenery(layout) {
 function details(view, row, t, states, width, openRow) {
   const panelWidth = Math.min(500, width - 32);
   const note = row.activity || (row.status === "working" ? "작업을 진행하고 있어요" : row.status === "blocked" ? "입력을 기다리고 있어요" : row.status === "done" ? "작업을 마쳤어요" : "다음 작업을 기다리고 있어요");
-  return v_flex().id("village-details").absolute().left((width - panelWidth) / 2).bottom(20).w(panelWidth).p(16).gap(9)
+  return v_flex().id("village-details").absolute().left((width - panelWidth) / 2).bottom(20).w(panelWidth)
     .max_h(Math.max(160, (view.villageHeight || 660) - 32)).overflow_y_scroll()
     .rounded(12).border(1).border_color(t.border).bg(t.raised).shadow_lg()
     .on_click((_e, cx) => cx.stop_propagation())
-    .child(h_flex().gap(8).items_center()
+    .child(v_flex().flex_none().min_w(0).p(16).gap(9)
+    .child(h_flex().flex_none().gap(8).items_center()
       .child(statusMark(t, row.status))
       .child(div().text_size(11).text_color(statusColor(t, row.status)).child(STATUS[row.status] || "상태 확인 중"))
       .child(div().flex_1().truncate().text_size(11).text_color(t.muted).child(`${row.agent} · ${row.project}`))
@@ -169,7 +170,7 @@ function details(view, row, t, states, width, openRow) {
         .tooltip([row.cwd, row.context, row.address].filter(Boolean).join("\n"))
         .child(`${row.branch || row.sourceLabel} · ${row.address || "외부 세션"}`))
       .child(button("village-open-session", "세션 열기", () => openRow(view, row), t)))
-    .child(renderVillageChat(view, row, t));
+    .child(renderVillageChat(view, row, t)));
 }
 
 export function renderVillage(view, state) {
