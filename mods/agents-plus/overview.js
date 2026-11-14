@@ -12,7 +12,7 @@ import { renderVillage, villageDetails, dragViewport } from "./village.js";
 import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, AGENT_SELECTION } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
 import { initSessionControls } from "./session-controls.js";
-import { hasTerminalDock, openTerminalDock, COMPOSER } from "./terminal-dock.js";
+import { hasTerminalDock, openTerminalDock, showComposer, COMPOSER } from "./terminal-dock.js";
 
 const STATES = STATUS_FILTERS;
 const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"]];
@@ -42,7 +42,6 @@ export function initAgentView(view, cx) {
   view.input = InputState.new({ placeholder: "Search agents, tasks, projects or branches…" });
   view.input.on("change", (_e, cx) => { view.page = 0; cx.notify(); });
   view.handle = cx.focus_handle();
-  view.input.focus();
   initAgentTheme(view, cx);
   if (!inAgentMode() || !hasTerminalDock()) initSessionControls(view, cx);
   if (inAgentMode()) {
@@ -52,13 +51,20 @@ export function initAgentView(view, cx) {
       if (!agentViewVisible()) return;
       const address = focused()?.terminal;
       const composer = shared(COMPOSER);
-      if (composer?.sequence !== view.composerSequence && composer?.address === address) {
-        view.composerSequence = composer.sequence;
-        view.composerOpen = true;
-        view.detailCollapsed = false;
-        cx.notify();
-      }
       const requested = shared(AGENT_SELECTION);
+      if (composer?.sequence !== view.composerSequence && composer?.address === address) {
+        const row = view.overviewRows?.find((row) => row.address === address);
+        if (row) {
+          view.composerSequence = composer.sequence;
+          view.selectionSequence = requested?.sequence;
+          view.focusedResident = address;
+          view.composerOpen = true;
+          view.detailCollapsed = false;
+          revealResident(view, row, cx);
+          view.villageChats?.get(row.id)?.input.focus();
+          return;
+        }
+      }
       if (requested && requested.sequence !== view.selectionSequence) {
         if (Date.now() - requested.at > 5000) view.selectionSequence = requested.sequence;
         // Wait for the host focus and activity snapshot to catch up to a click.
@@ -208,7 +214,12 @@ function agentCard(view, row, t, focusedAddress) {
       .when(Boolean(marker), (el) => el.child(div().id(`overview-selected-${row.id}`).flex_none()
         .text_size(10).font_semibold().text_color(t.accent).child(marker)))
       .child(div().flex_1().min_w(0))
-      .child(button(`overview-details-${row.id}`, "View details", (cx) => { view.composerOpen = true; selectVillageResident(view, row, cx); }, t).h(28).px(8).text_size(11))
+      .child(button(`overview-details-${row.id}`, "View details", (cx) => {
+        view.composerOpen = true; view.detailCollapsed = false;
+        selectVillageResident(view, row, cx);
+        if (inAgentMode() && hasTerminalDock() && !row.external) showComposer(row.address);
+        else view.villageChats?.get(row.id)?.input.focus();
+      }, t).h(28).px(8).text_size(11))
       .child(button(`overview-open-${row.id}`, row.external ? "Open in Herdr" : "Open terminal", () => openRow(view, row), t)
         .h(28).px(8).text_size(11).border(1).border_color(t.border).bg(t.background).text_color(t.foreground)));
 }

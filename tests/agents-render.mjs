@@ -97,7 +97,7 @@ async function environment(data, revision) {
   const synthetic = (id, exports) => new vm.SyntheticModule(Object.keys(exports), function() { for(const [k,v] of Object.entries(exports)) this.setExport(k,v); }, {context,identifier:id});
   modules.set('herdr',synthetic('herdr',host));
   modules.set('gpui-kit',synthetic('gpui-kit',{View:class {},div:()=>builder('div'),image:s=>builder('image',s),svg:s=>builder('svg',s)}));
-  const textState={new:({value=''}={})=>({text:value,events:{},value(){return this.text},set_value(value){this.text=value},on(event,fn){this.events[event]=fn},focus(){},emit(event,payload={}){this.events[event]?.(payload,cx)}})};
+  const textState={new:({value=''}={})=>({text:value,events:{},focusCount:0,value(){return this.text},set_value(value){this.text=value},on(event,fn){this.events[event]=fn},focus(){this.focusCount++},emit(event,payload={}){this.events[event]?.(payload,cx)}})};
   modules.set('gpui-base',synthetic('gpui-base',{h_flex:()=>builder('h_flex'),v_flex:()=>builder('v_flex'),
     InputState:textState,TextareaState:textState,
     Input:{new:()=>builder('input')},Textarea:{new:()=>builder('textarea')},Scrollbar:{vertical:id=>builder('scrollbar',id)}}));
@@ -503,6 +503,7 @@ console.log('agent ordering: sidebar pins, Active, external sessions, grouped so
   const env=await environment(data,null);env.render();
   env.timers.get(250)();
   assert.ok(!env.instance.composerOpen,'reloading the mod does not replay an old Compose request');
+  assert.equal(env.instance.input.focusCount,0,'a hidden search field never takes terminal input focus');
   assert.ok(env.dock.hasTerminalDock());assert.equal(env.dock.terminalDockOpen(),false);
   env.click('overview-open-t0');
   assert.equal(findNode(data.layout,'workspace-views').active,'agent-world','opening terminal stays in Agent mode');
@@ -524,6 +525,11 @@ console.log('agent ordering: sidebar pins, Active, external sessions, grouped so
   assert.ok(!env.writes.some(([kind,args])=>kind==='run' && ['layout.set','tab.new','terminal.open'].includes(args[0])));
   env.dock.showComposer('t0');env.timers.get(250)();env.render();
   assert.equal(env.instance.composerOpen,true);
+  assert.equal(env.instance.villageChats.get('t0').input.focusCount,1,'Compose focuses the editor after native session selection');
+  const focusedWrites=env.writes.length;env.timers.get(250)();
+  assert.equal(env.writes.length,focusedWrites,'the following selection tick does not return focus to the terminal');
+  env.click('village-filters');
+  assert.equal(env.instance.input.focusCount,1,'search takes focus only when explicitly opened');
 }
 console.log('native terminal dock: shared session, collapse, resize memory, shortcuts, clipboard routing and composer passed');
 

@@ -11,7 +11,7 @@ export function overviewHeader(view, { t, rows, scope, states, sources }) {
       .child(div().text_size(16).font_semibold().text_color(t.foreground).child("Agents"))
       .child(div().flex_1().text_size(11).text_color(t.muted).child(`${rows.length} sessions`))
       .child(themeControls(view, t))
-      .child(button("village-filters", filtering ? "Filters applied" : "Search & filters", (cx) => { view.villageFilters = !view.villageFilters; cx.notify(); }, t))
+      .child(button("village-filters", filtering ? "Filters applied" : "Search & filters", (cx) => { view.villageFilters = !view.villageFilters; if (view.villageFilters) view.input.focus(); cx.notify(); }, t))
       .child(button("overview-refresh", view.readingOutside ? "Refreshing…" : "Refresh", (cx) => view.readOutside(cx), t, { disabled: view.readingOutside })))
     .when(view.villageFilters, (el) => el.child(v_flex().id("village-filter-panel").gap(10)
       .child(Input.new(view.input).h(34).px(10).items_center().rounded(7).border(1).border_color(t.border).bg(t.raised).text_color(t.foreground))
