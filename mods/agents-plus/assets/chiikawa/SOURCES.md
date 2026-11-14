@@ -15,9 +15,21 @@ The six animations are public previews from Doga Kobo (動画工房), Anime Chii
 
 `originals/` retains the source APNGs and locally converted GIFs. The numbered PNG frames are decoded from APNG to preserve smooth, partially transparent edges. Each animation uses one fixed crop covering the union of all frames, with three pixels of padding. Original frame durations and crop coordinates are recorded in `manifest.json` and `../../theme-assets.js`. No runtime network request is made.
 
-Free-roaming residents use the single-character dancing Chiikawa, hopping Usagi and bouncing Hachiware animations. Each session keeps its character as its status changes. The other downloaded sticker sets are retained as available resources. The native renderer replays the PNG frames and offers a motion toggle.
+Free-roaming residents use Chiikawa, Usagi, Hachiware, Rakko, Momonga and Kurimanju animations. Each session keeps its character as its status changes. The other downloaded sticker sets are retained as available resources. The native renderer replays the PNG frames and offers a motion toggle.
 
-## Village scenery
+## Additional residents
+
+Retrieved 2026-11-14. Original pixels, transparency, lettering and frame timings are retained. No runtime downloads. These assets are not covered by the repository's code license.
+
+| Resident | Source | Original | Frames |
+| --- | --- | --- | --- |
+| Rakko / 랏코 | [Doga Kobo LINE vol.2](https://store.line.me/stickershop/product/32855985/ja) | [APNG 816451482](https://stickershop.line-scdn.net/stickershop/v1/sticker/816451482/iPhone/sticker_animation@2x.png?v=1) | 370×300, 16×62.5ms |
+| Momonga / 모몽가 | [Tenor, spritewhisper](https://tenor.com/en-GB/view/momonga-chiikawa-taunt-taunting-tail-wag-gif-10849976929610000049) | [GIF](https://media.tenor.com/lpLciCaWZrEAAAAj/momonga-chiikawa.gif) | 200×151, 22×50ms |
+| Kurimanju / 쿠리만쥬 | [Doga Kobo LINE vol.1](https://store.line.me/stickershop/product/32367501/ja) | [APNG 805188758](https://stickershop.line-scdn.net/stickershop/v1/sticker/805188758/iPhone/sticker_animation@2x.png?v=1) | 370×300, 16×62.5ms |
+
+The official previews are ©nagano / chiikawa committee; no open reuse license was found. Momonga is a community upload with an unverified official origin/reuse license. Character assignment depends only on session identity, so status and sorting changes do not replace residents.
+
+## Village scenery sources
 
 Retrieved 2026-11-14 from the public official websites. The source images belong to their respective rights holders; no open reuse license was found. They are not covered by this repository's code license.
 

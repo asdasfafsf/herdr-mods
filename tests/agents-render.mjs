@@ -236,7 +236,10 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(env.instance.page,page,'changing a theme keeps the current page');
   assert.deepEqual(ids(themed),ids(before),'themes show the same agents in the same order');
   assert.ok(themed.includes('chiikawa-village'),'the Chiikawa theme displays the village');
-  assert.match(themed,/chiikawa\/(done|idle|hachiware)\/\d{3}\.png/);
+  assert.match(themed,/chiikawa\/(done|idle|hachiware|rakko|momonga|kurimanju)\/\d{3}\.png/);
+  const residents=new Set(Array.from({length:12},(_,i)=>env.agentTheme.agentSprite(env.instance,{id:`t${i}`,status:'idle'},true).name));
+  for(const name of env.agentTheme.RESIDENTS) assert.ok(residents.has(name),`resident ${name} is reachable`);
+  for(const status of ['working','blocked','done','seen','idle']) assert.equal(env.agentTheme.agentSprite(env.instance,{id:'t0',status},true).name,env.agentTheme.agentSprite(env.instance,{id:'t0',status:'idle'},true).name,'identity remains stable across status changes');
   assert.ok(!themed.includes('village-details') && !themed.includes('village-filter-panel'),'the initial village has no persistent panels');
   const reads=env.calls.agents;env.instance.themeClock=500;env.render();
   assert.equal(env.calls.agents,reads,'animation reuses host snapshots');

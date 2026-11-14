@@ -6,6 +6,7 @@ import { SPRITES } from "./theme-assets.js";
 
 const ART = "mods/agents-plus/assets/chiikawa";
 const SKINS = [["default", "기본 테마"], ["chiikawa", "치이카와 마을"]];
+export const RESIDENTS = ["done", "hachiware", "idle", "rakko", "momonga", "kurimanju"];
 
 export function initAgentTheme(view, cx) {
   const saved = props()?.skin || localStorage.getItem("overview.theme");
@@ -64,7 +65,7 @@ export function spriteFrame(name, clock) {
 
 export function agentSprite(view, row, roaming = false) {
   const clock = (view.themeClock ?? 0) + seed(row.id) % 12000;
-  const name = roaming ? ["done", "hachiware", "idle"][seed(row.id) % 3] : row.status === "working" ? (clock % 12000 < 4000 ? "walk" : "study")
+  const name = roaming ? RESIDENTS[seed(row.id) % RESIDENTS.length] : row.status === "working" ? (clock % 12000 < 4000 ? "walk" : "study")
     : row.status === "blocked" ? "blocked" : row.status === "done" ? "done"
     : row.status === "seen" ? ["music", "idle", "done"][seed(row.id) % 3] : "idle";
   return { ...SPRITES[name], name, clock, path: spriteFrame(name, clock) };
