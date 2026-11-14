@@ -71,9 +71,11 @@ Light → herdr chiikawa**를 선택한다. 이 번들은 레이아웃·키·모
 **Settings → Look**의 앱 팔레트와 독립적이므로 다크 앱에서도 치이카와 마을을
 사용할 수 있다. 색상과 팩을 모두 설치하려면 `./install.sh agents chiikawa`를 쓴다.
 **Cards / Village**는 같은 헤더에 있으며 기존 터미널과 드래그 split·단일 포커스를
-공유한다. 팩 선택은 `ag.resourcePack`에 저장하고 기존 테마 기반 선택은 최초
-한 번만 가져온다. 새 캐릭터/장면 팩은 [메타데이터 계약](mods/agents-plus/themes/TEMPLATE.md)에
+공유한다. 명시적 팩 선택은 `ag.resourcePack`에 저장한다. 업그레이드는
+기존 독립 overview 선택을 초기 앱 테마 fallback보다 우선하며, 새 명시적 선택을 덮어쓰지 않는다. 새 캐릭터/장면 팩은 [메타데이터 계약](mods/agents-plus/themes/TEMPLATE.md)에
 따라 추가하며 공통 상태·말풍선·이동·선택·드래그·터미널 동작을 복사하지 않는다.
+현재 설치 절차와 외부 팩 가져오기·커스텀 보존·업데이트의 후속 설계는
+[Agent workspace 설치와 커스텀 팩](docs/agent-workspace-packs.md)에 구분해 정리했다.
 기존 `herdr-chiikawa` 테마 ID와 선택 상태는 유지된다. Light와 Dark의 테마는
 각각 보존하며, 과거 Agent 테마 선택이 두 모드를 치이카와로 고정한 경우 저장된
 다크 테마(없으면 graphite)를 한 번 복구한다. Appearance 전환은 즉시 반영된다.

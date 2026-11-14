@@ -14,8 +14,9 @@ that header, above the original terminal split. For example, a dark app can show
 Chiikawa Village, and any app palette can use a future Shin-chan pack.
 
 The `agents` bundle includes Plain and Chiikawa packs without requiring the
-`chiikawa` palette bundle. Pack selection persists in `ag.resourcePack`; only its
-first initialization imports the previous theme-derived choice. Selecting Plain
+`chiikawa` palette bundle. Explicit Pack selection persists in `ag.resourcePack`.
+Automatic migration keeps a legacy standalone overview preference above the
+initial native fallback and never overwrites an explicit saved selection. Selecting Plain
 removes character artwork without changing Settings, terminal contrast, focus or
 split proportions. Native palette changes alone control reversible contrast.
 

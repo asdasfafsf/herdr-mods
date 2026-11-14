@@ -60,8 +60,10 @@ native rendering. Its second-pack fixture deliberately provides data only:
 it must reuse speech, movement, focus and input with no Chiikawa paths.
 
 `ag.resourcePack` persists the selection independently of `ag.presentation` and
-native Settings. The first load migrates the old effective theme choice (or the
-legacy standalone overview choice) once. Later Light/Dark or palette changes do
+native Settings. Automatic migration is stored separately in
+`ag.resourcePackMigration`: a valid legacy standalone overview preference wins
+over the initial native fallback regardless of toolbar mount order. An explicit
+Pack selection always wins over either migration source. Later palette changes do
 not select packs. An unavailable saved pack renders Plain without erasing its
 ID. Plain and packs without scenes render Cards without erasing the user's
 Cards/Village preference. Pack changes preserve session focus, drafts, filters,
@@ -69,3 +71,9 @@ pagination and resident positions; the shared engine releases any active drag.
 
 To add an unrelated app palette, follow [the palette guide](README.md). It does
 not require a resource pack, and a resource pack does not require a palette.
+
+This is the repository contributor workflow. Do not customize an installed
+`mods/agents-plus` folder: the installer replaces its files on updates. A separate
+user pack importer and storage are proposed in the
+[installation and customization design](../../../docs/agent-workspace-packs.md);
+they are not implemented yet.
