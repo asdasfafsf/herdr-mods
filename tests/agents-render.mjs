@@ -31,7 +31,7 @@ function fixture(count, grouped = false, collapsed = false, depth = 1) {
   return { state, agents, spaces, panes, terminals, outside, collapsed };
 }
 async function environment(data, revision) {
-  const calls = {}, writes = [], handlers = new Map(), timers = new Map();
+  const calls = {}, writes = [], handlers = new Map(), timers = new Map(), tasks = [], commands = [];
   const cloneRead = (key, value) => {
     calls[key] = (calls[key] ?? 0)+1;
     const copy=structuredClone(value);
@@ -66,7 +66,7 @@ async function environment(data, revision) {
     shared: key => cloneRead(`shared:${key}`, data.state[key]), setShared: (key, value) => { data.state[key] = structuredClone(value); writes.push([key,value]); },
     setAgentOrder: value => writes.push(['setAgentOrder',value]),
     focused: () => ({agent:'t0',tab:'b0'}), layout: () => ({id:'sidebar',size:{px:data.collapsed ? 76 : 268}}), props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
-    run: (...args) => writes.push(['run',args]), openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}), appHome: () => '/example/app', home: () => '/example', readTextFile: async () => '',
+    run: (...args) => writes.push(['run',args]), openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => '',
   };
   const store = new Map();
   const context = vm.createContext({ console, Date: class extends Date { static now() { return now + (data.elapsed ?? 0); } }, localStorage: { getItem:k => store.get(k), setItem:(k,v) => store.set(k,v), removeItem:k => store.delete(k) } });
@@ -74,9 +74,10 @@ async function environment(data, revision) {
   const synthetic = (id, exports) => new vm.SyntheticModule(Object.keys(exports), function() { for(const [k,v] of Object.entries(exports)) this.setExport(k,v); }, {context,identifier:id});
   modules.set('herdr',synthetic('herdr',host));
   modules.set('gpui-kit',synthetic('gpui-kit',{View:class {},div:()=>builder('div'),image:s=>builder('image',s),svg:s=>builder('svg',s)}));
+  const textState={new:({value=''}={})=>({text:value,events:{},value(){return this.text},set_value(value){this.text=value},on(event,fn){this.events[event]=fn},focus(){},emit(event,payload={}){this.events[event]?.(payload,cx)}})};
   modules.set('gpui-base',synthetic('gpui-base',{h_flex:()=>builder('h_flex'),v_flex:()=>builder('v_flex'),
-    InputState:{new:()=>({text:'',value(){return this.text},on(){},focus(){}})},
-    Input:{new:()=>builder('input')},Scrollbar:{vertical:id=>builder('scrollbar',id)}}));
+    InputState:textState,TextareaState:textState,
+    Input:{new:()=>builder('input')},Textarea:{new:()=>builder('textarea')},Scrollbar:{vertical:id=>builder('scrollbar',id)}}));
   function module(file) {
     if (modules.has(file)) return modules.get(file);
     const text = revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
@@ -91,12 +92,14 @@ async function environment(data, revision) {
   });
   await main.evaluate();
   const instance = new main.namespace.default();
-  const cx = {spawn(){},timer:{every(ms,handler){timers.set(ms,()=>handler(cx));}},notify(){},stop_propagation(){},focus_handle(){return {};}};
+  let runTasks=false;
+  const cx = {spawn(fn){if(runTasks) tasks.push(fn(cx));},timer:{every(ms,handler){timers.set(ms,()=>handler(cx));}},notify(){},stop_propagation(){},focus_handle(){return {};}};
   instance.init({},cx); instance.outside=data.outside;
+  runTasks=true;
   instance.activity=Object.fromEntries(data.agents.map(a=>[a.address,{doing:'Editing example',said:'Example result'}]));
   const render = () => { handlers.clear(); return JSON.parse(JSON.stringify(instance.render(cx))); };
   const click = id => { assert.ok(handlers.has(id),`missing click target ${id}`); handlers.get(id)({},cx); };
-  return {instance,calls,writes,render,data,click,timers,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace};
+  return {instance,calls,writes,render,data,click,timers,tasks,commands,cx,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace,chat:modules.get('mods/agents-plus/village-chat.js')?.namespace};
 }
 for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],['grouped',40,true,false,1],['rail',40,false,true,1],['large',200,false,false,1],['deep',120,false,false,5]]) {
   const data = fixture(count,grouped,collapsed,depth);
@@ -321,6 +324,79 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   console.log('village status: current state, real unread previews, no automatic acknowledgement, stable reading and clearing passed');
 }
 
+// Chat uses a synthetic transport only: never send a test message to a live agent.
+{
+  const data=fixture(4);data.props={mode:'overview',skin:'chiikawa'};
+  const env=await environment(data,null);
+  const getResult=(state='idle',overrides={})=>({code:0,stdout:JSON.stringify({state:'live',status:{state},foreground:{name:'claude'},...overrides})});
+  const sent=()=>JSON.parse(JSON.stringify(env.commands.filter(([cmd,args])=>cmd==='hc' && args[0]==='send')));
+  const edit=(chat,text)=>{chat.input.set_value(text);chat.input.emit('change');};
+  let complete;
+  data.execHook=async (_cmd,args)=>args[0]==='get' ? getResult() : new Promise(resolve=>{complete=resolve});
+  env.render();env.click('overview-t0');env.render();
+  const first=env.instance.villageChats.get('t0');
+  assert.equal(env.commands.length,0,'render and selection perform no chat I/O');
+  edit(first,'   ');first.input.emit('submit',{secondary:true});
+  assert.equal(env.commands.length,0,'empty messages do nothing');
+  const message='--literal\n$(not a shell command) 한글 메시지';
+  edit(first,message);first.input.emit('submit',{});
+  assert.equal(env.commands.length,0,'plain Enter does not send');
+  first.input.emit('submit',{secondary:true});
+  first.input.emit('submit',{secondary:true});
+  await new Promise(setImmediate);
+  assert.equal(sent().length,1,'pending sends cannot be duplicated');
+  assert.deepEqual(sent()[0],['hc',['send','--json','--if','idle','--','t0',message],{timeout:90000}]);
+  assert.match(JSON.stringify(env.render()),/전달 중/);
+  env.click('overview-t2');env.render();
+  const second=env.instance.villageChats.get('t2');
+  edit(second,'다른 에이전트 초안');
+  complete({code:0,stdout:'{"turn":1,"started":false}'});await env.tasks.pop();
+  assert.equal(first.input.value(),'','delivered text is cleared');
+  assert.equal(second.input.value(),'다른 에이전트 초안','late response does not clear the selected agent draft');
+  assert.match(first.receipt,/전달했어요/);
+  env.click('overview-t0');env.render();
+  assert.equal(env.instance.villageChats.get('t0'),first,'switching residents retains the editor');
+  edit(first,'보낼 메시지');first.input.emit('submit',{secondary:true});
+  await new Promise(setImmediate);
+  edit(first,'전달 중에 새로 쓴 내용');
+  complete({code:0,stdout:'{}'});await env.tasks.pop();
+  assert.equal(first.input.value(),'전달 중에 새로 쓴 내용','same-agent edits survive a late response');
+  data.execHook=async (_cmd,args)=>args[0]==='get' ? getResult('working') : {code:1,stderr:'timeout'};
+  first.input.emit('submit',{secondary:true});await env.tasks.pop();
+  assert.match(first.error,/도착 여부/);
+  assert.equal(first.input.value(),'전달 중에 새로 쓴 내용');
+  const failures=sent().length;
+  for(let i=0;i<5;i++) env.render();
+  assert.equal(sent().length,failures,'failures never auto-retry');
+  for(const result of [getResult('blocked'),getResult('error'),getResult('idle',{state:'finished'}),getResult('idle',{foreground:{name:'zsh'}}),getResult('idle',{status:null}),{code:3,stdout:''},{code:0,stdout:'not JSON'}]) {
+    data.execHook=async()=>result;
+    first.input.emit('submit',{secondary:true});await env.tasks.pop();
+    assert.equal(sent().length,failures,'blocked, finished, shell and invalid preflights never send');
+    assert.ok(first.error);
+  }
+  const beforeGuard=env.commands.length;
+  data.terminals[0].state='finished';first.input.emit('submit',{secondary:true});
+  data.terminals[0].state='live';data.agents[0].status='blocked';first.input.emit('submit',{secondary:true});
+  data.agents[0].status='working';data.agents[0].program={agent:false};first.input.emit('submit',{secondary:true});
+  assert.equal(env.commands.length,beforeGuard,'host validation rejects stale, blocked and non-agent targets');
+  data.agents[0].program={agent:true};
+  edit(first,'x'.repeat(16001));first.input.emit('submit',{secondary:true});
+  assert.equal(env.commands.length,beforeGuard,'oversized drafts remain unsent');
+  edit(first,'완료한 에이전트에게 후속 요청');
+  data.execHook=async (_cmd,args)=>args[0]==='get' ? getResult('done') : {code:0,stdout:'{}'};
+  env.render();env.click('village-send');await env.tasks.pop();
+  assert.deepEqual(sent().at(-1)[1],['send','--json','--','t0','완료한 에이전트에게 후속 요청']);
+  env.render();env.click('overview-child-0-0');env.render();
+  const child=env.instance.villageChats.get('child-0-0');edit(child,'하위 작업 확인');
+  env.render();env.click('village-send');await env.tasks.pop();
+  assert.equal(sent().at(-1)[1].at(-2),'child-0-0','pane-less children keep their own address');
+  const external=env.overview.agentViewRows(data.outside).find(row=>row.external);
+  env.render();env.click(`overview-${external.id}`);
+  const externalUI=JSON.stringify(env.render());
+  assert.ok(externalUI.includes('Herdr에서 이어 열면') && !externalUI.includes('village-send'),'outside sessions must be resumed before chatting');
+  console.log('village chat: explicit send, exact target, multiline text, per-agent drafts, pending guard, late replies, failures and unavailable sessions passed');
+}
+
 // Persistence stays outside render, avoids redraws, serializes writers, and retries
 // one bounded failed batch without losing the new aggregate collected meanwhile.
 {
@@ -368,7 +444,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','agent-theme','theme-assets','village']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','agent-theme','theme-assets','village','village-chat']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
@@ -386,10 +462,11 @@ export const outside=data.outside;
 import Agents from './agents.js';
 import { outside } from './mock-herdr.js';
 import { InputState } from 'gpui-base';
+${!revision ? "import { selectVillageResident } from './village-chat.js';\nimport { agentViewRows } from './overview.js';" : ''}
 export default class Probe extends Agents {
  init(_props,cx) { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={};
    if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.skin='${mode==='chiikawa'?'chiikawa':'default'}';this.themeClock=0;}
-   if ('${mode}'==='chiikawa' && ${count}===40) {this.villageSelected='t3';this.villageFilters=true;} }
+   ${!revision ? `if ('${mode}'==='chiikawa' && ${count}===40) {selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t0'),cx);this.villageFilters=true;}` : ''} }
  render(cx) { const start=Date.now();const result=super.render(cx);console.error('BENCH_RENDER_MS='+String(Date.now()-start));return result; }
 }
 `);

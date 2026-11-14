@@ -4,6 +4,7 @@ import { h_flex, v_flex, Input, Scrollbar } from "gpui-base";
 import { run } from "herdr";
 import { button, statusColor, statusMark } from "./ui.js";
 import { themeControls, agentSprite } from "./agent-theme.js";
+import { selectVillageResident, renderVillageChat } from "./village-chat.js";
 
 const ART = "mods/agents-plus/assets/chiikawa";
 const SCENERY = `${ART}/village`;
@@ -103,17 +104,22 @@ function resident(view, row, actor, layout, t) {
   const selected = view.villageSelected === row.id;
   const status = STATUS[row.status] || "상태 확인 중";
   const notice = villageNotice(row), color = statusColor(t, row.status) || t.muted;
-  return div().id(`overview-${row.id}`).absolute().left(actor.x).top(actor.y).w(size + 16).h(size + 12)
+  const identity = [row.title, `${row.project}${row.branch ? ` · ${row.branch}` : ""}`, `${row.agent} · ${row.address || row.sourceLabel}`].join("\n");
+  return div().id(`overview-${row.id}`).absolute().left(actor.x).top(actor.y).w(size + 16).h(size + 44)
     .cursor_pointer().accessibility_label(`${row.agent}, ${status}, ${row.title}, ${row.project}`)
+    .tooltip(identity)
     .on_hover((over, cx) => { view.villageHovered = over ? row.id : null; cx.notify(); })
-    .on_click((_e, cx) => { cx.stop_propagation(); view.villageSelected = row.id; cx.notify(); })
-    .when(selected, (el) => el.child(div().absolute().left(18).bottom(2).w(size - 20).h(8).rounded(50)
+    .on_click((_e, cx) => { cx.stop_propagation(); selectVillageResident(view, row, cx); })
+    .when(selected, (el) => el.child(div().absolute().left(18).top(size + 2).w(size - 20).h(8).rounded(50)
       .bg(t.accent).opacity(0.2)))
     .when(!notice, (el) => el.child(h_flex().id(`village-status-${row.id}`).absolute().left((size + 16 - 84) / 2).top(-26)
       .w(84).h(22).gap(5).items_center().justify_center().rounded(11).bg(t.raised)
       .child(div().size(5).rounded(3).bg(color))
       .child(div().text_size(10).text_color(color).child(status))))
-    .child(image(sprite.path).absolute().left((size + 16 - width) / 2).top(size - height).w(width).h(height));
+    .child(image(sprite.path).absolute().left((size + 16 - width) / 2).top(size - height).w(width).h(height))
+    .child(v_flex().id(`village-name-${row.id}`).absolute().top(size + 12).left(-6).w(size + 28).gap(2)
+      .child(div().truncate().text_center().text_size(11).font_semibold().text_color(t.foreground).child(row.title))
+      .child(div().truncate().text_center().text_size(9).text_color(t.foreground).opacity(0.75).child(row.project)));
 }
 
 function speechBubble(view, row, actor, layout, t) {
@@ -122,7 +128,7 @@ function speechBubble(view, row, actor, layout, t) {
   return div().id(`village-notice-${row.id}`).absolute().left(box.left).top(box.top).w(box.width).h(box.height + 12)
     .cursor_pointer().tooltip(`${row.project} · ${row.title}\n${notice.text}`)
     .accessibility_label(`${row.project}, ${notice.label}, ${notice.text}`)
-    .on_click((_e, cx) => { cx.stop_propagation(); view.villageSelected = row.id; cx.notify(); })
+    .on_click((_e, cx) => { cx.stop_propagation(); selectVillageResident(view, row, cx); })
     .child(v_flex().w_full().h(box.height).p(11).gap(6).rounded(12).border(1).border_color(t.border).bg(t.raised)
       .hover((el) => el.border_color(color))
       .child(h_flex().gap(5).items_center()
@@ -148,6 +154,7 @@ function details(view, row, t, states, width, openRow) {
   const panelWidth = Math.min(500, width - 32);
   const note = row.activity || (row.status === "working" ? "작업을 진행하고 있어요" : row.status === "blocked" ? "입력을 기다리고 있어요" : row.status === "done" ? "작업을 마쳤어요" : "다음 작업을 기다리고 있어요");
   return v_flex().id("village-details").absolute().left((width - panelWidth) / 2).bottom(20).w(panelWidth).p(16).gap(9)
+    .max_h(Math.max(160, (view.villageHeight || 660) - 32)).overflow_y_scroll()
     .rounded(12).border(1).border_color(t.border).bg(t.raised).shadow_lg()
     .on_click((_e, cx) => cx.stop_propagation())
     .child(h_flex().gap(8).items_center()
@@ -158,8 +165,11 @@ function details(view, row, t, states, width, openRow) {
     .child(div().truncate().text_size(14).font_semibold().text_color(t.foreground).tooltip(row.title).child(row.title))
     .child(div().id("village-activity").text_size(12).text_color(t.muted).whitespace_normal().max_h(52).overflow_y_scroll().child(note))
     .child(h_flex().gap(8).items_center()
-      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child(row.branch || row.sourceLabel))
-      .child(button("village-open-session", "세션 열기", () => openRow(view, row), t)));
+      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted)
+        .tooltip([row.cwd, row.context, row.address].filter(Boolean).join("\n"))
+        .child(`${row.branch || row.sourceLabel} · ${row.address || "외부 세션"}`))
+      .child(button("village-open-session", "세션 열기", () => openRow(view, row), t)))
+    .child(renderVillageChat(view, row, t));
 }
 
 export function renderVillage(view, state) {
@@ -213,7 +223,7 @@ export function renderVillage(view, state) {
             .child(all.length ? "검색된 에이전트가 없어요. 검색어나 필터를 바꿔보세요." : "에이전트가 작업을 시작하면 이곳에 나타나요.")))))
       .child(Scrollbar.vertical(scrollId).absolute().inset_0())
       .when(Boolean(selected), (el) => el.child(details(view, selected, t, states, width, openRow)))
-      .when(!selected && pages === 1, (el) => el.child(div().absolute().bottom(16).left(16).text_size(11).text_color(t.foreground).opacity(0.65).child("캐릭터를 누르면 작업이 보여요"))))
+      .when(!selected && pages === 1, (el) => el.child(div().absolute().bottom(16).left(16).text_size(11).text_color(t.foreground).opacity(0.65).child("캐릭터를 눌러 작업을 보고 말을 걸어보세요"))))
     .when(pages > 1, (el) => el.child(h_flex().px(24).py(7).gap(12).items_center().border_t(1).border_color(t.border).flex_none()
       .child(div().text_size(11).text_color(t.muted).child(`${start + 1}–${start + visible.length} of ${rows.length} agents`))
       .child(div().flex_1())
