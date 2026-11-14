@@ -21,6 +21,7 @@ import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, ACKED, ackDone, setIfChange
 import { inside, placeOf } from "./places.js";
 import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag } from "./ui.js";
 import { RenderProfile } from "./render-profile.js";
+import { openAgentView, initAgentView, renderAgentView } from "./overview.js";
 
 // The agents outside Herdr, read every OUTSIDE_EVERY ms while the window is in front.
 const OUTSIDE_EVERY = 10000;
@@ -94,6 +95,8 @@ function icon(p, size, color) {
 export default class Agents extends View {
   init(_props, cx) {
     if (props()?.sortMenu) return;
+    // Themes share the same overview state: default cards or a Chiikawa village.
+    if (props()?.mode === "overview") return initAgentView(this, cx);
     this.renderProfile = new RenderProfile();
     // Persist aggregates outside render; never set shared state or notify for telemetry.
     cx.timer.every(60000, (cx) => this.flushRenderProfile(cx));
@@ -353,13 +356,20 @@ export default class Agents extends View {
 
   // The coding agents outside Herdr (outside.py), drawn again only when they changed.
   readOutside(cx) {
+    if (this.readingOutside) return;
+    this.readingOutside = true;
+    if (props()?.mode === "overview") cx.notify();
     cx.spawn(async (cx) => {
       try {
         const r = await exec("python3", ["-I", `${appHome()}/mods/agents-plus/outside.py`]);
-        if (r.code !== 0) return;
+        if (r.code !== 0) throw new Error("Outside agent lookup failed");
         const text = r.stdout.trim();
-        if (text !== this.outsideText) { this.outsideText = text; this.outside = JSON.parse(text); cx.notify(); }
-      } catch {}
+        const rows = JSON.parse(text);
+        if (!Array.isArray(rows)) throw new Error("Invalid outside agent list");
+        if (text !== this.outsideText) { this.outsideText = text; this.outside = rows; cx.notify(); }
+        this.outsideError = null;
+      } catch (error) { this.outsideError = String(error.message ?? error); }
+      finally { this.readingOutside = false; if (props()?.mode === "overview") cx.notify(); }
     });
   }
 
@@ -408,6 +418,7 @@ export default class Agents extends View {
 
   render(cx) {
     if (props()?.sortMenu) return this.sortMenu(theme());
+    if (props()?.mode === "overview") return renderAgentView(this);
     const profile = this.renderProfile ??= new RenderProfile();
     profile.begin();
     // No finally: a VM interruption may skip cleanup. A surviving instance records
@@ -719,6 +730,9 @@ export default class Agents extends View {
             .items_center()
             .justify_between()
             .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents"))
+            .child(div().id("ag-view").px(7).py(3).rounded(5).text_size(11).text_color(t.muted).cursor_pointer()
+              .hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("All agents across every project")
+              .on_click(() => openAgentView(this.outside)).child("View all"))
             .child(
               div()
                 .id("ag-sort")
@@ -741,6 +755,9 @@ export default class Agents extends View {
             .h(28)
             .items_center()
             .justify_center()
+            .child(div().id("ag-view-rail").px(5).text_size(13).text_color(t.dim).cursor_pointer()
+              .hover((s) => s.text_color(t.foreground)).tooltip("Open Agent view")
+              .on_click(() => openAgentView(this.outside)).child(svg("mods/workspace-chrome/layers.svg").size(14)))
             .child(
               div()
                 .id("collapse")

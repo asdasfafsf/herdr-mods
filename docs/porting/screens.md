@@ -30,10 +30,12 @@ primary와 linked worktree, 열림과 미개방, sleeping과 archived를 구별�
 | New worktree | 이름 자동 채움/수동 편집, PR 조회 중/실패, 미설치 agent, 생성 실패, setup 실패 | Create/Cancel, ⌘Enter, 입력 중 자동값이 편집값을 덮어쓰지 않음 |
 | Clean / Remove | 기본 선택/미선택/차단 사유, dirty/busy/pinned, 일부 삭제 실패 | 위험 동작 확인, 차단 항목 선택 금지, 결과별 이유 |
 | Agents | Active, pin, child, 같은 이름, outside, 5개 상태, Seen 만료 | 숨김/상태 변경으로 현재 대상 위치를 잃지 않음 |
+| Agent view | 전체 작업 영역의 탭, 기본 카드/치이카와 마을 테마, 동일한 세션과 24개 페이지, 마을의 자유 배회·선택 상세·접힌 검색 필터·세로 스크롤·움직임 끄기, 모든 프로젝트, pane 없는 child, 외부 세션, 검색 0건, 상태·출처 필터, 페이지 이동 | View all로 열기/기존 탭 재사용, 테마 전환 시 검색·필터·페이지 유지, 카드/마을 선택 상세에서 해당 pane/peek/외부 이어 열기 |
 | 팔레트 | 5개 보기, 검색 0건, 생성 행, 미개방 worktree, Docs | Tab/↑↓/Enter/Esc, 화면과 선택 대상 일치 |
 | Sessions | Reading, 빈 목록, 제목 필터, 메시지 검색 중, 실패, 결과 snippet | Enter Resume, Alt+Enter Fork, Esc Close; 실행 가능한 버튼 구별 |
 | Restore | working/idle 후보, 대상 없음, 외부 실행 중, 자동 선호 | continue 항목별 선택, Not now, 중복 복구 금지 |
 | Usage | null, 0/80/100%, stale, reset, CLI 오류, 긴 모델명, 여러 창 | 480/720/1200px, Refresh 보임, 상세 세로 스크롤, 열린 상세 갱신 |
+| Reset credits | 조회 불가, 0개, 개수만 제공, 일부 상세 목록, 만료 있음/없음, 조회 실패, 사용/중복/불필요/실패 결과 | Usage 상세창, 개별 권 선택·사용 확인, 중복 클릭 차단, 같은 권 재시도, 별도 조회 시각, Refresh |
 | Markdown | 읽는 중/삭제/읽기 실패/1MiB 초과, 링크 이동, 변경 | 텍스트 선택·복사, Back, caller에 따른 포커스, 같은 파일 중복 방지 |
 | Settings | 기본값/override/구키, 범위 밖 숫자, custom 색/auto | UI와 CLI가 같은 값을 즉시 표시 |
 | 알림 | 앱 앞/뒤, 첫 관찰/전이/반복, 도우미 부재 | 지원되는 경우 클릭 시 정확한 세션 이동 |
@@ -45,7 +47,7 @@ primary와 linked worktree, 열림과 미개방, sleeping과 archived를 구별�
 - 720px: Fable 이름과 0%, Codex의 사용률, Refresh가 모두 보여야 한다. 공간이 부족하면 `resets in` 문구를 줄여도 된다.
 - 480px: 이름과 퍼센트를 유지하고 막대·리셋 countdown을 숨길 수 있다. 숨긴 시각은 hover/detail에서 읽을 수 있어야 한다.
 - 1200px: 충분한 공간에서는 막대와 countdown을 함께 표시한다.
-- 상세: 창이 늘어나도 아래 항목이 사라지지 않게 스크롤한다. 현재 Herdr 구현의 최대 높이는 600px이지만 새 앱은 자신의 viewport에 맞춰도 된다.
+- 상세: 창이나 리셋권이 늘어나도 아래 항목이 사라지지 않게 스크롤한다. 현재 Herdr 구현의 최대 높이는 680px이지만 새 앱은 자신의 viewport에 맞춰도 된다.
 - 경고색뿐 아니라 숫자/표식으로 상태를 구별한다. 0%는 정상 데이터이고 null은 데이터 없음이다. reset 경과를 새 주기 0%로 표시하지 않는다.
 
 ## 실제 캡처 증거와 한계

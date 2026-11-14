@@ -31,7 +31,7 @@ function fixture(count, grouped = false, collapsed = false, depth = 1) {
   return { state, agents, spaces, panes, terminals, outside, collapsed };
 }
 async function environment(data, revision) {
-  const calls = {}, writes = [], handlers = new Map();
+  const calls = {}, writes = [], handlers = new Map(), timers = new Map();
   const cloneRead = (key, value) => {
     calls[key] = (calls[key] ?? 0)+1;
     const copy=structuredClone(value);
@@ -60,21 +60,23 @@ async function environment(data, revision) {
     }});
     return proxy;
   }
-  const theme = Object.fromEntries(['foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5'].map(k => [k, '#123456']));
+  const theme = Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5'].map(k => [k, '#123456']));
   const host = {
     agents: () => cloneRead('agents', data.agents), terminals: () => cloneRead('terminals', data.terminals), panes: () => cloneRead('panes', data.panes), spaces: () => cloneRead('spaces', data.spaces),
     shared: key => cloneRead(`shared:${key}`, data.state[key]), setShared: (key, value) => { data.state[key] = structuredClone(value); writes.push([key,value]); },
     setAgentOrder: value => writes.push(['setAgentOrder',value]),
-    focused: () => ({agent:'t0',tab:'b0'}), layout: () => ({id:'sidebar',size:{px:data.collapsed ? 76 : 268}}), props: () => ({}), theme: () => theme, window: () => ({active:true}),
-    run: (...args) => writes.push(['run',args]), openOverlay() {}, closeOverlay() {}, exec: async (...args) => data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}), appHome: () => '/example/app', home: () => '/example', readTextFile: async () => '',
+    focused: () => ({agent:'t0',tab:'b0'}), layout: () => ({id:'sidebar',size:{px:data.collapsed ? 76 : 268}}), props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
+    run: (...args) => writes.push(['run',args]), openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}), appHome: () => '/example/app', home: () => '/example', readTextFile: async () => '',
   };
   const store = new Map();
-  const context = vm.createContext({ console, Date: class extends Date { static now() { return now; } }, localStorage: { getItem:k => store.get(k), setItem:(k,v) => store.set(k,v), removeItem:k => store.delete(k) } });
+  const context = vm.createContext({ console, Date: class extends Date { static now() { return now + (data.elapsed ?? 0); } }, localStorage: { getItem:k => store.get(k), setItem:(k,v) => store.set(k,v), removeItem:k => store.delete(k) } });
   const modules = new Map();
   const synthetic = (id, exports) => new vm.SyntheticModule(Object.keys(exports), function() { for(const [k,v] of Object.entries(exports)) this.setExport(k,v); }, {context,identifier:id});
   modules.set('herdr',synthetic('herdr',host));
   modules.set('gpui-kit',synthetic('gpui-kit',{View:class {},div:()=>builder('div'),image:s=>builder('image',s),svg:s=>builder('svg',s)}));
-  modules.set('gpui-base',synthetic('gpui-base',{h_flex:()=>builder('h_flex'),v_flex:()=>builder('v_flex')}));
+  modules.set('gpui-base',synthetic('gpui-base',{h_flex:()=>builder('h_flex'),v_flex:()=>builder('v_flex'),
+    InputState:{new:()=>({text:'',value(){return this.text},on(){},focus(){}})},
+    Input:{new:()=>builder('input')},Scrollbar:{vertical:id=>builder('scrollbar',id)}}));
   function module(file) {
     if (modules.has(file)) return modules.get(file);
     const text = revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
@@ -89,12 +91,12 @@ async function environment(data, revision) {
   });
   await main.evaluate();
   const instance = new main.namespace.default();
-  const cx = {spawn(){},timer:{every(){}},notify(){},stop_propagation(){}};
+  const cx = {spawn(){},timer:{every(ms,handler){timers.set(ms,()=>handler(cx));}},notify(){},stop_propagation(){},focus_handle(){return {};}};
   instance.init({},cx); instance.outside=data.outside;
   instance.activity=Object.fromEntries(data.agents.map(a=>[a.address,{doing:'Editing example',said:'Example result'}]));
   const render = () => { handlers.clear(); return JSON.parse(JSON.stringify(instance.render(cx))); };
   const click = id => { assert.ok(handlers.has(id),`missing click target ${id}`); handlers.get(id)({},cx); };
-  return {instance,calls,writes,render,data,click,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace};
+  return {instance,calls,writes,render,data,click,timers,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace};
 }
 for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],['grouped',40,true,false,1],['rail',40,false,true,1],['large',200,false,false,1],['deep',120,false,false,5]]) {
   const data = fixture(count,grouped,collapsed,depth);
@@ -166,6 +168,125 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   console.log(name,'after',JSON.stringify(firstCalls),'mock_median_ms',samples.sort((a,b)=>a-b)[3].toFixed(2));
 }
 
+// Overview includes every project and live child, filters without changing the
+// sidebar order, focuses local panes and peeks at children without panes.
+{
+  const data=fixture(4);
+  data.props={mode:'overview',presentation:'cards'};
+  data.outside=[{agent:'codex',pid:99,session:'one',cwd:'/example/repo-0/work-0',title:'External one',status:'working',updated:1},
+    {agent:'codex',pid:99,session:'two',cwd:'/another',title:'External two',status:'blocked',updated:2}];
+  const env=await environment(data,null);
+  env.render();
+  assert.equal(env.writes.length,0,'overview rendering must not change sidebar state');
+  let rows=env.overview.agentViewRows(data.outside);
+  assert.equal(rows.length,7,'4 agents, 1 child and 2 sessions on the same PID');
+  assert.equal(env.overview.filterAgentRows(rows,'External').length,2);
+  assert.equal(env.overview.filterAgentRows(rows,'','all','child').length,1);
+  assert.equal(env.overview.filterAgentRows(rows,'repo-3','blocked').length,1);
+  env.click('overview-t1');
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p1'}]]);
+  env.click('overview-child-0-0');
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['terminal.peek',{terminal:'child-0-0'}]]);
+  // Use the actual key exported by state.js rather than an assumed storage name.
+  env.data.state[env.state.LIVE]={one:'t0'};
+  rows=env.overview.agentViewRows(data.outside);
+  assert.equal(rows.length,6,'a session already represented in Herdr is deduplicated');
+  env.instance.input.text='no match';
+  assert.match(JSON.stringify(env.render()),/No matching agents/);
+  env.instance.input.text='';
+  env.click('overview-status-blocked');
+  const filtered=JSON.stringify(env.render());
+  assert.ok(filtered.includes('overview-t3'));
+  assert.ok(!filtered.includes('overview-t0"'));
+  const sidebar=await environment(fixture(1),null);
+  sidebar.render();sidebar.click('ag-view');
+  assert.equal(sidebar.writes.at(-1)[1][0],'tab.new');
+  assert.equal(sidebar.writes.at(-1)[1][1].props.mode,'overview');
+  sidebar.data.panes.push({pane:'board',mod:'agents-plus',tab:'board-tab'});
+  sidebar.render();sidebar.click('ag-view');
+  assert.equal(sidebar.writes.at(-1)[1][0],'pane.focus');
+  assert.equal(sidebar.writes.at(-1)[1][1].pane,'board','reuse the full-page tab');
+  console.log('agent overview: all projects, child agents, shared-PID sessions, deduplication, filters and navigation passed');
+  const many=fixture(60);many.props={mode:'overview',presentation:'cards'};
+  const paged=await environment(many,null);
+  const pageOne=JSON.stringify(paged.render());
+  assert.ok(pageOne.includes('overview-next'));
+  assert.equal((pageOne.match(/"overview-t\d+"/g)??[]).length<=25,true);
+  paged.click('overview-next');
+  const pageTwo=JSON.stringify(paged.render());
+  assert.notEqual(pageOne,pageTwo);
+  assert.equal(paged.instance.page,1);
+  paged.click('overview-status-idle');paged.render();
+  assert.equal(paged.instance.page,0,'filter changes return to the first page');
+}
+
+// Themes retain sessions, ordering, pagination and filters; village details are opt-in.
+{
+  const data=fixture(60);data.props={mode:'overview'};
+  const env=await environment(data,null);
+  const ids=output=>[...output.matchAll(/"overview-(?:t\d+|child-[^"]+|outside-[^"]+)"/g)].map(m=>m[0]);
+  env.render();env.click('overview-next');
+  const before=JSON.stringify(env.render()), page=env.instance.page;
+  env.click('overview-theme-chiikawa');
+  const themed=JSON.stringify(env.render());
+  assert.equal(env.instance.skin,'chiikawa');
+  assert.equal(env.instance.page,page,'changing a theme keeps the current page');
+  assert.deepEqual(ids(themed),ids(before),'themes show the same agents in the same order');
+  assert.ok(themed.includes('chiikawa-village'),'the Chiikawa theme displays the village');
+  assert.match(themed,/chiikawa\/(done|idle|hachiware)\/\d{3}\.png/);
+  assert.ok(!themed.includes('village-details') && !themed.includes('village-filter-panel'),'the initial village has no persistent panels');
+  const reads=env.calls.agents;env.instance.themeClock=500;env.render();
+  assert.equal(env.calls.agents,reads,'animation reuses host snapshots');
+  data.windowActive=false;data.elapsed=100;env.timers.get(50)();
+  assert.equal(env.instance.themeClock,600,'a visible overview animates without window focus');
+  env.click('overview-motion');assert.equal(env.instance.motionPaused,true);
+  data.elapsed=150;env.timers.get(50)();
+  assert.equal(env.instance.themeClock,600,'motion pause freezes playback');
+  env.click('overview-motion');data.elapsed=1000;env.timers.get(50)();
+  assert.equal(env.instance.themeClock,600,'a hidden overview stops playback');
+  env.render();data.elapsed=1050;env.timers.get(50)();
+  assert.equal(env.instance.themeClock,650,'playback resumes when the overview is rendered again');
+  env.render();env.click('overview-theme-default');
+  assert.equal(env.instance.skin,'default');
+  assert.deepEqual(ids(JSON.stringify(env.render())),ids(before));
+  env.click('overview-theme-chiikawa');env.render();env.click('village-filters');env.render();env.click('overview-status-working');
+  assert.equal(env.instance.page,0);
+  env.instance.input.text='Task 0';env.render();
+  const priorWrites=env.writes.length;
+  env.click('overview-t0');
+  assert.equal(env.writes.length,priorWrites,'selecting a resident does not navigate away');
+  assert.match(JSON.stringify(env.render()),/village-details/);
+  env.click('village-open-session');
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
+  env.render();env.click('village-close');
+  assert.ok(!JSON.stringify(env.render()).includes('village-details'),'details can be dismissed');
+  assert.notEqual(env.agentTheme.spriteFrame('walk',0),env.agentTheme.spriteFrame('walk',500));
+  for (const width of [360,640,1100,1800]) for (const count of [0,1,4,12,24]) {
+    const layout=env.village.villageLayout(width,600,count);
+    const view={themeClock:0}, rows=Array.from({length:count},(_,i)=>({id:`roamer-${i}`}));
+    const initial=env.village.advanceVillage(view,rows,layout).map(({actor})=>({x:actor.x,y:actor.y}));
+    for(let frame=0;frame<1200;frame++) {
+      view.themeClock+=50;
+      const current=env.village.advanceVillage(view,rows,layout);
+      for (const {actor} of current) {
+        assert.ok(actor.x>=0 && actor.x+layout.size+16<=width,'moving residents stay inside scene width');
+        assert.ok(actor.y>=0 && actor.y+layout.size+12<=layout.height,'moving residents stay inside scene height');
+      }
+    }
+    if(count) assert.ok(rows.some((row,i)=>Math.hypot(view.villageActors.get(row.id).x-initial[i].x,view.villageActors.get(row.id).y-initial[i].y)>20),'residents travel beyond an idle wiggle');
+    const snapshot=JSON.stringify([...view.villageActors]);
+    env.village.advanceVillage(view,rows,layout);
+    assert.equal(JSON.stringify([...view.villageActors].map(([id,a])=>[id,{...a,moving:false}])),JSON.stringify(JSON.parse(snapshot).map(([id,a])=>[id,{...a,moving:false}])),'a paused clock freezes positions');
+    if(count) {
+      view.villageSelected=rows[0].id;
+      const actor=view.villageActors.get(rows[0].id), x=actor.x,y=actor.y;
+      for(let frame=0;frame<100;frame++) {view.themeClock+=50;env.village.advanceVillage(view,rows,layout);}
+      assert.equal(actor.x,x);assert.equal(actor.y,y,'selected residents stop for inspection');
+    }
+  }
+  console.log('agent themes: shared sessions, opt-in filters/details, roaming bounds, motion pause, selection and navigation passed');
+}
+
 // Persistence stays outside render, avoids redraws, serializes writers, and retries
 // one bounded failed batch without losing the new aggregate collected meanwhile.
 {
@@ -205,12 +326,15 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
 // Optional native GPUI smoke/limit check with the SAME synthetic data. No live app
 // state is read, and these temporary mods are never installed in the user's layout.
 if (process.argv.includes('--native')) {
-  for (const [count,depth] of [[40,1],[200,1],[120,5]]) for (const revision of before ? [before,null] : [null]) {
+  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
+    if (process.argv.includes('--overview-only') && mode === 'sidebar') continue;
+    if (revision && mode !== 'sidebar') continue;
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
     try {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','agent-theme','theme-assets','village']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
@@ -219,22 +343,25 @@ const data=${JSON.stringify(data)};
 const copy=x=>JSON.parse(JSON.stringify(x??null));
 export const agents=()=>copy(data.agents), terminals=()=>copy(data.terminals), spaces=()=>copy(data.spaces), panes=()=>copy(data.panes);
 export const shared=k=>copy(data.state[k]), setShared=(k,v)=>{data.state[k]=v}, setAgentOrder=()=>{};
-export const focused=()=>({agent:'t0',tab:'b0'}), layout=()=>({id:'sidebar',size:{px:268}}), props=()=>({}), window=()=>({active:true});
-export const theme=()=>Object.fromEntries(['foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5'].map(k=>[k,'#123456']));
+export const focused=()=>({agent:'t0',tab:'b0'}), layout=()=>({id:'sidebar',size:{px:268}}), props=()=>({mode:'${mode==='chiikawa'?'overview':mode}'}), window=()=>({active:true});
+export const theme=()=>Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5','popover','background'].map(k=>[k,'#123456']));
 export const run=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'';
 export const outside=data.outside;
 `);
       writeFileSync(resolve(directory,'main.js'),`
 import Agents from './agents.js';
 import { outside } from './mock-herdr.js';
+import { InputState } from 'gpui-base';
 export default class Probe extends Agents {
- init() { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={}; }
+ init(_props,cx) { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={};
+   if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.skin='${mode==='chiikawa'?'chiikawa':'default'}';this.themeClock=0;}
+   if ('${mode}'==='chiikawa' && ${count}===40) {this.villageSelected='t3';this.villageFilters=true;} }
  render(cx) { const start=Date.now();const result=super.render(cx);console.error('BENCH_RENDER_MS='+String(Date.now()-start));return result; }
 }
 `);
       const result=spawnSync('herdr-app',['check',directory],{encoding:'utf8',timeout:10000});
       const output=result.stdout+result.stderr;
-      console.log('native',count,'depth',depth,revision??'working-tree',JSON.stringify({passed:result.status===0,interrupted:output.includes('interrupted'),timing:output.match(/BENCH_RENDER_MS=\d+/g)}));
+      console.log('native',mode,count,'depth',depth,revision??'working-tree',JSON.stringify({passed:result.status===0,interrupted:output.includes('interrupted'),timing:output.match(/BENCH_RENDER_MS=\d+/g)}));
       if(result.status!==0 && (!revision || !output.includes('interrupted'))) throw new Error(output);
     } finally { rmSync(directory,{recursive:true,force:true}); }
   }

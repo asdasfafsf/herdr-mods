@@ -1,0 +1,46 @@
+[
+  {
+    "file": "field.png",
+    "source_page": "https://gl.chiikawa-pocket.com/en/",
+    "original_url": "https://gl.chiikawa-pocket.com/en/_astro/bgImage.CBD9E472.png",
+    "width": 3840,
+    "height": 1492,
+    "sha256": "e96825af855163ec9ddfa18f7fa84e6c62cfea4c3ab8731de5f3020fb84ef231",
+    "copyright": "nagano / chiikawa committee",
+    "license": "No open reuse license found; excluded from repository code license",
+    "retrieved": "2026-11-14"
+  },
+  {
+    "file": "stump.png",
+    "source_page": "https://jp.chiikawa-pocket.com/ja/",
+    "original_url": "https://jp.chiikawa-pocket.com/ja/_next/static/media/Stump.8c49ae96.png",
+    "width": 329,
+    "height": 129,
+    "sha256": "d774775dc33cb2a5004f33777e1c9ed640124122e0f1e94a88c3a1fef1e68158",
+    "copyright": "nagano / chiikawa committee",
+    "license": "No open reuse license found; excluded from repository code license",
+    "retrieved": "2026-11-14"
+  },
+  {
+    "file": "trees-left.png",
+    "source_page": "https://www.anime-chiikawa.jp/",
+    "original_url": "https://www.anime-chiikawa.jp/images/bg_top_tree_left_01.png",
+    "width": 599,
+    "height": 1567,
+    "sha256": "9e2484de8c5b3cda2fec827f643c9f56df62deea763c346514a97b8804132513",
+    "copyright": "nagano / chiikawa committee",
+    "license": "No open reuse license found; excluded from repository code license",
+    "retrieved": "2026-11-14"
+  },
+  {
+    "file": "trees-right.png",
+    "source_page": "https://www.anime-chiikawa.jp/",
+    "original_url": "https://www.anime-chiikawa.jp/images/bg_top_tree_right_01.png",
+    "width": 916,
+    "height": 8706,
+    "sha256": "76fc5f20957cb47327a095691ec26b30658ce3622f3a510c29eaae6ea4a464fc",
+    "copyright": "nagano / chiikawa committee",
+    "license": "No open reuse license found; excluded from repository code license",
+    "retrieved": "2026-11-14"
+  }
+]

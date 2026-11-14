@@ -20,10 +20,10 @@ KCD 계정으로 로그인해야 받을 수 있는 사내 레포다. Herdr 앱(`
 | 번들 | 하는 일 | mod |
 |---|---|---|
 | `worktrees` | 사이드바에 레포 → primary 체크아웃 → 워크트리(열린 것·안 열린 것 전부) → 그 밑 터미널을 트리로. 프로젝트 추가(폴더·clone·새로), 새 워크트리, 행 메뉴, 세션 목록, Sleep | `spaces-plus` `worktree-plus` `wt-menu` `wt-sessions` `project-add` |
-| `agents` | Agents 목록에 Herdr 밖(Orca·iTerm 등)에서 도는 Claude Code·Codex 도 같이, 맨 위에 지금 보는 탭의 Active 묶음 | `agents-plus` |
+| `agents` | Agents 목록과 전체 Agent view: 프로젝트별 에이전트·하위 에이전트·Herdr 밖 Claude/Codex 검색과 상태 필터 | `agents-plus` |
 | `palette` | ⌘P·⌘J 창에서 탭과 함께 워크트리도 찾고, 없으면 새로 만든다 | `picker-plus` |
 | `restore` | 재부팅·로그아웃·크래시로 Herdr core 가 내려갔다 오면, 돌던 에이전트 세션을 같은 탭에서 이어 연다 | `wt-restore` |
-| `usage` | 하단바 왼쪽 끝에 Claude·Codex 요금제 한도(5시간·7일 사용률, 리셋 시각) | `usage-bar` |
+| `usage` | 하단바 왼쪽 끝에 Claude·Codex 요금제 한도와 Codex 리셋권 개수·상세 정보 | `usage-bar` |
 | `notify` | Herdr 창을 안 볼 때 에이전트가 끝나거나 확인을 기다리면 macOS 알림 배너 | `mac-notify` |
 | `docs` | Markdown 파일을 렌더링해서 터미널 옆 pane 에(⌘P 의 Docs 보기, 에이전트의 `hm md`). 파일이 바뀌면 따라간다 | `md-view` |
 | `commands` | 에이전트(Claude Code·Codex)가 말로 시킨 일을 사이드바·메뉴와 똑같이 하게: `hm` 명령과 `herdr` 스킬 | (mod 없음) `bin/hm`, `skills/herdr` |
@@ -156,6 +156,8 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 
 ### agents
 
+- `Agents → View all`에서 중앙 작업 영역 전체를 쓰는 **Agent view** 탭을 연다. **기본 테마**는 기존 카드 목록, **치이카와 마을**은 배경·나무·그루터기 사이로 캐릭터들이 자유롭게 돌아다니는 화면이다. 말풍선과 이름표를 상시 표시하지 않고, 캐릭터를 선택하면 아래에 작업 상세가 하나 열린다. 검색·필터는 필요할 때 펼친다. 테마를 바꿔도 검색·필터·정렬·현재 페이지를 유지한다. 모든 프로젝트의 에이전트·하위 에이전트·외부 세션을 검색하고, 기본 테마의 카드나 마을 상세의 `세션 열기`를 누르면 해당 세션으로 이동한다. 한 페이지는 24개이며 마을이 붐비면 세로로 스크롤한다. 움직임을 끌 수도 있다. 리소스 출처는 [SOURCES.md](mods/agents-plus/assets/chiikawa/SOURCES.md)에 있다.
+
 - Herdr 의 Agents 목록에 Herdr 밖에서 도는 Claude Code·Codex 가 같은 상태 묶음(working·blocked·done·idle) 안에 섞여 나온다. 앱 이름 태그와 흐린 아이콘으로 구분한다. 창이 앞에 있을 때 10초마다 `ps`·`lsof` 와 `~/.claude/sessions` 로 찾는다.
 - 바깥 에이전트를 누르면 그 세션을 Herdr 에서 이어 연다. 원래 앱의 것은 끄지 않는다.
 - 맨 위 **Active** 묶음에 지금 보고 있는 탭의 에이전트가 온다. done 이 돼도 아래로 밀려나지 않는다.
@@ -184,6 +186,8 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 - 이어 열 때는 그 세션을 처음 시작한 플래그(`--dangerously-skip-permissions`, `--model` 등)를 그대로 쓴다.
 
 ### usage
+
+- Codex 리셋권은 하단바의 `↺ 개수`와 사용량 상세창의 **Reset credits**에서 확인한다. 제목·설명·상태·지급일·만료일을 표시하며, **Use credit → Use reset credit**으로 선택한 권을 사용할 수 있다. 사용 결과와 갱신된 한도를 표시하며, Refresh로 다시 조회한다. 조회 불가와 0개를 구분하고 마지막 조회 시각을 표시한다.
 
 - 하단바 왼쪽 끝 알약에 Claude·Codex 의 5시간·7일 사용률과 리셋까지 남은 시간(`resets in 3h 39m`, `6d 12h`). 정확한 리셋 시각은 마우스를 올리면, 누르면 자세히, 끝의 Refresh 는 바로 다시 읽기.
 - Claude 는 상태줄·ClaudeHUD 스냅샷과 Claude Code의 `get_usage` 직접 조회를 합쳐 읽는다. 상태줄에 없는 **Fable 주간 사용률·리셋 시각**도 표시한다. 직접 조회는 5분마다 또는 Refresh 때 하며, 모델 호출이나 인증정보 직접 읽기는 없다. 실험적 인터페이스를 지원하지 않는 Claude 버전에서는 스냅샷으로 대체한다. Codex 는 Codex 에게 직접 묻는다(`codex app-server` 의 한도 읽기, 5분마다 또는 Refresh 때). 로그인 정보는 읽지 않는다. 못 물으면 Codex 세션 기록의 마지막 값.
