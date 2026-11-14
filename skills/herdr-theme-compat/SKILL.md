@@ -26,6 +26,10 @@ These subcommands do not open a window or connect to a core.
 Distinguish the report's three kinds of evidence:
 
 - `installation`: the queried executable's version and advertised capabilities.
+  `executable`, `resolved_executable` and `sha256` identify the selected path,
+  symlink target and file contents. Compare them with the running app's actual
+  executable, not just `herdr-app` on PATH. `capabilities_advertised: false`
+  means help did not advertise the optional command; support stays `unknown`.
   A matching version alone leaves support `unknown`. `capabilities_verified`
   with `runtime_surface_rules: supported` and `runtime_codex_surfaces: supported`
   proves those contracts in that executable. It does **not** prove the running

@@ -137,10 +137,72 @@
              }
 
              // Contrast adjustment is opt-in; graphics always keep their colors.
-@@ -2270,6 +2309,106 @@
+@@ -2270,6 +2309,168 @@
      }
 
      #[test]
++    fn codex_surface_chiikawa_to_moss_repaints_existing_input_and_scrollback() {
++        use crate::terminal_surfaces::CodexColors;
++        let mut light = theme();
++        light.bg = Rgb(248, 245, 236);
++        light.fg = Rgb(80, 60, 46);
++        light.minimum_contrast = 1.0;
++        light.codex_colors = Some(CodexColors {
++            input: [241, 223, 189], history: [244, 236, 219],
++            add: [230, 239, 217], delete: [249, 226, 217],
++        });
++        let mut moss = light.clone();
++        moss.bg = Rgb(21, 28, 25);
++        moss.fg = Rgb(205, 215, 206);
++        moss.palette16[1] = Rgb(223, 151, 141);
++        moss.palette16[4] = Rgb(153, 185, 205);
++        moss.codex_colors = None;
++        for enabled in [false, true] {
++            let mut vt = Vt::new(16, 3);
++            vt.set_theme(light.clone());
++            if enabled { vt.set_codex_process(Some(73)); }
++            // Default foreground follows the native theme; explicit Codex
++            // startup fills survive in the buffer, including offscreen history.
++            vt.write(b"\x1b[48;2;243;240;231mHistory\x1b[0m\r\nNormal\r\nNormal\r\n\x1b[48;2;238;235;226mInput \x1b[31mR\x1b[34mB\x1b[0m");
++            let before = vt.frame();
++            assert_eq!(before.rows[2][0].bg, Some(if enabled { Rgb(241, 223, 189) } else { Rgb(238, 235, 226) }));
++            assert!(!vt.shows_change());
++            // No new PTY write, resize, focus event or CLI configuration change.
++            vt.set_theme(moss.clone());
++            assert!(vt.shows_change());
++            let dark = vt.frame();
++            assert_eq!(dark.bg, moss.bg);
++            assert_eq!(dark.rows[2][0].fg, moss.fg);
++            assert_eq!(dark.rows[2][0].bg, Some(if enabled { Rgb(49, 55, 52) } else { Rgb(238, 235, 226) }));
++            assert_eq!(dark.rows[2][6].fg, moss.palette16[1]);
++            assert_eq!(dark.rows[2][7].fg, moss.palette16[4]);
++            if enabled {
++                for cell in &dark.rows[2][..8] {
++                    assert!(contrast(cell.fg, cell.bg.unwrap()) >= 4.5);
++                }
++            } else {
++                // Same failure as a renderer with no semantic mapping:
++                // native dark background, light text, retained cream fill.
++                assert!(contrast(dark.rows[2][0].fg, dark.rows[2][0].bg.unwrap()) < 1.5);
++            }
++            vt.scroll_to_top();
++            let history = vt.frame();
++            assert_eq!(history.rows[0][0].text, "H");
++            assert_eq!(history.rows[0][0].bg, Some(if enabled { Rgb(58, 64, 61) } else { Rgb(243, 240, 231) }));
++            if enabled {
++                assert!(contrast(history.rows[0][0].fg, history.rows[0][0].bg.unwrap()) >= 4.5);
++                vt.set_theme(light.clone());
++                assert_eq!(vt.frame().rows[0][0].bg, Some(Rgb(244, 236, 219)));
++                vt.scroll_to_bottom();
++                assert_eq!(vt.frame().rows[2][0].bg, Some(Rgb(241, 223, 189)));
++                // Disabling the adapter proves the original RGB is retained.
++                vt.set_codex_process(None);
++                assert_eq!(vt.frame().rows[2][0].bg, Some(Rgb(238, 235, 226)));
++            }
++        }
++    }
++
++    #[test]
 +    fn codex_surface_two_way_live_refresh_preserves_native_semantics() {
 +        use crate::terminal_surfaces::CodexColors;
 +        let custom = CodexColors { input: [241, 223, 189], history: [244, 236, 219],

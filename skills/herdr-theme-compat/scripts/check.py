@@ -14,7 +14,11 @@ LIMIT = 8 * 1024 * 1024
 
 def digest(path):
     try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        with path.open("rb") as stream:
+            result = hashlib.sha256()
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                result.update(chunk)
+            return result.hexdigest()
     except OSError:
         return None
 
@@ -36,9 +40,19 @@ def object_file(path):
 def check_installation(executable, manifest):
     report = {"status": "unavailable", "version": None,
               "baseline_version_match": None, "runtime_surface_rules": "unknown",
-              "runtime_codex_surfaces": "unknown"}
+              "runtime_codex_surfaces": "unknown", "capabilities_advertised": None,
+              "executable": str(executable) if executable else None,
+              "resolved_executable": None, "sha256": None}
     if not executable:
         return report
+    # A PATH shim, an installed app and an isolated build can all report the
+    # same version. Identify the file being probed without inferring which
+    # executable a running window has loaded.
+    try:
+        resolved = Path(shutil.which(str(executable)) or executable).resolve(strict=True)
+        report.update(resolved_executable=str(resolved), sha256=digest(resolved))
+    except (OSError, RuntimeError):
+        pass
     try:
         result = subprocess.run([str(executable), "--version"], capture_output=True,
                                 text=True, timeout=5, stdin=subprocess.DEVNULL)
@@ -56,7 +70,10 @@ def check_installation(executable, manifest):
     try:
         help_result = subprocess.run([str(executable), "--help"], capture_output=True,
                                      text=True, timeout=5, stdin=subprocess.DEVNULL)
-        if help_result.returncode or not re.search(r"(?m)^\s*herdr-app --capabilities(?:\s|$)", help_result.stdout):
+        if help_result.returncode:
+            return report
+        report["capabilities_advertised"] = bool(re.search(r"(?m)^\s*herdr-app --capabilities(?:\s|$)", help_result.stdout))
+        if not report["capabilities_advertised"]:
             return report
         result = subprocess.run([str(executable), "--capabilities"], capture_output=True,
                                 text=True, timeout=5, stdin=subprocess.DEVNULL)
@@ -187,6 +204,9 @@ def main(argv=None):
         print(json.dumps(report, indent=2))
     else:
         installed = report["installation"]
+        print(f"Executable: {installed['executable'] or 'not found'}")
+        if installed["resolved_executable"]:
+            print(f"  Resolved: {installed['resolved_executable']}; SHA-256: {installed['sha256'] or 'unreadable'}")
         print(f"Queried Herdr: {installed['version'] or installed['status']}; native surface rules: {installed['runtime_surface_rules']}; Codex surfaces: {installed['runtime_codex_surfaces']}")
         print(f"Source: {report['source']['status']}")
         for name in report["source"]["changed_files"]:

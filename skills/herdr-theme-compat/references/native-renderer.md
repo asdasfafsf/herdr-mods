@@ -112,6 +112,20 @@ python3 scripts/check.py --executable /path/to/isolated/herdr-app/target/debug/h
 
 `capabilities_verified` describes **that executable**, not a running window.
 A version string or source hash alone does not prove native support.
+The checker reports the selected executable, its resolved symlink target and
+SHA-256. On macOS, inspect the running process's executable path separately
+(`ps -p PID -o pid=,lstart=,command=`), then pass that exact app bundle executable
+to `--executable`. A PATH symlink can point to that same app, or to a different
+build; neither relationship should be inferred from the version string.
+
+When light/dark slots are correct and app/Agent colors change while old Codex
+input/history fills remain light, check this boundary before changing themes.
+Stock 0.1.15 updates the native palette but keeps explicit RGB cell backgrounds.
+Mod theme tokens cannot add a missing cell-to-frame renderer hook, and changing
+ANSI colors or minimum contrast cannot change those RGB fills. Do not advertise
+a mod-only live fix, rewrite CLI settings, inject PTY output, or erase syntax
+colors to conceal missing native support. Prepare and verify the native artifact
+separately; the current running app remains unchanged until activation.
 
 ## Activation and distribution
 
@@ -138,6 +152,10 @@ exact-rule precedence, syntax contrast, selection, inverse video, graphics,
 foreground suspension/resumption and fresh-process isolation. These tests feed
 synthetic terminal bytes only. Passing source tests or a capability probe is not
 screenshot verification and does not assert that the installed app was replaced.
+The Chiikawa-to-Moss regression also covers default foregrounds, separate ANSI
+syntax colors and submitted prompts in scrollback. With the adapter disabled,
+it reproduces light text on retained cream fills; with the adapter enabled,
+the same buffered cells become readable Moss surfaces without another PTY write.
 
 The integration patch is based on Herdr's Apache-2.0 source; see
 [LICENSE](../assets/herdr-app/LICENSE).

@@ -39,6 +39,37 @@ def snapshot(root):
 
 
 class ThemeCompatibilityTests(unittest.TestCase):
+    def test_executable_identity_resolves_path_symlink_without_claiming_running_support(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            app = root / "Herdr.app/Contents/MacOS/Herdr"
+            app.parent.mkdir(parents=True)
+            app.write_bytes(b"synthetic installed binary")
+            app.chmod(0o755)
+            cli = root / "herdr-app"
+            cli.symlink_to(app)
+            isolated = root / "isolated-build"
+            isolated.write_bytes(b"different build with the same version")
+            isolated.chmod(0o755)
+            version = subprocess.CompletedProcess([], 0, "herdr-app 0.1.15\n", "")
+            help_result = subprocess.CompletedProcess([], 0, "herdr-app --version\n", "")
+            before = snapshot(root)
+            with patch.dict("os.environ", {"PATH": str(root)}):
+                with patch.object(checker.subprocess, "run", side_effect=[version, help_result] * 3) as run:
+                    path_report = checker.check_installation("herdr-app", {"version": "0.1.15"})
+                    app_report = checker.check_installation(app, {"version": "0.1.15"})
+                    build_report = checker.check_installation(isolated, {"version": "0.1.15"})
+            self.assertEqual(path_report["executable"], "herdr-app")
+            self.assertEqual(path_report["resolved_executable"], str(app))
+            self.assertEqual(path_report["sha256"], sha(app.read_bytes()))
+            self.assertEqual(path_report["sha256"], app_report["sha256"])
+            self.assertNotEqual(path_report["sha256"], build_report["sha256"])
+            self.assertEqual(build_report["status"], "version_only")
+            self.assertEqual(build_report["runtime_codex_surfaces"], "unknown")
+            self.assertFalse(path_report["capabilities_advertised"])
+            self.assertEqual(run.call_count, 6, "no unadvertised capability command or GUI launch")
+            self.assertEqual(snapshot(root), before)
+
     def test_version_match_does_not_claim_runtime_capability_or_leak_output(self):
         manifest = {"version": "0.1.15"}
         for version, same in [("0.1.15", True), ("0.2.0", False)]:

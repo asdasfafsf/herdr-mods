@@ -14,7 +14,7 @@
   },
   "patched_files": {
     "src/main.rs": "bbd1e82c3334bf9883c7cc721ccc7303002a1b16dbc6559af8334f290cfe592e",
-    "src/vt.rs": "b9c9ff70cb26151b5108b8e2c44662ef2e252a684ea9b7f0d5cb64069e1610ee",
+    "src/vt.rs": "a48fc0a72a5684dbe31f354331633255c635a62a6f638167bab377a3c5d89781",
     "defaults/AGENTS.md": "569c7a633ee1844a489c09580f6894d09e6584e27ec2f7feffd017319f968659",
     "src/terminal.rs": "b2cfe8e57f081d49988734d3ac8519432d4e14eb6cdbfd3df0fa6a70b670287c",
     "src/window.rs": "9c93807625818813fc06790c993e809062f9db028b567dae25ab4256a2d9da84"
