@@ -207,7 +207,7 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 
 ### usage
 
-- Codex 리셋권은 하단바의 `↺ 개수`와 사용량 상세창의 **Reset credits**에서 확인한다. 제목·설명·상태·지급일·만료일을 표시하며, **Use credit → Use reset credit**으로 선택한 권을 사용할 수 있다. 사용 결과와 갱신된 한도를 표시하며, Refresh로 다시 조회한다. 조회 불가와 0개를 구분하고 마지막 조회 시각을 표시한다.
+- Codex 리셋권은 기본적으로 하단바의 `↺ 개수`와 사용량 상세창의 **Reset credits · 개수** 요약만 표시한다. 조회 불가는 `↺ —` / **Unavailable**, 확인된 0개는 `↺ 0` / **0 available**로 구분한다. **Show details**로 펼쳐야 제목·설명·상태·지급일·만료일·별도 조회 시각과 기존 **Use credit → Use reset credit** 버튼이 나타나며, **Hide details**로 접는다. 상세창을 다시 열면 항상 접힌 상태이고, Refresh는 현재 펼침 상태를 유지한다. 긴 목록은 상세창 안에서 세로 스크롤하며, 좁은 바에서는 사용량 항목만 가로 스크롤하고 개수와 Refresh는 유지한다. [안전한 렌더 검증과 한계](docs/usage-reset-summary.md).
 
 - 하단바 왼쪽 끝 알약에 Claude·Codex 의 5시간·7일 사용률과 리셋까지 남은 시간(`resets in 3h 39m`, `6d 12h`). 정확한 리셋 시각은 마우스를 올리면, 누르면 자세히, 끝의 Refresh 는 바로 다시 읽기.
 - Claude 는 상태줄·ClaudeHUD 스냅샷과 Claude Code의 `get_usage` 직접 조회를 합쳐 읽는다. 상태줄에 없는 **Fable 주간 사용률·리셋 시각**도 표시한다. 직접 조회는 5분마다 또는 Refresh 때 하며, 모델 호출이나 인증정보 직접 읽기는 없다. 실험적 인터페이스를 지원하지 않는 Claude 버전에서는 스냅샷으로 대체한다. Codex 는 Codex 에게 직접 묻는다(`codex app-server` 의 한도 읽기, 5분마다 또는 Refresh 때). 로그인 정보는 읽지 않는다. 못 물으면 Codex 세션 기록의 마지막 값.
