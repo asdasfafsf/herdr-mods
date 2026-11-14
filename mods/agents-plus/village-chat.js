@@ -14,10 +14,10 @@ const UNCERTAIN = "Delivery could not be confirmed. Check the terminal before se
 export function selectVillageResident(view, row, cx, focusSession = true) {
   view.villageSelected = row.id;
   const chats = view.villageChats ??= new Map();
-  if (row.address && !row.external && !chats.has(row.id)) {
+  if (row.address && !row.external && !chats.get(row.id)?.input) {
     const input = TextareaState.new({ placeholder: "Message this agent…", rows: 3 });
     const attachmentInput = InputState.new({ placeholder: "Absolute image path" });
-    const chat = { address: row.address, input, attachmentInput, images: [], draft: "", sending: false, error: "", receipt: "", version: 0 };
+    const chat = Object.assign(chats.get(row.id) || {}, { address: row.address, input, attachmentInput, images: [], draft: "", sending: false, error: "", receipt: "", version: 0 });
     chats.set(row.id, chat);
     input.on("change", (_e, cx) => { recordComposerEdit(chat); cx.notify(); });
     input.on("submit", (e, cx) => { if (prepareComposerSubmit(chat, e)) sendVillageMessage(chat, cx); });

@@ -35,7 +35,7 @@ const modules = new Map([
   ['./overview-header.js', stub({ overviewHeader() {} })],
   ['./ui.js', stub({ button() {}, statusColor() {}, statusMark() {}, statusInfo() {}, statusLabel() {}, statusNotice: row => ['done', 'blocked'].includes(row.status) ? { label: row.status, text: 'Read me' } : null })],
   ['./village-chat.js', stub({ selectVillageResident() {}, renderVillageChat() {} })],
-  ['./session-controls.js', stub({ renderSessionControls() {} })],
+  ['./session-controls.js', stub({ renderSessionControls() {}, renderInlinePermission() {}, sessionState() {} })],
   ['./terminal-dock.js', stub({ hasTerminalDock: () => false, noteSceneSize() {} })],
 ]);
 async function load(name) {

@@ -10,7 +10,7 @@ import { spriteLayout } from "./sprite-layout.js";
 import { spriteArt } from "./sprite-art.js";
 import { renderAgentEmptyState } from "./agent-empty-state.js";
 import { selectVillageResident, renderVillageChat } from "./village-chat.js";
-import { renderSessionControls } from "./session-controls.js";
+import { renderSessionControls, renderInlinePermission, sessionState } from "./session-controls.js";
 import { inAgentMode } from "./agent-mode.js";
 import { hasTerminalDock, noteSceneSize } from "./terminal-dock.js";
 import { beginDrag, moveDrag, finishDrag, isDragging, consumeDragClick, clampPosition, normalizedPosition, restorePosition } from "./drag-layout.js";
@@ -22,10 +22,11 @@ export function villageNotice(row) {
   return notice?.attention ? notice : null;
 }
 
-export function noticeBounds(actor, layout) {
-  const width = Math.min(208, layout.width - 24);
+export function noticeBounds(actor, layout, options = {}) {
+  const width = Math.min(options.width || 208, layout.width - 24);
+  const height = Math.min(options.height || 88, layout.height - 24);
   const left = clamp(actor.x + (layout.size + 16 - width) / 2, 12, layout.width - width - 12);
-  return { left, top: actor.y - 102, width, height: 88,
+  return { left, top: clamp(actor.y - height - 14, 12, layout.height - height - 12), width, height,
     tail: clamp(actor.x + (layout.size + 16) / 2 - left - 8, 12, width - 28) };
 }
 function seed(text) {
@@ -38,16 +39,22 @@ function random(actor) {
   return actor.random / 4294967296;
 }
 
-export function villageLayout(width, viewportHeight, count, noticeCount = 0) {
+export function villageLayout(width, viewportHeight, count, noticeCount = 0, noticeSize = {}) {
   const size = count > 12 ? 82 : 108;
-  const top = Math.min(260, Math.max(120, width * 0.19));
+  const noticeWidth = Math.min(noticeSize.width || 208, width - 24), noticeHeight = noticeSize.height || 88;
+  const top = Math.max(Math.min(260, Math.max(120, width * 0.19)), noticeCount ? noticeHeight + 32 : 0);
   const inset = Math.min(110, Math.max(20, width * 0.08));
-  const columns = Math.max(1, Math.floor((width - inset * 2) / (noticeCount ? 230 : 150)));
+  const columns = Math.max(1, Math.floor(noticeCount ? width / (noticeWidth + 24) : (width - inset * 2) / 150));
   const height = Math.max(420, viewportHeight, top + count * 18000 / Math.max(280, width),
-    noticeCount ? top + Math.ceil(count / columns) * (size + 118) + 64 : 0);
+    noticeCount ? top + Math.ceil(count / columns) * (size + noticeHeight + 56) + 64 : 0);
   return { width, height, size, left: inset, right: Math.max(inset, width - inset - size),
     top, bottom: Math.max(top, height - size - 64), columns, noticeCount };
 }
+
+const reservedNotice = (row, actor, layout) => villageNotice(row)
+  ? noticeBounds(actor, layout, row.status === "blocked" ? { width: 320, height: 340 } : {}) : null;
+const overlap = (a, b) => a && b ? Math.max(0, Math.min(a.left + a.width + 12, b.left + b.width + 12) - Math.max(a.left, b.left))
+  * Math.max(0, Math.min(a.top + a.height + 24, b.top + b.height + 24) - Math.max(a.top, b.top)) : 0;
 
 // Stable per-session state survives filtering and refreshes. Clock time is already
 // frozen while the theme is paused/hidden, so returning never teleports residents.
@@ -85,7 +92,8 @@ export function advanceVillage(view, rows, layout) {
     actor.moving = Boolean(isDragging(view, `resident-${row.id}`) && view.pointerDrag?.moved);
     // The inspected resident stays put until selection changes. Hover and
     // unread notices alone do not interrupt the other residents' roaming.
-    if (!dt || row.id === view.villageSelected || isDragging(view, `resident-${row.id}`)) continue;
+    if (!dt || row.id === view.villageSelected || row.id === view.permissionHovered
+        || view.villageChats?.get(row.id)?.acting || isDragging(view, `resident-${row.id}`)) continue;
     if (actor.wait > 0) { actor.wait -= dt; continue; }
     const dx = actor.tx - actor.x, dy = actor.ty - actor.y, distance = Math.hypot(dx, dy);
     if (distance < 2) {
@@ -115,9 +123,14 @@ export function advanceVillage(view, rows, layout) {
     const step = Math.min(distance, actor.speed * dt);
     const x = actor.x + dx / distance * step, y = actor.y + dy / distance * step;
     // Let residents pause and choose another direction instead of piling up.
-    const blocked = current.some(({ actor: other }) => other !== actor
-      && Math.hypot(other.x - x, other.y - y) < layout.size * 0.72
-      && Math.hypot(other.x - x, other.y - y) < Math.hypot(other.x - actor.x, other.y - actor.y));
+    const candidateNotice = reservedNotice(row, { x, y }, layout), currentNotice = reservedNotice(row, actor, layout);
+    const blocked = current.some(({ row: otherRow, actor: other }) => {
+      if (other === actor) return false;
+      if (Math.hypot(other.x - x, other.y - y) < layout.size * 0.72
+          && Math.hypot(other.x - x, other.y - y) < Math.hypot(other.x - actor.x, other.y - actor.y)) return true;
+      const otherNotice = reservedNotice(otherRow, other, layout), area = overlap(candidateNotice, otherNotice);
+      return area > 0 && area >= overlap(currentNotice, otherNotice);
+    });
     if (blocked) { actor.tx = actor.x; actor.ty = actor.y; actor.wait = 0.1; continue; }
     actor.facing = movementFacing(x - actor.x, y - actor.y, actor.facing);
     actor.direction = movementDirection(x - actor.x, y - actor.y, actor.direction);
@@ -164,11 +177,14 @@ function resident(view, row, actor, layout, t, focusedAddress) {
 }
 
 function speechBubble(view, row, actor, layout, t) {
-  const notice = villageNotice(row), box = noticeBounds(actor, layout);
+  const approval = row.status === "blocked" && !row.external;
+  const chat = approval ? sessionState(view, row) : null;
+  const notice = villageNotice(row), box = noticeBounds(actor, layout, { width: chat?.request ? 320 : 208, height: chat?.request ? 340 : approval ? 112 : 88 });
   const color = statusColor(t, row.status) || t.accent;
   return div().id(`village-notice-${row.id}`).absolute().left(box.left).top(box.top).w(box.width).h(box.height + 12)
     .cursor_pointer().tooltip(`${row.project} · ${row.title}\n${notice.text}`)
     .accessibility_label(`${row.project}, ${notice.label}, ${notice.text}`)
+    .on_hover((over, cx) => { if (approval) { view.permissionHovered = over ? row.id : null; cx.notify(); } })
     .on_click((_e, cx) => { finishDrag(view, null, cx); cx.stop_propagation(); if (!consumeDragClick(view)) selectVillageResident(view, row, cx); })
     .child(v_flex().w_full().h(box.height).p(11).gap(6).rounded(12).border(1).border_color(t.border).bg(t.raised)
       .hover((el) => el.border_color(color))
@@ -176,7 +192,9 @@ function speechBubble(view, row, actor, layout, t) {
         .child(div().size(5).rounded(3).bg(color))
         .child(div().text_size(10).font_semibold().text_color(color).child(notice.label))
         .child(div().flex_1().truncate().text_size(9).text_color(t.muted).child(row.project)))
-      .child(div().text_size(11).line_height(1.4).text_color(t.foreground).whitespace_normal().h(32).overflow_hidden().child(notice.text)))
+      .child(div().text_size(11).line_height(1.4).text_color(t.foreground).whitespace_normal().h(32).flex_none().overflow_hidden().child(notice.text))
+      .when(approval, (el) => el.child(div().flex_1().min_h(0).overflow_y_scroll()
+        .child(renderInlinePermission(chat, t, `village-${row.id}`)))))
     .child(svg("mods/agents-plus/speech-tail.svg").absolute().left(box.tail).top(box.height - 1).w(16).h(10).text_color(t.raised));
 }
 
@@ -243,13 +261,15 @@ export function renderVillage(view, state) {
   const { t, all, rows, visible, start, pages, states, openRow, empty, emptyActions } = state;
   const width = view.villageWidth || view.width || 1100;
   const definition = themeDefinition(view.skin);
-  const layout = villageLayout(width, view.villageHeight || 660, visible.length, visible.filter(villageNotice).length);
+  const layout = villageLayout(width, view.villageHeight || 660, visible.length, visible.filter(villageNotice).length,
+    visible.some((row) => row.status === "blocked") ? { width: 320, height: 340 } : {});
   const selected = visible.find((row) => row.id === view.villageSelected);
   const focusedAddress = focused()?.terminal;
   const dragging = view.pointerDrag?.id;
   if (dragging && (dragging.startsWith("details-") ? dragging !== `details-${selected?.id}`
     : !visible.some((row) => dragging === `resident-${row.id}`))) finishDrag(view, null);
   if (!selected) view.villageSelected = null;
+  if (!visible.some((row) => row.id === view.permissionHovered && row.status === "blocked")) view.permissionHovered = null;
   if (!visible.some((row) => row.id === view.villageHovered)) view.villageHovered = null;
   // Discard departed sessions, but keep off-page/filtered residents in place.
   if (view.villageActors) for (const id of view.villageActors.keys()) if (!all.some((row) => row.id === id)) view.villageActors.delete(id);
@@ -268,7 +288,9 @@ export function renderVillage(view, state) {
           .on_click((_e, cx) => { finishDrag(view, null, cx); if (!consumeDragClick(view)) view.villageSelected = null; cx.notify(); })
           .child(scenery(layout, definition))
           .children(residents.map(({ row, actor }) => resident(view, row, actor, layout, t, focusedAddress)))
-          .children(residents.filter(({ row }) => villageNotice(row)).map(({ row, actor }) => speechBubble(view, row, actor, layout, t)))
+          .children(residents.filter(({ row }) => villageNotice(row))
+            .sort((a, b) => Number(a.row.id === view.permissionHovered) - Number(b.row.id === view.permissionHovered))
+            .map(({ row, actor }) => speechBubble(view, row, actor, layout, t)))
           .when(Boolean(empty), (el) => el.child(div().absolute().top(layout.height / 2 - 70).left(Math.max(16, (width - 440) / 2))
             .w(Math.min(440, width - 32)).rounded(12).bg(t.raised).border(1).border_color(t.border)
             .child(renderAgentEmptyState(empty, t, emptyActions))))))

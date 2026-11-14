@@ -577,7 +577,8 @@ for (const skin of ['default','chiikawa']) {
     assert.ok(JSON.stringify(rendered(card,'overview-preview-t0')).includes('Editing the shared theme registry'));
     assert.ok(JSON.stringify(rendered(tree,'overview-preview-t3')).includes('Approve the requested build command?'));
   }
-  env.click('overview-details-t3');
+  assert.ok(!JSON.stringify(env.render()).includes('View details'));
+  env.click('overview-t3');
   assert.equal(env.instance.villageSelected,'t3');
   assert.equal(findNode(data.layout,'workspace-views').active,'agent-world','details keep the Agent presentation');
   data.focused={terminal:'t3',pane:'p3',tab:'b3'};env.timers.get(250)();
@@ -593,6 +594,45 @@ for (const skin of ['default','chiikawa']) {
   assert.ok(!env.commands.some(([,args])=>['send','keys'].includes(args[0])),'card interactions never send messages or approvals');
 }
 console.log('agent cards: session identity, current work, active focus and distinct details/terminal actions passed');
+
+// Unselected local approvals work beside the native dock; reads never focus or send.
+for (const presentation of ['cards','village']) {
+  const data=fixture(4);data.outside=[];data.props={mode:'overview',integrated:true};
+  data.layout={id:'root',theme:'herdr-chiikawa',children:[{id:'workspace-views',type:'column',children:[
+    {id:'agent-scene',size:{weight:0.6},content:{mod:'agents-plus'}},
+    {id:'agent-terminal-dock',size:{weight:0.4},children:[{id:'agent-terminal-surface',content:{tab:'active'}}]},
+  ]}]};
+  data.state['ag.presentation']=presentation;
+  data.agents.forEach(agent=>{agent.status='blocked';});
+  data.execHook=async (_cmd,args)=>({code:0,stdout:JSON.stringify(args[0]==='get'
+    ? {address:args.at(-1),state:'live',created_ms:1,turn:1,status_ms:100,foreground:{name:'codex',pid:42},status:{state:'blocked',kind:'permission',app:'codex'}}
+    : {complete:true,text:'Run the requested checks?\n› 1. Yes\n  2. Yes, allow this command for the session\n  3. No\nEnter to confirm'})});
+  const env=await environment(data,null);env.instance.width=700;env.render();
+  const writes=env.writes.length, selected=env.instance.villageSelected;
+  env.timers.get(2000)();await Promise.all(env.tasks.splice(0));
+  let output=JSON.stringify(env.render());
+  assert.equal(env.writes.length,writes,'approval polling preserves host focus');
+  assert.equal(env.instance.villageSelected,selected);
+  for(const row of env.instance.visibleOverviewRows) {
+    assert.ok(output.includes(`${presentation==='village'?'village':'card'}-${row.id}-choice-3`),'every visible blocked resident exposes choices');
+    assert.ok(env.instance.villageChats.get(row.id).request);
+  }
+  const request=env.instance.villageChats.get('t3').request;
+  env.click('overview-t3');
+  assert.ok(env.instance.villageChats.get('t3').input,'selection adds an editor to the polled state');
+  assert.equal(env.instance.villageChats.get('t3').request,request,'selection preserves approval identity');
+  if(presentation==='village') for(let i=0;i<120;i++) {
+    env.instance.themeClock+=50;env.render();
+    const layout=env.instance.villageBounds;
+    const boxes=env.instance.visibleOverviewRows.map(row=>env.village.noticeBounds(env.instance.villageActors.get(row.id),layout,{width:320,height:340}));
+    for(let a=0;a<boxes.length;a++) for(let b=a+1;b<boxes.length;b++) {
+      const x=boxes[a],y=boxes[b];
+      assert.ok(x.left+x.width<=y.left || y.left+y.width<=x.left || x.top+x.height+12<=y.top || y.top+y.height+12<=x.top,'expanded approval buttons remain unobscured while roaming');
+    }
+  }
+  assert.ok(!env.commands.some(([,args])=>['send','keys'].includes(args[0])));
+}
+console.log('inline approvals: unselected polling, native dock, preserved composer state and unobscured options passed');
 
 // Read-required bubbles follow host unread state without acknowledging on sight.
 {
@@ -815,7 +855,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','theme-chiikawa','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','sprite-motion','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','theme-chiikawa','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','approval-providers','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','sprite-motion','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);

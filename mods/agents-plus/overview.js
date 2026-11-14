@@ -16,8 +16,8 @@ import { agentEmptyState, renderAgentEmptyState } from "./agent-empty-state.js";
 import { renderVillage, villageDetails, dragViewport } from "./village.js";
 import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, findViewStack, AGENT_SELECTION } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
-import { initSessionControls } from "./session-controls.js";
-import { hasTerminalDock, openTerminalDock, showComposer, COMPOSER, noteSceneSize } from "./terminal-dock.js";
+import { initSessionControls, renderInlinePermission, sessionState } from "./session-controls.js";
+import { hasTerminalDock, openTerminalDock, COMPOSER, noteSceneSize } from "./terminal-dock.js";
 
 const STATES = STATUS_FILTERS;
 const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"]];
@@ -48,7 +48,7 @@ export function initAgentView(view, cx) {
   view.input.on("change", (_e, cx) => { view.page = 0; cx.notify(); });
   view.handle = cx.focus_handle();
   initAgentTheme(view, cx);
-  if (!inAgentMode() || !hasTerminalDock()) initSessionControls(view, cx);
+  initSessionControls(view, cx, () => !inAgentMode() || !hasTerminalDock());
   if (inAgentMode()) {
     view.selectionSequence = shared(AGENT_SELECTION)?.sequence;
     view.composerSequence = shared(COMPOSER)?.sequence;
@@ -213,17 +213,12 @@ function agentCard(view, row, t, focusedAddress) {
       .child(div().text_size(10).line_height(1.2).font_semibold().text_color(preview.attention ? color : t.muted)
         .child(preview.label))
       .child(div().h(51).flex_none().overflow_hidden().whitespace_normal().text_size(12).line_height(1.4)
-        .text_color(t.foreground).tooltip(note).child(note)))
+        .text_color(t.foreground).tooltip(note).child(note))
+      .when(row.status === "blocked" && !row.external, (el) => el.child(renderInlinePermission(sessionState(view, row), t, `card-${row.id}`))))
     .child(h_flex().flex_none().min_w(0).gap(6).items_center().flex_wrap()
       .when(Boolean(marker), (el) => el.child(div().id(`overview-selected-${row.id}`).flex_none()
         .text_size(10).font_semibold().text_color(t.accent).child(marker)))
       .child(div().flex_1().min_w(0))
-      .child(button(`overview-details-${row.id}`, "View details", (cx) => {
-        view.composerOpen = true; view.detailCollapsed = false;
-        selectVillageResident(view, row, cx);
-        if (inAgentMode() && hasTerminalDock() && !row.external) showComposer(row.address);
-        else view.villageChats?.get(row.id)?.input.focus();
-      }, t).h(28).px(8).text_size(11))
       .child(button(`overview-open-${row.id}`, row.external ? "Open in Herdr" : "Open terminal", () => openRow(view, row), t)
         .h(28).px(8).text_size(11).border(1).border_color(t.border).bg(t.background).text_color(t.foreground)));
 }
@@ -249,6 +244,7 @@ export function renderAgentView(view) {
   view.page = Math.min(view.page ?? 0, pages - 1);
   const start = view.page * PAGE_SIZE;
   const visible = rows.slice(start, start + PAGE_SIZE);
+  view.visibleOverviewRows = visible;
   const back = props()?.returnPane;
   const canGoBack = Boolean(back && panes().some((pane) => pane.pane === back));
   const empty = agentEmptyState({ total: view.overviewRows.length, available: all.length, count: rows.length });
