@@ -87,6 +87,7 @@ class AgentBundleMatrixTests(unittest.TestCase):
                             self.assertEqual(nodes["sidebar"]["hidden"], sidebar == "hidden")
                         self.assertTrue((home / "mods/agents-plus/state.js").is_file())
                         self.assertTrue((home / "mods/agents-plus/agent-status.js").is_file())
+                        self.assertTrue((home / "mods/agents-plus/village-spacing.js").is_file())
                     else:
                         self.assertEqual(checks, 0)
                         self.assertEqual(actual, source)

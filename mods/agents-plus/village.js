@@ -4,8 +4,8 @@ import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar } from "gpui-base";
 import { run, focused } from "herdr";
 import { button, statusColor, statusMark, statusInfo, statusLabel, statusNotice } from "./ui.js";
-import { agentSprite } from "./agent-theme.js";
-import { packDefinition } from "./resource-packs.js";
+import { agentResident, agentSprite } from "./agent-theme.js";
+import { packDefinition, residentPool } from "./resource-packs.js";
 import { spriteLayout } from "./sprite-layout.js";
 import { spriteArt } from "./sprite-art.js";
 import { renderAgentEmptyState } from "./agent-empty-state.js";
@@ -15,6 +15,8 @@ import { inAgentMode } from "./agent-mode.js";
 import { hasTerminalDock, noteSceneSize } from "./terminal-dock.js";
 import { beginDrag, moveDrag, finishDrag, isDragging, consumeDragClick, clampPosition, normalizedPosition, restorePosition } from "./drag-layout.js";
 import { movementFacing, movementDirection } from "./sprite-directions.js";
+import { residentGeometry, residentFootprint, residentBounds, noticeBounds, villageLayout, footprintOverlap, spacedStep, vacantPosition } from "./village-spacing.js";
+export { noticeBounds, villageLayout } from "./village-spacing.js";
 
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
 export function villageNotice(row) {
@@ -22,13 +24,6 @@ export function villageNotice(row) {
   return notice?.attention ? notice : null;
 }
 
-export function noticeBounds(actor, layout, options = {}) {
-  const width = Math.min(options.width || 208, layout.width - 24);
-  const height = Math.min(options.height || 88, layout.height - 24);
-  const left = clamp(actor.x + (layout.size + 16 - width) / 2, 12, layout.width - width - 12);
-  return { left, top: clamp(actor.y - height - 14, 12, layout.height - height - 12), width, height,
-    tail: clamp(actor.x + (layout.size + 16) / 2 - left - 8, 12, width - 28) };
-}
 function seed(text) {
   let n = 2166136261;
   for (let i = 0; i < text.length; i++) n = Math.imul(n ^ text.charCodeAt(i), 16777619) >>> 0;
@@ -39,40 +34,52 @@ function random(actor) {
   return actor.random / 4294967296;
 }
 
-export function villageLayout(width, viewportHeight, count, noticeCount = 0, noticeSize = {}) {
-  const size = count > 12 ? 82 : 108;
-  const noticeWidth = Math.min(noticeSize.width || 208, width - 24), noticeHeight = noticeSize.height || 88;
-  const top = Math.max(Math.min(260, Math.max(120, width * 0.19)), noticeCount ? noticeHeight + 32 : 0);
-  const inset = Math.min(110, Math.max(20, width * 0.08));
-  const columns = Math.max(1, Math.floor(noticeCount ? width / (noticeWidth + 24) : (width - inset * 2) / 150));
-  const height = Math.max(420, viewportHeight, top + count * 18000 / Math.max(280, width),
-    noticeCount ? top + Math.ceil(count / columns) * (size + noticeHeight + 56) + 64 : 0);
-  return { width, height, size, left: inset, right: Math.max(inset, width - inset - size),
-    top, bottom: Math.max(top, height - size - 64), columns, noticeCount };
+const geometryCaches = new WeakMap();
+const smallNotice = { width: 208, height: 88 }, approvalNotice = { width: 208, height: 112 }, expandedNotice = { width: 320, height: 340 };
+export function residentSpacing(view, row, size) {
+  const definition = packDefinition(view.pack);
+  let cache = geometryCaches.get(definition);
+  if (!cache) { cache = { pool: residentPool(view.pack), shapes: new Map() }; geometryCaches.set(definition, cache); }
+  const name = agentResident(view, row, cache.pool), key = `${name}:${size}`;
+  let shape = cache.shapes.get(key);
+  if (!shape) {
+    const motions = definition.motions?.[name];
+    const variants = [definition.sprites?.[name], ...Object.values(motions || {}).map((clip) => definition.sprites?.[clip?.sprite])].filter(Boolean);
+    shape = { geometry: residentGeometry(variants.length ? variants : [{ width: size + 16, height: size }], size),
+      directions: motions?.directions?.filter((direction) => ["left", "right", "up", "down"].includes(direction)) };
+    cache.shapes.set(key, shape);
+  }
+  const approval = row.status === "blocked" && !row.external;
+  const expanded = approval && view.villageChats?.get(row.id)?.request;
+  const notice = villageNotice(row) ? expanded ? expandedNotice : approval ? approvalNotice : smallNotice : null;
+  // Polling can expand a local request without a movement tick. Keep that
+  // control area available even while its compact preview is displayed.
+  const reservedNotice = notice && approval ? expandedNotice : notice;
+  return { ...shape, notice, reservedNotice };
 }
-
-const reservedNotice = (row, actor, layout) => villageNotice(row)
-  ? noticeBounds(actor, layout, row.status === "blocked" ? { width: 320, height: 340 } : {}) : null;
-const overlap = (a, b) => a && b ? Math.max(0, Math.min(a.left + a.width + 12, b.left + b.width + 12) - Math.max(a.left, b.left))
-  * Math.max(0, Math.min(a.top + a.height + 24, b.top + b.height + 24) - Math.max(a.top, b.top)) : 0;
+const locked = (view, row) => row.id === view.villageSelected || row.id === view.permissionHovered
+  || view.villageChats?.get(row.id)?.acting || isDragging(view, `resident-${row.id}`);
 
 // Stable per-session state survives filtering and refreshes. Clock time is already
-// frozen while the theme is paused/hidden, so returning never teleports residents.
+// frozen while the theme is paused/hidden, so returning adds no elapsed-time jump.
 export function advanceVillage(view, rows, layout) {
   const clock = view.themeClock || 0;
   const dt = clamp((clock - (view.villageClock ?? clock)) / 1000, 0, 0.16);
   view.villageClock = clock;
   const actors = view.villageActors ??= new Map();
-  const columns = Math.min(layout.columns, Math.max(1, Math.ceil(Math.sqrt(rows.length * layout.width / layout.height))));
+  const restored = view.villageSpacingKey == null && actors.size > 0;
+  const spacing = rows.map((row) => residentSpacing(view, row, layout.size));
+  Object.assign(layout, villageLayout(layout.width, layout.viewportHeight ?? layout.height, rows.length,
+    spacing.filter((spec) => spec.notice).length, {}, spacing.map((spec) => ({ ...spec, notice: spec.reservedNotice }))));
+  const columns = layout.columns;
   const lines = Math.max(1, Math.ceil(rows.length / columns));
   const current = rows.map((row, i) => {
+    const spec = spacing[i], bounds = residentBounds(layout, spec.geometry, spec.reservedNotice);
     let actor = actors.get(row.id);
     if (!actor) {
       actor = { random: seed(row.id), wait: 0, moving: false };
-      const u = layout.noticeCount ? (columns > 1 ? (i % columns) / (columns - 1) : 0.5)
-        : ((i % columns) + 0.25 + random(actor) * 0.5) / columns;
-      const v = layout.noticeCount ? (lines > 1 ? Math.floor(i / columns) / (lines - 1) : 0.5)
-        : (Math.floor(i / columns) + 0.25 + random(actor) * 0.5) / lines;
+      const u = columns > 1 ? (i % columns) / (columns - 1) : 0.5;
+      const v = lines > 1 ? Math.floor(i / columns) / (lines - 1) : 0.5;
       actor.x = layout.left + u * (layout.right - layout.left);
       actor.y = layout.top + v * (layout.bottom - layout.top);
       actor.tx = actor.x; actor.ty = actor.y;
@@ -80,61 +87,107 @@ export function advanceVillage(view, rows, layout) {
       actor.speed = 23 + random(actor) * 12;
       actors.set(row.id, actor);
     }
-    actor.x = clamp(actor.x, layout.left, layout.right);
-    actor.y = clamp(actor.y, layout.top, layout.bottom);
-    actor.tx = clamp(actor.tx, layout.left, layout.right);
-    actor.ty = clamp(actor.ty, layout.top, layout.bottom);
-    return { row, actor };
+    // Pointer ownership wins over layout changes. Reachable locked residents
+    // stay still; only an out-of-scene selection needs a resize correction.
+    if (!isDragging(view, `resident-${row.id}`)) {
+      actor.x = clamp(actor.x, bounds.left, bounds.right);
+      actor.y = clamp(actor.y, bounds.top, bounds.bottom);
+    }
+    actor.tx = clamp(actor.tx, bounds.left, bounds.right);
+    actor.ty = clamp(actor.ty, bounds.top, bounds.bottom);
+    return { row, actor, ...spec, bounds, footprint: (point) => residentFootprint(point, layout, spec.geometry, spec.reservedNotice) };
   });
-  for (const { row, actor } of current) {
-    if (!dt && row.id !== view.villageSelected && row.id !== view.permissionHovered
-        && !view.villageChats?.get(row.id)?.acting && !isDragging(view, `resident-${row.id}`)) continue;
+  const previous = view.villageSpacingKey;
+  const changed = previous && (previous.width !== layout.width || previous.height !== layout.height || previous.size !== layout.size
+    || previous.rows.size !== current.length || current.some(({ row, geometry, reservedNotice }) => {
+      const old = previous.rows.get(row.id);
+      return old?.geometry !== geometry || old?.reservedNotice !== reservedNotice;
+    }));
+  view.villageNeedsReflow ||= restored || changed
+    || view.villageWasDragging && !isDragging(view);
+  if (!previous || changed) view.villageSpacingKey = { width: layout.width, height: layout.height, size: layout.size,
+    rows: new Map(current.map(({ row, geometry, reservedNotice }) => [row.id, { geometry, reservedNotice }])) };
+  view.villageWasDragging = isDragging(view);
+  // Initial/paused renders need geometry for painting, but no pairwise motion
+  // work. Reuse static shape identities to detect layout changes without JSON.
+  const boxes = dt ? current.map(({ actor, footprint }) => footprint(actor)) : null;
+  if (dt && view.villageNeedsReflow) {
+    // Resizing/filter return can trap a row between the edge and a locked
+    // resident. Repair just the overlapping unlocked rows, once, on resume.
+    for (const [index, { row, actor, bounds, footprint }] of current.entries()) {
+      if (locked(view, row)) continue;
+      const others = boxes.filter((_box, i) => i !== index);
+      if (!others.some((box) => footprintOverlap(boxes[index], box) > 0.001)) continue;
+      const point = vacantPosition(actor, bounds, footprint, others);
+      if (!point) continue;
+      actor.x = actor.tx = point.x; actor.y = actor.ty = point.y;
+      actor.wait = 0.1; actor.moving = false;
+      boxes[index] = footprint(actor);
+    }
+    view.villageNeedsReflow = false;
+  }
+  for (const [index, { row, actor, footprint, directions, bounds }] of current.entries()) {
+    if (!dt && !locked(view, row)) continue;
     actor.moving = Boolean(isDragging(view, `resident-${row.id}`) && view.pointerDrag?.moved);
     // The inspected resident stays put until selection changes. Hover and
     // unread notices alone do not interrupt the other residents' roaming.
-    if (!dt || row.id === view.villageSelected || row.id === view.permissionHovered
-        || view.villageChats?.get(row.id)?.acting || isDragging(view, `resident-${row.id}`)) continue;
-    if (actor.wait > 0) { actor.wait -= dt; continue; }
+    if (!dt || locked(view, row)) continue;
+    const others = boxes.filter((_box, i) => i !== index);
+    const overlapping = others.some((box) => footprintOverlap(boxes[index], box) > 0);
+    if (actor.wait > 0 && !overlapping) { actor.wait -= dt; continue; }
     const dx = actor.tx - actor.x, dy = actor.ty - actor.y, distance = Math.hypot(dx, dy);
-    if (distance < 2) {
-      const name = agentSprite(view, row, true)?.name;
-      const declared = packDefinition(view.pack).motions?.[name]?.directions;
-      const directions = declared?.filter((direction) => ["left", "right", "up", "down"].includes(direction));
+    if (distance < 2 && !overlapping) {
       const angles = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
       const direction = directions?.length ? directions[Math.floor(random(actor) * directions.length)] : null;
       const angle = direction ? angles[direction] : random(actor) * Math.PI * 2, travel = 80 + random(actor) * 190;
-      actor.tx = clamp(actor.x + Math.cos(angle) * travel, layout.left, layout.right);
-      actor.ty = clamp(actor.y + Math.sin(angle) * travel, layout.top, layout.bottom);
+      actor.tx = clamp(actor.x + Math.cos(angle) * travel, bounds.left, bounds.right);
+      actor.ty = clamp(actor.y + Math.sin(angle) * travel, bounds.top, bounds.bottom);
       // At a corner an outward step can clamp back onto the resident. Choose a
       // point inside the field instead of repeatedly waiting on the same spot.
       if (Math.hypot(actor.tx - actor.x, actor.ty - actor.y) < 2) {
         const reverse = { left: "right", right: "left", up: "down", down: "up" }[direction];
         if (direction && directions.includes(reverse)) {
-          actor.tx = clamp(actor.x + Math.cos(angles[reverse]) * travel, layout.left, layout.right);
-          actor.ty = clamp(actor.y + Math.sin(angles[reverse]) * travel, layout.top, layout.bottom);
+          actor.tx = clamp(actor.x + Math.cos(angles[reverse]) * travel, bounds.left, bounds.right);
+          actor.ty = clamp(actor.y + Math.sin(angles[reverse]) * travel, bounds.top, bounds.bottom);
         } else if (!direction) {
-          actor.tx = layout.left + random(actor) * (layout.right - layout.left);
-          actor.ty = layout.top + random(actor) * (layout.bottom - layout.top);
+          actor.tx = bounds.left + random(actor) * (bounds.right - bounds.left);
+          actor.ty = bounds.top + random(actor) * (bounds.bottom - bounds.top);
         }
       }
       actor.wait = 0.1 + random(actor) * 0.25;
       continue;
     }
-    const step = Math.min(distance, actor.speed * dt);
-    const x = actor.x + dx / distance * step, y = actor.y + dy / distance * step;
-    // Let residents pause and choose another direction instead of piling up.
-    const candidateNotice = reservedNotice(row, { x, y }, layout), currentNotice = reservedNotice(row, actor, layout);
-    const blocked = current.some(({ row: otherRow, actor: other }) => {
-      if (other === actor) return false;
-      if (Math.hypot(other.x - x, other.y - y) < layout.size * 0.72
-          && Math.hypot(other.x - x, other.y - y) < Math.hypot(other.x - actor.x, other.y - actor.y)) return true;
-      const otherNotice = reservedNotice(otherRow, other, layout), area = overlap(candidateNotice, otherNotice);
-      return area > 0 && area >= overlap(currentNotice, otherNotice);
-    });
-    if (blocked) { actor.tx = actor.x; actor.ty = actor.y; actor.wait = 0.1; continue; }
+    const step = Math.min(overlapping ? Infinity : distance, actor.speed * dt);
+    const point = spacedStep(actor, { x: actor.tx, y: actor.ty }, step, bounds, footprint, others, directions);
+    if (!point) {
+      actor.spacingStalledFor = overlapping ? (actor.spacingStalledFor || 0) + dt : 0;
+      // A saved overlap can also be trapped between the scenic floor and a
+      // fixed bubble. Keep the floor: repair only that stalled unlocked row,
+      // after normal escape attempts, rather than letting it walk into the sky.
+      if (actor.spacingStalledFor >= 0.75) {
+        const vacant = vacantPosition(actor, bounds, footprint, others);
+        if (vacant) {
+          actor.x = vacant.x; actor.y = vacant.y;
+          boxes[index] = footprint(actor);
+        }
+        actor.spacingStalledFor = 0;
+      }
+      actor.tx = actor.x; actor.ty = actor.y; actor.wait = 0.1;
+      continue;
+    }
+    actor.spacingStalledFor = 0;
+    const { x, y } = point;
+    // Follow an escape/slide for a while rather than retrying the obstructed
+    // target every frame and oscillating between atlas directions.
+    if (distance < 2 || Math.hypot(x - actor.x - dx / distance * step, y - actor.y - dy / distance * step) > 0.01) {
+      actor.tx = clamp(x + (x - actor.x) / step * 100, bounds.left, bounds.right);
+      actor.ty = clamp(y + (y - actor.y) / step * 100, bounds.top, bounds.bottom);
+    }
     actor.facing = movementFacing(x - actor.x, y - actor.y, actor.facing);
     actor.direction = movementDirection(x - actor.x, y - actor.y, actor.direction);
     actor.x = x; actor.y = y; actor.moving = true;
+    actor.wait = 0;
+    boxes[index] = footprint(actor);
   }
   for (const { actor } of current) {
     const motion = actor.moving ? actor.direction || "down" : "idle";
@@ -143,7 +196,7 @@ export function advanceVillage(view, rows, layout) {
   return current;
 }
 
-function resident(view, row, actor, layout, t, focusedAddress) {
+function resident(view, row, actor, layout, t, focusedAddress, geometry) {
   const sprite = agentSprite(view, row, true, actor.facing, actor);
   const size = layout.size, art = spriteLayout(sprite, size + 16, size, true);
   const selected = view.villageSelected === row.id;
@@ -151,10 +204,13 @@ function resident(view, row, actor, layout, t, focusedAddress) {
   const status = statusLabel(row.status);
   const notice = villageNotice(row), color = statusColor(t, row.status) || t.muted;
   const identity = [row.title, `${row.project}${row.branch ? ` · ${row.branch}` : ""}`, `${row.agent} · ${row.address || row.sourceLabel}`].join("\n");
-  return div().id(`overview-${row.id}`).absolute().left(actor.x).top(actor.y).w(size + 16).h(size + 44)
+  return div().id(`overview-${row.id}`).absolute().left(actor.x).top(actor.y).w(size + 16).h(geometry.name.top + geometry.name.height)
     .cursor_pointer().accessibility_label(`${row.agent}, ${status}, ${row.title}, ${row.project}`)
     .tooltip(identity)
-    .on_mouse_down("left", (e, cx) => beginDrag(view, `resident-${row.id}`, e, actor, () => view.villageBounds || layout, (point) => {
+    .on_mouse_down("left", (e, cx) => beginDrag(view, `resident-${row.id}`, e, actor, () => {
+      const area = view.villageBounds || layout, spec = residentSpacing(view, row, area.size);
+      return residentBounds(area, spec.geometry, spec.reservedNotice);
+    }, (point) => {
       actor.facing = movementFacing(point.x - actor.x, point.y - actor.y, actor.facing);
       actor.direction = movementDirection(point.x - actor.x, point.y - actor.y, actor.direction);
       actor.x = point.x; actor.y = point.y; actor.tx = point.x; actor.ty = point.y; actor.wait = 0;
@@ -164,23 +220,23 @@ function resident(view, row, actor, layout, t, focusedAddress) {
     .on_click((_e, cx) => { finishDrag(view, null, cx); cx.stop_propagation(); if (!consumeDragClick(view, `resident-${row.id}`)) selectVillageResident(view, row, cx); })
     .when(selected, (el) => el.child(div().id(`village-selection-ring-${row.id}`).absolute().left(8).top(size).w(size).h(14).rounded(50)
       .border(2).border_color(t.accent).bg(t.selected).opacity(0.8)))
-    .when(!notice, (el) => el.child(h_flex().id(`village-status-${row.id}`).absolute().left((size + 16 - 84) / 2).top(-26)
+    .when(!notice, (el) => el.child(h_flex().id(`village-status-${row.id}`).absolute().left(geometry.status.left).top(geometry.status.top)
       .w(84).h(22).gap(5).items_center().justify_center().rounded(11).bg(t.raised)
       .child(div().size(5).rounded(3).bg(color))
       .child(div().text_size(10).text_color(color).child(status))))
     .child(spriteArt(sprite, `village-art-${row.id}-${sprite.name}`, art))
-    .child(v_flex().id(`village-name-${row.id}`).absolute().top(size + 12).left(-6).w(size + 28).gap(2)
+    .child(v_flex().id(`village-name-${row.id}`).absolute().top(geometry.name.top).left(geometry.name.left).w(geometry.name.width).h(geometry.name.height).gap(2)
       // Pack artwork has its own colors; keep labels on a palette-owned surface.
       .px(5).py(3).rounded(7).border(1).border_color(selected ? t.accent : t.border).bg(t.raised)
-      .child(div().truncate().text_center().text_size(11).font_semibold().text_color(t.foreground).child(row.title))
-      .child(div().truncate().text_center().text_size(9).text_color(selected ? t.accent : t.muted)
+      .child(div().h(14).flex_none().line_height(14 / 11).truncate().text_center().text_size(11).font_semibold().text_color(t.foreground).child(row.title))
+      .child(div().h(12).flex_none().line_height(12 / 9).truncate().text_center().text_size(9).text_color(selected ? t.accent : t.muted)
         .child(selected ? `${selectedLabel} · ${row.project}` : row.project)));
 }
 
-function speechBubble(view, row, actor, layout, t) {
+function speechBubble(view, row, actor, layout, t, spacing) {
   const approval = row.status === "blocked" && !row.external;
   const chat = approval ? sessionState(view, row) : null;
-  const notice = villageNotice(row), box = noticeBounds(actor, layout, { width: chat?.request ? 320 : 208, height: chat?.request ? 340 : approval ? 112 : 88 });
+  const notice = villageNotice(row), box = noticeBounds(actor, layout, { ...spacing.notice, artTop: spacing.geometry.art.top });
   const color = statusColor(t, row.status) || t.accent;
   return div().id(`village-notice-${row.id}`).absolute().left(box.left).top(box.top).w(box.width).h(box.height + 12)
     .cursor_pointer().tooltip(`${row.project} · ${row.title}\n${notice.text}`)
@@ -288,10 +344,10 @@ export function renderVillage(view, state) {
           .on_mouse_down("left", () => { if (!isDragging(view)) view.suppressedDragClick = null; })
           .on_click((_e, cx) => { finishDrag(view, null, cx); if (!consumeDragClick(view)) view.villageSelected = null; cx.notify(); })
           .child(scenery(layout, definition))
-          .children(residents.map(({ row, actor }) => resident(view, row, actor, layout, t, focusedAddress)))
+          .children(residents.map(({ row, actor, geometry }) => resident(view, row, actor, layout, t, focusedAddress, geometry)))
           .children(residents.filter(({ row }) => villageNotice(row))
             .sort((a, b) => Number(a.row.id === view.permissionHovered) - Number(b.row.id === view.permissionHovered))
-            .map(({ row, actor }) => speechBubble(view, row, actor, layout, t)))
+            .map((spacing) => speechBubble(view, spacing.row, spacing.actor, layout, t, spacing)))
           .when(Boolean(empty), (el) => el.child(div().absolute().top(layout.height / 2 - 70).left(Math.max(16, (width - 440) / 2))
             .w(Math.min(440, width - 32)).rounded(12).bg(t.raised).border(1).border_color(t.border)
             .child(renderAgentEmptyState(empty, t, emptyActions))))))
