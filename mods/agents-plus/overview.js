@@ -5,7 +5,7 @@ import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Scrollbar } from "gpui-base";
 import { agents, terminals, panes, spaces, focused, shared, theme, props, run, window } from "herdr";
 import { AGENT_INFO, ACKED, OPTIONS, TREES, LIVE } from "./state.js";
-import { shownStatus, seenFor, statusMark, statusColor, button, footer, agoText, STATUS_FILTERS, statusRank, statusInfo, statusLabel, normalizeStatus } from "./ui.js";
+import { shownStatus, seenFor, statusMark, statusColor, statusNotice, button, footer, agoText, STATUS_FILTERS, statusRank, statusInfo, statusLabel, normalizeStatus } from "./ui.js";
 import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
 import { renderVillage, villageDetails } from "./village.js";
@@ -147,31 +147,53 @@ function openRow(view, row) {
   else view.peek(row.address);
 }
 
-function agentCard(view, row, t) {
+function agentCard(view, row, t, focusedAddress) {
   const pic = row.program?.icon;
-  const note = row.activity || statusInfo(row.status).summary;
+  const notice = statusNotice(row);
+  const note = notice?.text || row.activity?.trim() || statusInfo(row.status).summary;
   const color = statusColor(t, row.status) ?? t.dim;
+  const selected = view.villageSelected === row.id;
+  const active = Boolean(row.address && row.address === focusedAddress);
+  const marker = active ? "Active" : selected ? "Selected" : null;
   const themed = view.skin === "chiikawa", sprite = themed ? agentSprite(view, row, true) : null;
-  return v_flex().id(`overview-${row.id}`).flex_1().min_w(0).h(232).rounded(10).border(1).border_color(t.border).bg(t.raised ?? t.chrome).overflow_hidden().cursor_pointer()
-    .hover((style) => style.border_color(color).bg(t.hover)).tooltip([row.title, row.cwd, row.context, row.activity].filter(Boolean).join("\n"))
+  const scale = sprite ? Math.min(64 / sprite.width, 64 / sprite.height) : 1;
+  const identity = `${row.agent} · ${row.address || row.sourceLabel}`;
+  return v_flex().id(`overview-${row.id}`).flex_1().min_w(0).min_h(246).p(12).gap(8)
+    .rounded(12).border(1).border_color(marker ? t.accent : t.border).bg(selected ? t.selected : t.raised ?? t.chrome).cursor_pointer()
+    .accessibility_label(`${row.title}, ${row.project}, ${identity}, ${statusLabel(row.status)}${marker ? `, ${marker}` : ""}`)
+    .hover((style) => style.border_color(marker ? t.accent : color).bg(selected ? t.selected : t.hover))
+    .tooltip([row.title, row.cwd, row.context, row.activity].filter(Boolean).join("\n"))
     .on_click((_e, cx) => { cx.stop_propagation(); if (themed || inAgentMode()) selectVillageResident(view, row, cx); else openRow(view, row); })
-    .child(div().h(3).flex_none().bg(color))
-    .child(v_flex().flex_1().min_h(0).p(16).gap(12)
-      .child(h_flex().gap(8).items_center()
-        .when(Boolean(pic), (el) => el.child(row.program.tint ? svg(pic).size(18).text_color(t.foreground) : image(pic).size(18).flex_none()))
-        .child(div().flex_1().truncate().text_size(12).text_color(t.muted).child(row.agent))
+    .child(h_flex().h(20).flex_none().min_w(0).gap(6).items_center()
+      .when(Boolean(pic), (el) => el.child(row.program.tint ? svg(pic).size(14).flex_none().text_color(t.foreground) : image(pic).size(14).flex_none()))
+      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).tooltip(identity).child(identity))
+      .child(h_flex().h(20).px(7).gap(4).flex_none().items_center().rounded(6).bg(t.background)
+        .tooltip(`${statusLabel(row.status)}${row.at ? ` · State changed ${agoText(row.at)}` : ""}`)
         .child(statusMark(t, row.status))
-        .child(div().text_size(11).text_color(color).child(statusLabel(row.status))))
-      .child(div().truncate().text_size(15).font_semibold().text_color(t.foreground).child(row.title))
-      .child(h_flex().flex_1().min_h(0).gap(8).items_start().overflow_hidden()
-        .when(themed, (el) => el.child(image(sprite.path).w(82 * sprite.width / sprite.height).h(82).flex_none()))
-        .child(div().flex_1().min_w(0).overflow_hidden().whitespace_normal().text_size(12).text_color(t.muted).child(note)))
-      .child(h_flex().min_w(0).gap(6).items_center()
-        .child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none().text_color(t.dim))
-        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child(`${row.project}${row.branch ? ` · ${row.branch}` : ""}`)))
-      .child(h_flex().gap(8).items_center().pt(9).border_t(1).border_color(t.border)
-        .child(div().flex_1().truncate().text_size(10.5).text_color(t.dim).child(`${row.sourceLabel}${row.at ? ` · ${agoText(row.at)}` : ""}`))
-        .child(div().text_size(11).text_color(t.accent).child("Open session →"))));
+        .child(div().text_size(11).font_medium().text_color(color).child(statusLabel(row.status)))))
+    .child(h_flex().min_h(68).flex_none().min_w(0).gap(10).items_center()
+      .when(themed, (el) => el.child(div().id(`overview-resident-${row.id}`).size(64).flex_none().rounded(12).bg(t.chrome)
+        .flex().items_center().justify_center()
+        .child(image(sprite.path).w(sprite.width * scale).h(sprite.height * scale).flex_none())))
+      .child(v_flex().flex_1().min_w(0).gap(3)
+        .child(div().id(`overview-title-${row.id}`).h(36).flex_none().overflow_hidden().whitespace_normal().text_size(15).line_height(1.2)
+          .font_semibold().text_color(t.foreground).tooltip(row.title).child(row.title))
+        .child(div().truncate().text_size(11).text_color(t.foreground).tooltip(row.project).child(row.project))
+        .child(div().truncate().text_size(10).text_color(t.muted).tooltip(row.branch || row.cwd || row.sourceLabel)
+          .child(row.branch || row.sourceLabel))))
+    .child(v_flex().id(`overview-preview-${row.id}`).flex_none().min_w(0).p(8).gap(4).rounded(8)
+      .border(1).border_color(notice ? color : t.border).bg(t.background)
+      .child(div().text_size(10).line_height(1.2).font_semibold().text_color(notice ? color : t.muted)
+        .child(notice ? "Read required" : row.activity?.trim() ? "Latest activity" : "Session status"))
+      .child(div().h(51).flex_none().overflow_hidden().whitespace_normal().text_size(12).line_height(1.4)
+        .text_color(t.foreground).tooltip(note).child(note)))
+    .child(h_flex().flex_none().min_w(0).gap(6).items_center().flex_wrap()
+      .when(Boolean(marker), (el) => el.child(div().id(`overview-selected-${row.id}`).flex_none()
+        .text_size(10).font_semibold().text_color(t.accent).child(marker)))
+      .child(div().flex_1().min_w(0))
+      .child(button(`overview-details-${row.id}`, "View details", (cx) => selectVillageResident(view, row, cx), t).h(28).px(8).text_size(11))
+      .child(button(`overview-open-${row.id}`, row.external ? "Open in Herdr" : "Open terminal", () => openRow(view, row), t)
+        .h(28).px(8).text_size(11).border(1).border_color(t.border).bg(t.background).text_color(t.foreground)));
 }
 
 export function renderAgentView(view) {
@@ -195,18 +217,18 @@ export function renderAgentView(view) {
   const back = props()?.returnPane;
   const canGoBack = Boolean(back && panes().some((pane) => pane.pane === back));
   if (view.skin === "chiikawa" && view.presentation !== "cards") return renderVillage(view, { t, all, scope, rows, visible, start, pages, back, canGoBack, states: STATES, sources: SOURCES, openRow });
-  const columns = Math.max(1, Math.min(4, Math.floor(((view.width ?? 1100) - 48) / 310)));
+  const columns = Math.max(1, Math.min(4, Math.floor(((view.width ?? 1100) - 32 + 12) / (300 + 12))));
   const cardRows = [];
   for (let i = 0; i < visible.length; i += columns) {
     const chunk = visible.slice(i, i + columns);
-    cardRows.push(h_flex().gap(14).flex_none().children(chunk.map((row) => agentCard(view, row, t)))
+    cardRows.push(h_flex().gap(12).flex_none().children(chunk.map((row) => agentCard(view, row, t, focusedAddress)))
       .children(Array.from({ length: columns - chunk.length }, () => div().flex_1().min_w(0))));
   }
   return v_flex().id("agent-view").track_focus(view.handle).relative().size_full().bg(t.background).text_size(12.5)
     .on_size_change((size, cx) => { if (view.width !== size.width) { view.width = size.width; cx.notify(); } })
     .child(overviewHeader(view, { t, rows, scope, states: STATES, sources: SOURCES }))
     .child(div().relative().flex_1().min_h(0).p(16)
-      .child(v_flex().id(`overview-list-${view.page}`).size_full().overflow_y_scroll().gap(14)
+      .child(v_flex().id(`overview-list-${view.page}`).size_full().overflow_y_scroll().gap(12)
         .children(cardRows)
         .when(rows.length === 0, (el) => el.child(v_flex().p(28).gap(8).items_center()
           .child(div().font_medium().text_color(t.foreground).child(all.length ? "No matching agents" : "No agents running yet"))

@@ -456,6 +456,48 @@ for (const choice of ['herdr-chiikawa',{light:'herdr-chiikawa',dark:'herdr-chiik
   console.log('parent agents: children hidden in sidebar/cards/village, repeated selection and filtered/page navigation passed');
 }
 
+// Cards keep the same session focus while offering distinct details/terminal actions.
+for (const skin of ['default','chiikawa']) {
+  const data=fixture(4);data.outside=[];data.props={mode:'overview',integrated:true};
+  data.layout={...workspaceLayout('agent-world'),theme:skin==='chiikawa'?'herdr-chiikawa':'ink'};
+  data.state['ag.presentation']='cards';
+  data.state['ag.info']={t0:{doing:'Editing the shared theme registry',at:now},t3:{doing:'Approve the requested build command?',at:now}};
+  data.panes[0].title='A long session title that still identifies the project and current work';
+  const env=await environment(data,null);
+  function rendered(node,id) {
+    if (!node || typeof node!=='object') return null;
+    if (node.ops?.some(([key,args])=>key==='id' && args[0]===id)) return node;
+    for (const value of Array.isArray(node)?node:Object.values(node)) {
+      const match=rendered(value,id);if(match) return match;
+    }
+    return null;
+  }
+  for(const width of [360,720,1400]) {
+    env.instance.width=width;
+    const tree=env.render(), card=rendered(tree,'overview-t0');
+    assert.ok(card);
+    assert.ok(JSON.stringify(rendered(card,'overview-selected-t0')).includes('Active'),'native focus is visible without opening details');
+    assert.ok(JSON.stringify(rendered(card,'overview-title-t0')).includes(data.panes[0].title));
+    assert.ok(JSON.stringify(rendered(card,'overview-preview-t0')).includes('Editing the shared theme registry'));
+    assert.ok(JSON.stringify(rendered(tree,'overview-preview-t3')).includes('Approve the requested build command?'));
+  }
+  env.click('overview-details-t3');
+  assert.equal(env.instance.villageSelected,'t3');
+  assert.equal(findNode(data.layout,'workspace-views').active,'agent-world','details keep the Agent presentation');
+  data.focused={terminal:'t3',pane:'p3',tab:'b3'};env.timers.get(250)();
+  env.render();env.click('village-close');
+  assert.equal(env.instance.villageSelected,null);
+  let tree=env.render();
+  assert.ok(JSON.stringify(rendered(tree,'overview-selected-t3')).includes('Active'),'closing details does not erase native focus');
+  env.click('overview-t3');
+  assert.equal(env.instance.villageSelected,'t3','the whole card reopens its details');
+  env.render();env.click('overview-open-t3');
+  assert.equal(findNode(data.layout,'workspace-views').active,'main','Open terminal switches the same workspace');
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p3'}]]);
+  assert.ok(!env.commands.some(([,args])=>['send','keys'].includes(args[0])),'card interactions never send messages or approvals');
+}
+console.log('agent cards: session identity, current work, active focus and distinct details/terminal actions passed');
+
 // Read-required bubbles follow host unread state without acknowledging on sight.
 {
   const data=fixture(4);data.props={mode:'overview',skin:'chiikawa'};data.outside=[];
@@ -598,7 +640,7 @@ for (const choice of ['herdr-chiikawa',{light:'herdr-chiikawa',dark:'herdr-chiik
 // Optional native GPUI smoke/limit check with the SAME synthetic data. No live app
 // state is read, and these temporary mods are never installed in the user's layout.
 if (process.argv.includes('--native')) {
-  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-approval']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
+  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-cards-narrow'],[4,1,'chiikawa-approval']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
     if (process.argv.includes('--overview-only') && mode === 'sidebar') continue;
     if (revision && mode !== 'sidebar') continue;
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
@@ -610,6 +652,10 @@ if (process.argv.includes('--native')) {
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
+      if (mode==='chiikawa-cards-narrow') {
+        data.panes[0].title='A long session title for a narrow card with a readable project and branch';
+        data.state['ag.info']={t3:{doing:'Please review the full build command before approving this request.',at:now}};
+      }
       writeFileSync(resolve(directory,'mock-herdr.js'),`
 const data=${JSON.stringify(data)};
 const copy=x=>JSON.parse(JSON.stringify(x??null));
@@ -629,7 +675,7 @@ import { InputState } from 'gpui-base';
 ${!revision ? "import { selectVillageResident } from './village-chat.js';\nimport { agentViewRows } from './overview.js';" : ''}
 export default class Probe extends Agents {
  init(_props,cx) { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={};
-   if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.skin='${mode.startsWith('chiikawa')?'chiikawa':'default'}';this.presentation='${mode==='chiikawa-cards'?'cards':'village'}';this.themeClock=0;}
+   if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.skin='${mode.startsWith('chiikawa')?'chiikawa':'default'}';this.presentation='${mode.startsWith('chiikawa-cards')?'cards':'village'}';this.themeClock=0;this.width=${mode.endsWith('-narrow')?360:1100};}
    ${!revision ? `if ('${mode}'==='chiikawa' && ${count}===40) {selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t0'),cx);this.villageFilters=true;}
    if ('${mode}'==='chiikawa-approval') { selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t3'),cx); const chat=this.villageChats.get('t3');chat.request={address:'t3',text:'Run unit tests?\\n› 1. Yes\\n  2. No',fingerprint:'fixture',choices:[{number:1,label:'Yes',selected:true},{number:2,label:'No'}]}; }` : ''} }
  render(cx) { const start=Date.now();const result=super.render(cx);console.error('BENCH_RENDER_MS='+String(Date.now()-start));return result; }
