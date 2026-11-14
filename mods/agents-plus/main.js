@@ -17,7 +17,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, appHome } from "herdr";
 // How sessions are resumed: lib/resume.js in the repo, copied here by install.sh.
 import { resumeArgv, AGENTS, runs } from "./resume.js";
-import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
+import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
 import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
 import { renderViewSwitch, initWorkspaceTheme, requestAgentSelection } from "./agent-mode.js";
@@ -382,7 +382,7 @@ export default class Agents extends View {
 
   // A section's outside agents, after Herdr's own, the most recently changed first.
   outsideRows(g, t, paths, metadata) {
-    return [...(g.outside ?? [])].sort((a, b) => b.updated - a.updated).map((x) => this.outsideRow(x, t, paths, metadata));
+    return (g.outside ?? []).map((x) => this.outsideRow(x, t, paths, metadata));
   }
 
   render(cx) {
@@ -617,9 +617,11 @@ export default class Agents extends View {
           .when(!byPriority && top && top !== "idle", (el) => el.child(this.status(t, { status: top }, true)))
           .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));
     };
-    // The order shown, for ⌘P's Agents view (picker-plus): shared("ag.order") = addresses,
-    // written when it changes, so the two lists read alike.
-    const order = collapsed ? list.map((a) => a.address) : groups.flatMap((g) => g.members.map((a) => a.address));
+    // Publish the actual group order once, including outside sessions. Every
+    // presentation consumes it, preserving pins, Active and grouped sorting.
+    for (const group of groups) if (group.outside) group.outside = [...group.outside].sort((a, b) => b.updated - a.updated);
+    const order = collapsed ? list.map((a) => a.address)
+      : groups.flatMap((g) => [...g.members.map((a) => a.address), ...(g.outside ?? []).map(outsideAgentId)]);
     setIfChanged(AGENT_ORDER, order, (this.sharedOrder ??= {}));
     profile.phase("rows");
     const rows = collapsed

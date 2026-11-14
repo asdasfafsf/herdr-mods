@@ -4,7 +4,7 @@ import { overviewHeader } from "./overview-header.js";
 import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Scrollbar } from "gpui-base";
 import { agents, terminals, panes, spaces, focused, shared, theme, props, run, window } from "herdr";
-import { AGENT_INFO, ACKED, OPTIONS, TREES, LIVE } from "./state.js";
+import { AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, OPTIONS, TREES, LIVE } from "./state.js";
 import { shownStatus, seenFor, statusMark, statusColor, statusNotice, button, footer, agoText, STATUS_FILTERS, statusRank, statusInfo, statusLabel, normalizeStatus } from "./ui.js";
 import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
@@ -22,7 +22,7 @@ export function openAgentView(outside = []) {
 }
 
 function revealResident(view, row, cx) {
-  const all = view.overviewRows.filter((item) => !statusInfo(item.status).quiet
+  const all = orderAgentRows(view.overviewRows).filter((item) => !statusInfo(item.status).quiet
     || item.address === focused()?.terminal || item.id === row.id);
   let matches = filterAgentRows(all, view.input.value(), view.statusFilter, view.sourceFilter);
   if (!matches.some((item) => item.id === row.id)) {
@@ -120,7 +120,7 @@ export function agentViewRows(outside = []) {
   all.filter((terminal) => terminal.state === "live" && terminal.program?.agent && !terminal.parent).forEach(add);
   for (const external of outside) {
     if (external.session && live[external.session] && seen.has(live[external.session])) continue;
-    const id = `outside-${external.agent}-${external.session ?? external.pid}`;
+    const id = outsideAgentId(external);
     if (seen.has(id)) continue;
     seen.add(id);
     const checkout = checkouts.find((c) => !c.machine && c.path && inside(external.cwd, c.path));
@@ -130,7 +130,13 @@ export function agentViewRows(outside = []) {
       branch: checkout?.branch || "", cwd: external.cwd || "", source: "outside", sourceLabel: external.app || "Outside Herdr",
       activity: "", context: "Continue in Herdr", at: (external.updated || 0) * 1000 });
   }
-  return rows.sort((a, b) => statusRank(b.status) - statusRank(a.status) || b.at - a.at || a.title.localeCompare(b.title));
+  return orderAgentRows(rows);
+}
+
+export function orderAgentRows(rows) {
+  const order = new Map((shared(AGENT_ORDER) ?? []).map((id, index) => [id, index]));
+  return [...rows].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity)
+    || statusRank(b.status) - statusRank(a.status) || b.at - a.at || a.title.localeCompare(b.title));
 }
 
 export function filterAgentRows(rows, query, status = "all", source = "all") {
@@ -205,6 +211,8 @@ export function renderAgentView(view) {
     view.overviewOutside = view.outside;
   }
   const focusedAddress = focused()?.terminal;
+  // Focus, pinning and sidebar sort changes must reach even cached Chiikawa rows.
+  view.overviewRows = orderAgentRows(view.overviewRows);
   const all = inAgentMode() ? view.overviewRows.filter((row) => !statusInfo(row.status).quiet || row.address === focusedAddress
     || row.id === view.villageSelected) : view.overviewRows;
   view.lastThemeRender = now;

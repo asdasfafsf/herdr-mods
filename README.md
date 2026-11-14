@@ -168,6 +168,7 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 
 ### agents
 
+- 카드 정렬은 사이드바의 공통 `ag.order`를 따르며 고정·Active·상태·프로젝트별 정렬과 외부 세션 순서까지 맞춘다. 카드에서 별도 정렬 상태를 만들지 않는다.
 - 카드는 세션명·프로젝트·브랜치·주소를 구분하고 현재 포커스에 **Active**를 표시한다. 작업 내용과 읽어야 할 요청은 별도 미리보기로 보여준다. 카드나 **View details**는 상세를 열고, **Open terminal**은 같은 세션의 터미널로 바로 전환한다. 치이카와는 비율을 유지해 카드 안에 전신을 표시한다.
 - 마을 캐릭터는 치이카와·하치와레·우사기·랏코·모몽가·쿠리만쥬 6종이다. 각 세션에 배정된 캐릭터는 상태나 정렬이 바뀌어도 유지된다.
 - 마을의 캐릭터 아래에는 **세션명·프로젝트**가 항상 보인다. 긴 이름은 마우스를 올려 전체를 확인하며, 선택 상세에는 브랜치와 세션 주소도 표시한다. 상세의 **말 걸기**에서 `보내기` 또는 `⌘ Enter`로 해당 에이전트의 기존 세션에 메시지를 보낸다. Enter는 줄바꿈이며 캐릭터별 초안은 탭이 살아 있는 동안 유지한다. 전송 중 중복 전송을 막고 실패하거나 전송 중 편집한 초안을 보존한다. 새 답변은 기존 말풍선으로 확인한다. 입력·승인 대기 중인 세션은 `세션 열기`에서 확인하며, 외부 세션은 Herdr에서 이어 연 뒤 대화할 수 있다.
@@ -227,7 +228,7 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 | `wt.sort` | wt-menu → spaces-plus | 워크트리 정렬 |
 | `wt.linkTemplate` | 사용자 → spaces-plus | 링크 주소 틀 |
 | `wt.results` | spaces-plus → hm | `create@` 요청별 결과 `{ ok, path, error, at }` (최근 20개) |
-| `ag.info` / `ag.order` | agents-plus → 카드·마을·picker-plus | 에이전트별 `{ at, doing, said }`, Agents 목록의 순서 |
+| `ag.info` / `ag.order` | agents-plus → 카드·마을·picker-plus | 에이전트별 `{ at, doing, said }`, Agents 목록의 순서(부모 주소와 외부 세션 ID) |
 | `md.panes` | md-view → lib/docs.js | md-view pane 별로 보여주는 파일 `{ file, on }` |
 
 | 명령 | 하는 일 |

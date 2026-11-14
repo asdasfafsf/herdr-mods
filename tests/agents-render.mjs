@@ -456,6 +456,34 @@ for (const choice of ['herdr-chiikawa',{light:'herdr-chiikawa',dark:'herdr-chiik
   console.log('parent agents: children hidden in sidebar/cards/village, repeated selection and filtered/page navigation passed');
 }
 
+// Sidebar owns ordering, including pins, Active, outside sessions and grouped mode.
+for (const skin of ['default','chiikawa']) {
+  const sideData=fixture(8);
+  sideData.outside[0].status='blocked';
+  const sidebar=await environment(sideData,null);sidebar.render();
+  const viewData={...structuredClone(sideData),state:sideData.state,props:{mode:'overview',integrated:true},
+    layout:{...workspaceLayout('agent-world'),theme:skin==='chiikawa'?'herdr-chiikawa':'ink'}};
+  sideData.state['ag.presentation']='cards';
+  const view=await environment(viewData,null);view.render();
+  const ids=()=>Array.from(view.instance.overviewRows,row=>row.id);
+  const assertOrder=()=>assert.deepEqual(ids(),sideData.state['ag.order'],'cards follow the complete published sidebar order');
+  assertOrder();
+  assert.equal(ids()[0],'t2','pinned sessions keep the sidebar position');
+  assert.equal(ids()[1],'t0','the active session precedes state sections');
+  assert.ok(ids().includes('outside-codex-1000'),'external sessions participate in the shared order');
+  const cachedAt=view.instance.overviewRowsAt;
+  sideData.focused=viewData.focused={terminal:'t1',pane:'p1',tab:'b1'};
+  sidebar.render();view.render();assertOrder();
+  assert.equal(ids()[1],'t1','focus changes move Active in both presentations');
+  if(skin==='chiikawa') assert.equal(view.instance.overviewRowsAt,cachedAt,'cached activity does not delay a new order');
+  sideData.state['agents.sort']='grouped';sidebar.render();view.render();assertOrder();
+  const filtered=view.overview.filterAgentRows(view.instance.overviewRows,'','working','all');
+  assert.deepEqual(Array.from(filtered,row=>row.id),ids().filter(id=>view.instance.overviewRows.find(row=>row.id===id).status==='working'),'filters preserve relative order');
+  const writes=view.writes.length;view.overview.orderAgentRows(view.instance.overviewRows);
+  assert.equal(view.writes.length,writes,'the overview never publishes a competing order');
+}
+console.log('agent ordering: sidebar pins, Active, external sessions, grouped sorting and cached views agree');
+
 // Cards keep the same session focus while offering distinct details/terminal actions.
 for (const skin of ['default','chiikawa']) {
   const data=fixture(4);data.outside=[];data.props={mode:'overview',integrated:true};
