@@ -16,7 +16,7 @@
 | 캐릭터와 배경 | 공통 Agents 헤더의 Pack | Plain 또는 Chiikawa 선택; 앱 색상 유지 |
 | 표시 방식 | 같은 헤더의 Cards / Village | 같은 세션을 카드 또는 마을로 표시 |
 | 터미널 크기 | 장면과 터미널 사이 경계 | 원래 native terminal tree의 비율 변경 |
-| 일시적인 움직임 정지 | Pause / Resume | 현재 화면의 애니메이션 정지·재개 |
+| 일시적인 움직임 정지 | Options → Pause animation / Resume animation | 현재 화면의 애니메이션 정지·재개 |
 
 예를 들어 Graphite + Chiikawa + Village를 선택하면 앱과 말풍선은 다크 색상,
 마을과 캐릭터는 치이카와 리소스를 사용한다. 짱구 팩을 추가한 뒤에도 같은
@@ -79,8 +79,8 @@
    배경 레이어·프레임 시간 등 고급 수정은 manifest로 한다. 그래픽 편집기는 범위 밖이다.
 
 팩 수가 늘어나면 공통 헤더에는 `Pack: Chiikawa` 버튼 하나를 두고 목록/관리
-팝업을 연다. Cards/Village와 Pause는 기존 위치에 남는다. 진행 중인 별도 Options
-메뉴 정리 작업과 이 관리 화면을 섞지 않는다.
+팝업을 연다. Cards/Village는 헤더, Pause animation은 Options에 남는다.
+기존 Options의 검색·상태·출처 필터와 팩 관리 화면을 섞지 않는다.
 
 ## 소유권과 저장 위치
 

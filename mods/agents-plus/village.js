@@ -132,7 +132,7 @@ function resident(view, row, actor, layout, t, focusedAddress) {
       .w(84).h(22).gap(5).items_center().justify_center().rounded(11).bg(t.raised)
       .child(div().size(5).rounded(3).bg(color))
       .child(div().text_size(10).text_color(color).child(status))))
-    .child(image(sprite.path).absolute().left(art.left).top(art.top).w(art.width).h(art.height))
+    .child(image(sprite.path).id(`village-art-${row.id}-${sprite.name}`).absolute().left(art.left).top(art.top).w(art.width).h(art.height))
     .child(v_flex().id(`village-name-${row.id}`).absolute().top(size + 12).left(-6).w(size + 28).gap(2)
       .when(selected, (el) => el.px(5).py(3).rounded(7).border(1).border_color(t.accent).bg(t.raised))
       .child(div().truncate().text_center().text_size(11).font_semibold().text_color(t.foreground).child(row.title))

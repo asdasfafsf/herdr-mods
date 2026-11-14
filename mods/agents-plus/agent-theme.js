@@ -63,11 +63,15 @@ export function themeControls(view, t) {
     .when(hasVillage(view.pack), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
       .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(8).py(5).rounded(5).text_size(11)
         .text_color(t.foreground).when(view.presentation === key, (el) => el.bg(t.selected)).cursor_pointer()
-        .on_click((_e, cx) => { finishDrag(view, null, cx); view.presentation = key; if (inAgentMode()) setShared("ag.presentation", key); else localStorage.setItem("overview.presentation", key); cx.notify(); }).child(label)))))
-    .when(hasResidents(view.pack), (el) => el.child(div().id("overview-motion").px(8).py(5).rounded(5)
-      .text_size(11).text_color(t.muted).cursor_pointer().hover((el) => el.bg(t.hover))
-      .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; cx.notify(); })
-      .child(view.motionPaused ? "Resume" : "Pause")));
+        .on_click((_e, cx) => { finishDrag(view, null, cx); view.presentation = key; if (inAgentMode()) setShared("ag.presentation", key); else localStorage.setItem("overview.presentation", key); cx.notify(); }).child(label)))));
+}
+
+export function motionControl(view, t) {
+  if (!hasResidents(view.pack)) return div();
+  return div().id("overview-motion").px(9).py(6).rounded(6).text_size(11)
+    .text_color(t.foreground).cursor_pointer().hover((el) => el.bg(t.hover))
+    .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; cx.notify(); })
+    .child(view.motionPaused ? "Resume animation" : "Pause animation");
 }
 
 function seed(text) {
@@ -93,6 +97,12 @@ export function agentSprite(view, row, roaming = false, facing) {
   if (!pool.length) return null;
   const assigned = view.residentAssignments?.get(row.id);
   const name = pool.includes(assigned) ? assigned : pool[seed(row.id) % pool.length];
-  const path = spriteFrame(view.pack, name, clock, roaming ? facing : undefined);
-  return { ...definition.sprites[name], name, clock, path, mirrored: path.endsWith(".svg") };
+  const sprite = definition.sprites[name];
+  // One native GIF resource keeps its loaded frames across redraws. Cycling
+  // hundreds of PNG URLs evicts the native image cache and flashes on each lap.
+  const direction = definition.facing?.[name];
+  const directional = Array.isArray(direction) ? direction.some(Boolean) : Boolean(direction);
+  const nativeAnimation = Boolean(sprite.animation && !directional && !view.motionPaused);
+  const path = nativeAnimation ? `${definition.art}/${sprite.animation}` : spriteFrame(view.pack, name, clock, roaming ? facing : undefined);
+  return { ...sprite, name, clock, path, nativeAnimation, mirrored: path.endsWith(".svg") };
 }

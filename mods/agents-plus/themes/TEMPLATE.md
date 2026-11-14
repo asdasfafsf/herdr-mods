@@ -31,6 +31,8 @@ export const MY_PACK = {
 };
 ```
 
+For a neutral GIF, set `animation: "originals/first.gif"` in its sprite record and keep its original dimensions. The engine reuses one native animated image, avoiding per-frame cache eviction. Numbered PNG frames remain the pause fallback; resuming the native GIF restarts its loop. Directional poses and APNG sources use the numbered frame path because this host does not animate APNGs or transform GIFs.
+
 Frames are `first/001.png`, `first/002.png`, etc. Durations are milliseconds.
 `content` and optional `body` are `[x, y, width, height]`: layout bounds only,
 never image crops. Cards fit the entire content; Village can fit a body reference

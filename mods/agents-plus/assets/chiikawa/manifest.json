@@ -223,7 +223,13 @@
       62.5,
       62.5
     ],
-    "duration": 1000.0
+    "duration": 1000.0,
+    "body": [
+      96,
+      100,
+      184,
+      180
+    ]
   },
   "momonga": {
     "width": 200,
@@ -424,7 +430,8 @@
       34,
       203,
       210
-    ]
+    ],
+    "animation": "originals/rakko-sword.gif"
   },
   "anoko": {
     "width": 498,
@@ -455,7 +462,8 @@
       48,
       485,
       436
-    ]
+    ],
+    "animation": "originals/anoko.gif"
   },
   "chiikabu": {
     "width": 108,
@@ -483,7 +491,8 @@
       0,
       108,
       109
-    ]
+    ],
+    "animation": "originals/chiikabu.gif"
   },
   "momonga-heart": {
     "width": 282,
@@ -515,7 +524,8 @@
       28,
       265,
       229
-    ]
+    ],
+    "animation": "originals/momonga-heart.gif"
   },
   "chiikawa-fairy": {
     "width": 200,
@@ -590,7 +600,8 @@
       13,
       180,
       165
-    ]
+    ],
+    "animation": "originals/chiikawa-fairy.gif"
   },
   "usagi-dance": {
     "width": 446,
@@ -622,7 +633,8 @@
       13,
       421,
       462
-    ]
+    ],
+    "animation": "originals/usagi-dance.gif"
   },
   "hachiware-dance": {
     "width": 450,
@@ -776,7 +788,8 @@
       9,
       386,
       421
-    ]
+    ],
+    "animation": "originals/hachiware-dance.gif"
   },
   "chiikawa-bounce": {
     "width": 300,
@@ -810,7 +823,8 @@
       19,
       247,
       241
-    ]
+    ],
+    "animation": "originals/chiikawa-bounce.gif"
   },
   "shisa": {
     "width": 370,
