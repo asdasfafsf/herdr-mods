@@ -21,6 +21,8 @@ import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, ackD
 import { inside, placeOf } from "./places.js";
 import { statusMark, statusPill, statusColor, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
 import { renderViewSwitch, initWorkspaceTheme, requestAgentSelection } from "./agent-mode.js";
+import { initWorkspaceControls } from "./workspace-controls.js";
+import { renderTerminalToolbar } from "./terminal-dock.js";
 import { RenderProfile } from "./render-profile.js";
 import { openAgentView, initAgentView, renderAgentView, parentAgents } from "./overview.js";
 
@@ -91,8 +93,10 @@ export default class Agents extends View {
   init(_props, cx) {
     if (props()?.mode === "view-switch") {
       initWorkspaceTheme(cx);
+      initWorkspaceControls(cx);
       return;
     }
+    if (props()?.mode === "terminal-toolbar") return;
     if (props()?.sortMenu) return;
     // Themes share the same overview state: default cards or a Chiikawa village.
     if (props()?.mode === "overview") return initAgentView(this, cx);
@@ -387,6 +391,7 @@ export default class Agents extends View {
 
   render(cx) {
     if (props()?.mode === "view-switch") return renderViewSwitch();
+    if (props()?.mode === "terminal-toolbar") return renderTerminalToolbar();
     if (props()?.sortMenu) return this.sortMenu(theme());
     if (props()?.mode === "overview") return renderAgentView(this);
     const profile = this.renderProfile ??= new RenderProfile();

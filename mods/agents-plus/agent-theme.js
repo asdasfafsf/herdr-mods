@@ -5,6 +5,7 @@ import { props, panes, focused, shared } from "herdr";
 import { SPRITES } from "./theme-assets.js";
 import { THEMES, VIEW_LAYOUTS, themeTokens } from "./themes.js";
 import { inAgentMode, agentViewVisible, applyModeTheme, workspaceTheme } from "./agent-mode.js";
+import { finishDrag } from "./drag-layout.js";
 
 const ART = "mods/agents-plus/assets/chiikawa";
 const SKINS = Object.entries(THEMES).map(([key, value]) => [key, value.label]);
@@ -24,17 +25,17 @@ export function initAgentTheme(view, cx) {
     const now = Date.now(), elapsed = Math.min(160, now - previous);
     previous = now;
     const saved = inAgentMode() ? workspaceTheme() : localStorage.getItem("overview.theme");
-    if (inAgentMode() && THEMES[saved] && saved !== view.skin) { view.skin = saved; cx.notify(); }
+    if (inAgentMode() && THEMES[saved] && saved !== view.skin) { finishDrag(view, null, cx); view.skin = saved; cx.notify(); }
     const presentation = shared("ag.presentation") || "village";
-    if (inAgentMode() && view.presentation !== presentation) { view.presentation = presentation; cx.notify(); }
-    if (view.skin !== "chiikawa" || view.motionPaused) return;
+    if (inAgentMode() && view.presentation !== presentation) { finishDrag(view, null, cx); view.presentation = presentation; cx.notify(); }
+    if (inAgentMode() && !agentViewVisible()) { finishDrag(view, null, cx); return; }
     // A slow render is not a hidden pane. In particular, typing or another
     // busy mod may leave a gap longer than 300ms while this tab is still shown.
-    if (inAgentMode()) { if (!agentViewVisible()) return; }
-    else {
+    if (!inAgentMode()) {
       view.overviewTab ??= panes().find((pane) => pane.mod === "agents-plus")?.tab;
-      if (view.overviewTab ? focused()?.tab !== view.overviewTab : now - (view.lastThemeRender ?? 0) > 300) return;
+      if (view.overviewTab ? focused()?.tab !== view.overviewTab : now - (view.lastThemeRender ?? 0) > 300) { finishDrag(view, null, cx); return; }
     }
+    if (view.skin !== "chiikawa" || view.motionPaused) return;
     view.themeClock += elapsed;
     cx.notify();
   });
@@ -50,11 +51,11 @@ export function themeControls(view, t) {
       .children(SKINS.map(([key, label]) => div().id(`overview-theme-${key}`).px(9).py(5).rounded(5)
         .text_size(11).text_color(view.skin === key ? t.foreground : t.muted)
         .when(view.skin === key, (el) => el.bg(t.selected)).cursor_pointer().hover((el) => el.bg(t.hover))
-        .on_click((_e, cx) => { view.skin = key; localStorage.setItem("overview.theme", key); applyModeTheme(key); cx.notify(); }).child(label)))))
+        .on_click((_e, cx) => { finishDrag(view, null, cx); view.skin = key; localStorage.setItem("overview.theme", key); applyModeTheme(key); cx.notify(); }).child(label)))))
     .when(view.skin === "chiikawa" && !inAgentMode(), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
       .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(8).py(5).rounded(5).text_size(11)
         .text_color(t.foreground).when(view.presentation === key, (el) => el.bg(t.selected)).cursor_pointer()
-        .on_click((_e, cx) => { view.presentation = key; localStorage.setItem("overview.chiikawaLayout", key); cx.notify(); }).child(label)))))
+        .on_click((_e, cx) => { finishDrag(view, null, cx); view.presentation = key; localStorage.setItem("overview.chiikawaLayout", key); cx.notify(); }).child(label)))))
     .when(view.skin === "chiikawa", (el) => el.child(div().id("overview-motion").px(8).py(5).rounded(5)
       .text_size(11).text_color(t.muted).cursor_pointer().hover((el) => el.bg(t.hover))
       .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; cx.notify(); })

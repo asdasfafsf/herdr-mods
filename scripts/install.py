@@ -246,7 +246,15 @@ def patch(layout, step):
     """Applies one bundle layout step; returns what it did, or None if already there."""
     kind, spec = next(iter(step.items()))
     if kind == "workspace_views":
-        if any(n.get("id") == "workspace-views" for n, _ in blocks(layout)):
+        stack = next((n for n, _ in blocks(layout) if n.get("id") == "workspace-views"), None)
+        if stack is not None:
+            # Upgrade only the exact Agent block we own. Keep user layouts and
+            # the original Terminal presentation (including split panes) intact.
+            agent = next((n for n in stack.get("children", []) if n.get("id") == "agent-world"), None)
+            owned = {"mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}
+            if agent and agent.get("type") == "block" and agent.get("content") == owned:
+                stack["children"][stack["children"].index(agent)] = agent_workspace()
+                return "collapsible native terminal in the Agent presentation"
             return None
         for n, siblings in blocks(layout):
             if (n.get("content") or {}).get("tab") != "active" or siblings is None:
@@ -262,8 +270,7 @@ def patch(layout, step):
                      "content": {"mod": "agents-plus", "props": {"mode": "view-switch"}}},
                     {"id": "workspace-views", "type": "stack", "active": terminal["id"], "children": [
                         terminal,
-                        {"id": "agent-world", "type": "block", "content": {
-                            "mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}}
+                        agent_workspace()
                     ]}
                 ]
             }
@@ -299,6 +306,21 @@ def patch(layout, step):
             return f'{spec["mod"]} beside the bottom bar'
         return f'(no bottom bar for {spec["mod"]})'
     return f"(unknown layout step {kind})"
+
+
+def agent_workspace():
+    """One live terminal surface, reusing the focused session and its scrollback."""
+    return {"id": "agent-world", "type": "column", "resizable": True, "children": [
+        {"id": "agent-scene", "type": "block", "size": {"weight": 1}, "min": 160,
+         "content": {"mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}},
+        {"id": "agent-terminal-dock", "type": "column", "size": {"px": 36}, "min": 36,
+         "resizable": False, "children": [
+             {"id": "agent-terminal-toolbar", "type": "block", "size": {"px": 36},
+              "content": {"mod": "agents-plus", "props": {"mode": "terminal-toolbar"}}},
+             {"id": "agent-terminal-surface", "type": "block", "hidden": True,
+              "size": {"weight": 1}, "content": {"agent": "focused"}}
+         ]}
+    ]}
 
 
 def archive_legacy_agent_layout(dry):

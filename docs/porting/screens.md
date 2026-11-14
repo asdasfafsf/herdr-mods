@@ -30,7 +30,7 @@ primary와 linked worktree, 열림과 미개방, sleeping과 archived를 구별�
 | New worktree | 이름 자동 채움/수동 편집, PR 조회 중/실패, 미설치 agent, 생성 실패, setup 실패 | Create/Cancel, ⌘Enter, 입력 중 자동값이 편집값을 덮어쓰지 않음 |
 | Clean / Remove | 기본 선택/미선택/차단 사유, dirty/busy/pinned, 일부 삭제 실패 | 위험 동작 확인, 차단 항목 선택 금지, 결과별 이유 |
 | Agents | Active, pin, child, 같은 이름, outside, 5개 상태, Seen 만료 | 숨김/상태 변경으로 현재 대상 위치를 잃지 않음 |
-| Agent mode / view | 같은 작업공간 안에서 터미널/에이전트 중 하나만 표시, 기본/치이카와 테마와 카드/마을 보기 분리, 전체 UI 공통 토큰, seen까지 표시하고 idle만 포커스한 세션을 표시, 동일한 세션과 24개 페이지, 마을의 자유 배회·현재 상태·세션명/프로젝트 이름표·입력 대기/미확인 답변 말풍선·선택 상세·말 걸기 입력란·접힌 검색 필터·세로 스크롤·움직임 끄기, 모든 프로젝트, pane 없는 child, 외부 세션, 검색 0건, 상태·출처 필터, 페이지 이동 | 설정이나 레이아웃 추가 없이 표시 전환, 캐릭터와 기존 세션의 양방향 포커스, 테마 전환 시 검색·필터·페이지 유지, 이름 hover로 전체 식별 정보, 상세에서 브랜치/주소 확인, 보내기/⌘Enter로 선택 세션에 전달, Enter 줄바꿈, 캐릭터별 초안 유지, 전송 중 중복 방지·실패 시 초안 보존, blocked/외부는 해당 pane/peek/외부 이어 열기 |
+| Agent mode / view | 같은 작업공간의 Terminal/Agent 전환과 Agent 하단의 접이식 native terminal, 기본/치이카와 테마와 카드/마을 보기 분리, 전체 UI 공통 토큰, seen까지 표시하고 idle만 포커스한 세션을 표시, 동일한 세션과 24개 페이지, 마을의 자유 배회·현재 상태·세션명/프로젝트 이름표·입력 대기/미확인 답변 말풍선·선택 상세·말 걸기 입력란·접힌 검색 필터·세로 스크롤·움직임 끄기, 모든 프로젝트, pane 없는 child, 외부 세션, 검색 0건, 상태·출처 필터, 페이지 이동 | 설정이나 레이아웃 추가 없이 표시 전환, 캐릭터와 기존 세션의 양방향 포커스, 테마 전환 시 검색·필터·페이지 유지, 이름 hover로 전체 식별 정보, 상세에서 브랜치/주소 확인, Send/Enter로 선택 세션에 전달, ⌘Enter/Shift+Enter 줄바꿈, 이미지 파일 참조와 native 이미지 붙여넣기 구분, ⌘⇧E 보기 전환·⌘⇧J 터미널 접기, native 입력/검색/복사/스크롤/승인, 캐릭터·대화창 드래그와 화면 경계, 캐릭터별 초안 유지, 전송 중 중복 방지·실패 시 초안 보존, blocked/외부는 해당 pane/peek/외부 이어 열기 |
 | 팔레트 | 5개 보기, 검색 0건, 생성 행, 미개방 worktree, Docs | Tab/↑↓/Enter/Esc, 화면과 선택 대상 일치 |
 | Sessions | Reading, 빈 목록, 제목 필터, 메시지 검색 중, 실패, 결과 snippet | Enter Resume, Alt+Enter Fork, Esc Close; 실행 가능한 버튼 구별 |
 | Restore | working/idle 후보, 대상 없음, 외부 실행 중, 자동 선호 | continue 항목별 선택, Not now, 중복 복구 금지 |
@@ -70,6 +70,6 @@ primary와 linked worktree, 열림과 미개방, sleeping과 archived를 구별�
 
 ## UI 오류를 놓치지 않는 검증
 
-Herdr에서는 `herdr-app check MOD` → 실제 화면을 표시 → `herdr-app status`의 errors 확인 → `herdr-app shot FILE` 순서다. check는 첫 렌더만 검사하므로 지연 데이터, 눌렀을 때 callback, layout overflow를 보장하지 않는다. 새 앱에서도 이에 대응하는 runtime 오류 수집과 화면 확인을 둘 다 해야 한다.
+Herdr에서는 `herdr-app check MOD` → 실제 화면을 표시 → `herdr-app status`의 errors 확인 → CUA 화면 캡처 순서다. check는 첫 렌더만 검사하므로 지연 데이터, 눌렀을 때 callback, layout overflow를 보장하지 않는다. 새 앱에서도 이에 대응하는 runtime 오류 수집과 화면 확인을 둘 다 해야 한다.
 
 자동 갱신이 있는 화면은 최소 여러 갱신 주기를 관찰한다. 오류 0회는 관찰 기간에 대한 결과일 뿐 무오류 보증이 아니다. 크기 변경·팝업 열기·닫기·조회 실패도 별도로 시험하고, 반복 오류에는 시각·화면·동작·스택을 함께 남긴다.

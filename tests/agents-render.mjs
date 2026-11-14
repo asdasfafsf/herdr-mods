@@ -68,6 +68,7 @@ async function environment(data, revision) {
   }
   const theme = Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5'].map(k => [k, '#123456']));
   const host = {
+    nextCommand: () => new Promise(()=>{}),
     themes: () => ['paper','herdr-chiikawa','graphite','ink','moss','atom-one-dark'].map(name=>({name,light:['paper','herdr-chiikawa'].includes(name)})),
     agents: () => cloneRead('agents', data.agents), terminals: () => cloneRead('terminals', data.terminals), panes: () => cloneRead('panes', data.panes), spaces: () => cloneRead('spaces', data.spaces),
     shared: key => cloneRead(`shared:${key}`, data.state[key]), setShared: (key, value) => { data.state[key] = structuredClone(value); writes.push([key,value]); },
@@ -79,6 +80,10 @@ async function environment(data, revision) {
   const runHost = host.run;
   host.run = (...args) => {
     runHost(...args);
+    if (['layout.show','layout.hide','layout.resize'].includes(args[0])) {
+      const node=findNode(data.layout,args[1].id);
+      if(node) { if(args[0]==='layout.resize') node.size={px:args[1].px}; else node.hidden=args[0]==='layout.hide'; }
+    }
     if (args[0] === 'app.theme') {
       const before = data.layout.theme;
       const pair = typeof before === 'string' ? {light:before,dark:before} : {...before};
@@ -117,7 +122,7 @@ async function environment(data, revision) {
   instance.activity=Object.fromEntries(data.agents.map(a=>[a.address,{doing:'Editing example',said:'Example result'}]));
   const render = () => { handlers.clear(); return JSON.parse(JSON.stringify(instance.render(cx))); };
   const click = id => { assert.ok(handlers.has(id),`missing click target ${id}`); handlers.get(id)({},cx); };
-  return {instance,calls,writes,render,data,click,timers,tasks,commands,cx,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace,chat:modules.get('mods/agents-plus/village-chat.js')?.namespace,mode:modules.get('mods/agents-plus/agent-mode.js')?.namespace};
+  return {instance,calls,writes,render,data,click,timers,tasks,commands,cx,ui:modules.get('lib/ui.js').namespace,state:modules.get('lib/state.js').namespace,overview:modules.get('mods/agents-plus/overview.js')?.namespace,agentTheme:modules.get('mods/agents-plus/agent-theme.js')?.namespace,village:modules.get('mods/agents-plus/village.js')?.namespace,chat:modules.get('mods/agents-plus/village-chat.js')?.namespace,mode:modules.get('mods/agents-plus/agent-mode.js')?.namespace,dock:modules.get('mods/agents-plus/terminal-dock.js')?.namespace,workspace:modules.get('mods/agents-plus/workspace-controls.js')?.namespace};
 }
 for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],['grouped',40,true,false,1],['rail',40,false,true,1],['large',200,false,false,1],['deep',120,false,false,5]]) {
   const data = fixture(count,grouped,collapsed,depth);
@@ -484,6 +489,44 @@ for (const skin of ['default','chiikawa']) {
 }
 console.log('agent ordering: sidebar pins, Active, external sessions, grouped sorting and cached views agree');
 
+// Native dock uses the same host terminal; it never relays or submits input.
+{
+  const data=fixture(4);data.outside=[];data.props={mode:'overview',integrated:true};
+  data.layout=workspaceLayout('agent-world');
+  data.panes=data.panes.map(({id,...pane})=>({...pane,pane:id}));
+  const stack=findNode(data.layout,'workspace-views');
+  stack.children[1]={id:'agent-world',type:'column',children:[
+    {id:'agent-scene',type:'block',content:{mod:'agents-plus',props:data.props}},
+    {id:'agent-terminal-dock',type:'column',size:{px:36},children:[
+      {id:'agent-terminal-surface',type:'block',hidden:true,content:{agent:'focused'}}]}]};
+  data.state['ag.composer']={address:'t0',sequence:1};
+  const env=await environment(data,null);env.render();
+  env.timers.get(250)();
+  assert.ok(!env.instance.composerOpen,'reloading the mod does not replay an old Compose request');
+  assert.ok(env.dock.hasTerminalDock());assert.equal(env.dock.terminalDockOpen(),false);
+  env.click('overview-open-t0');
+  assert.equal(findNode(data.layout,'workspace-views').active,'agent-world','opening terminal stays in Agent mode');
+  assert.ok(env.dock.terminalDockOpen());
+  assert.equal(findNode(data.layout,'agent-terminal-dock').size.px,320);
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
+  findNode(data.layout,'agent-terminal-dock').size.px=420;
+  env.workspace.workspaceCommand('toggle_terminal');
+  assert.equal(env.dock.terminalDockOpen(),false);assert.equal(data.state['ag.dockHeight'],420);
+  env.workspace.workspaceCommand('toggle_terminal');
+  assert.equal(findNode(data.layout,'agent-terminal-dock').size.px,420,'reopening retains resized height');
+  const original=JSON.stringify(stack.children[0]);
+  env.workspace.workspaceCommand('toggle_view');assert.equal(stack.active,'main');
+  env.workspace.workspaceCommand('toggle_view');assert.equal(stack.active,'agent-world');
+  assert.equal(JSON.stringify(stack.children[0]),original,'terminal tree and pane options remain unchanged');
+  env.dock.terminalAction('terminal.paste_image','t1');
+  assert.deepEqual(JSON.parse(JSON.stringify(env.writes.slice(-2).map(entry=>entry[1]))),[['pane.focus',{pane:'p1'}],['terminal.paste_image']]);
+  assert.equal(env.commands.length,0,'dock and clipboard actions use native commands, never hc send/keys');
+  assert.ok(!env.writes.some(([kind,args])=>kind==='run' && ['layout.set','tab.new','terminal.open'].includes(args[0])));
+  env.dock.showComposer('t0');env.timers.get(250)();env.render();
+  assert.equal(env.instance.composerOpen,true);
+}
+console.log('native terminal dock: shared session, collapse, resize memory, shortcuts, clipboard routing and composer passed');
+
 // Cards keep the same session focus while offering distinct details/terminal actions.
 for (const skin of ['default','chiikawa']) {
   const data=fixture(4);data.outside=[];data.props={mode:'overview',integrated:true};
@@ -575,48 +618,48 @@ console.log('agent cards: session identity, current work, active focus and disti
   edit(first,'   ');first.input.emit('submit',{secondary:true});
   assert.equal(env.commands.length,0,'empty messages do nothing');
   const message='--literal\n$(not a shell command) 한글 메시지';
-  edit(first,message);first.input.emit('submit',{});
-  assert.equal(env.commands.length,0,'plain Enter does not send');
-  first.input.emit('submit',{secondary:true});
-  first.input.emit('submit',{secondary:true});
+  edit(first,message);first.input.emit('submit',{secondary:true});
+  assert.equal(env.commands.length,0,'Cmd+Enter does not send');
+  first.input.emit('submit',{});
+  first.input.emit('submit',{});
   await new Promise(setImmediate);
   assert.equal(sent().length,1,'pending sends cannot be duplicated');
   assert.deepEqual(sent()[0],['hc',['send','--json','--if','idle','--','t0',message],{timeout:90000}]);
-  assert.match(JSON.stringify(env.render()),/전달 중/);
+  assert.match(JSON.stringify(env.render()),/Sending/);
   env.click('overview-t2');env.render();
   const second=env.instance.villageChats.get('t2');
   edit(second,'다른 에이전트 초안');
   complete({code:0,stdout:'{"turn":1,"started":false}'});await env.tasks.pop();
   assert.equal(first.input.value(),'','delivered text is cleared');
   assert.equal(second.input.value(),'다른 에이전트 초안','late response does not clear the selected agent draft');
-  assert.match(first.receipt,/전달했어요/);
+  assert.match(first.receipt,/Delivered/);
   env.click('overview-t0');env.render();
   assert.equal(env.instance.villageChats.get('t0'),first,'switching residents retains the editor');
-  edit(first,'보낼 메시지');first.input.emit('submit',{secondary:true});
+  edit(first,'보낼 메시지');first.input.emit('submit',{});
   await new Promise(setImmediate);
   edit(first,'전달 중에 새로 쓴 내용');
   complete({code:0,stdout:'{}'});await env.tasks.pop();
   assert.equal(first.input.value(),'전달 중에 새로 쓴 내용','same-agent edits survive a late response');
   data.execHook=async (_cmd,args)=>args[0]==='get' ? getResult('working') : {code:1,stderr:'timeout'};
-  first.input.emit('submit',{secondary:true});await env.tasks.pop();
-  assert.match(first.error,/도착 여부/);
+  first.input.emit('submit',{});await env.tasks.pop();
+  assert.match(first.error,/Check the terminal/);
   assert.equal(first.input.value(),'전달 중에 새로 쓴 내용');
   const failures=sent().length;
   for(let i=0;i<5;i++) env.render();
   assert.equal(sent().length,failures,'failures never auto-retry');
   for(const result of [getResult('blocked'),getResult('error'),getResult('idle',{state:'finished'}),getResult('idle',{foreground:{name:'zsh'}}),getResult('idle',{status:null}),{code:3,stdout:''},{code:0,stdout:'not JSON'}]) {
     data.execHook=async()=>result;
-    first.input.emit('submit',{secondary:true});await env.tasks.pop();
+    first.input.emit('submit',{});await env.tasks.pop();
     assert.equal(sent().length,failures,'blocked, finished, shell and invalid preflights never send');
     assert.ok(first.error);
   }
   const beforeGuard=env.commands.length;
-  data.terminals[0].state='finished';first.input.emit('submit',{secondary:true});
-  data.terminals[0].state='live';data.agents[0].status='blocked';first.input.emit('submit',{secondary:true});
-  data.agents[0].status='working';data.agents[0].program={agent:false};first.input.emit('submit',{secondary:true});
+  data.terminals[0].state='finished';first.input.emit('submit',{});
+  data.terminals[0].state='live';data.agents[0].status='blocked';first.input.emit('submit',{});
+  data.agents[0].status='working';data.agents[0].program={agent:false};first.input.emit('submit',{});
   assert.equal(env.commands.length,beforeGuard,'host validation rejects stale, blocked and non-agent targets');
   data.agents[0].program={agent:true};
-  edit(first,'x'.repeat(16001));first.input.emit('submit',{secondary:true});
+  edit(first,'x'.repeat(16001));first.input.emit('submit',{});
   assert.equal(env.commands.length,beforeGuard,'oversized drafts remain unsent');
   edit(first,'완료한 에이전트에게 후속 요청');
   data.execHook=async (_cmd,args)=>args[0]==='get' ? getResult('done') : {code:0,stdout:'{}'};
@@ -625,7 +668,7 @@ console.log('agent cards: session identity, current work, active focus and disti
   const external=env.overview.agentViewRows(data.outside).find(row=>row.external);
   env.render();env.click(`overview-${external.id}`);
   const externalUI=JSON.stringify(env.render());
-  assert.ok(externalUI.includes('Herdr에서 이어 열면') && !externalUI.includes('village-send'),'outside sessions must be resumed before chatting');
+  assert.ok(externalUI.includes('Continue this session in Herdr') && !externalUI.includes('village-send'),'outside sessions must be resumed before chatting');
   console.log('village chat: explicit send, exact target, multiline text, per-agent drafts, pending guard, late replies, failures and unavailable sessions passed');
 }
 
@@ -676,7 +719,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','terminal-dock','workspace-controls','composer','drag-layout']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
@@ -691,6 +734,7 @@ export const agents=()=>copy(data.agents), terminals=()=>copy(data.terminals), s
 export const shared=k=>copy(data.state[k]), setShared=(k,v)=>{data.state[k]=v}, setAgentOrder=()=>{};
 export const focused=()=>({agent:'t0',terminal:'t0',tab:'b0'}), layout=()=>({id:'sidebar',size:{px:268}}), layouts=()=>['main'], props=()=>({mode:'${mode.startsWith('chiikawa')?'overview':mode}'}), window=()=>({active:true});
 export const settings=()=>({theme:'paper',dark:false});
+export const nextCommand=()=>new Promise(()=>{});
 export const themes=()=>[{name:'paper',light:true},{name:'herdr-chiikawa',light:true},{name:'graphite',light:false},{name:'atom-one-dark',light:false}];
 export const theme=()=>Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5','popover','background'].map(k=>[k,'#123456']));
 export const run=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'{}',writeTextFile=async()=>{};

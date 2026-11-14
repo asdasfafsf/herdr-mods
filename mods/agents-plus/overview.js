@@ -8,10 +8,11 @@ import { AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, OPTIONS, TREES, LIVE } 
 import { shownStatus, seenFor, statusMark, statusColor, statusNotice, button, footer, agoText, STATUS_FILTERS, statusRank, statusInfo, statusLabel, normalizeStatus } from "./ui.js";
 import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
-import { renderVillage, villageDetails } from "./village.js";
+import { renderVillage, villageDetails, dragViewport } from "./village.js";
 import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, AGENT_SELECTION } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
 import { initSessionControls } from "./session-controls.js";
+import { hasTerminalDock, openTerminalDock, COMPOSER } from "./terminal-dock.js";
 
 const STATES = STATUS_FILTERS;
 const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"]];
@@ -43,12 +44,20 @@ export function initAgentView(view, cx) {
   view.handle = cx.focus_handle();
   view.input.focus();
   initAgentTheme(view, cx);
-  initSessionControls(view, cx);
+  if (!inAgentMode() || !hasTerminalDock()) initSessionControls(view, cx);
   if (inAgentMode()) {
     view.selectionSequence = shared(AGENT_SELECTION)?.sequence;
+    view.composerSequence = shared(COMPOSER)?.sequence;
     cx.timer.every(250, (cx) => {
       if (!agentViewVisible()) return;
       const address = focused()?.terminal;
+      const composer = shared(COMPOSER);
+      if (composer?.sequence !== view.composerSequence && composer?.address === address) {
+        view.composerSequence = composer.sequence;
+        view.composerOpen = true;
+        view.detailCollapsed = false;
+        cx.notify();
+      }
       const requested = shared(AGENT_SELECTION);
       if (requested && requested.sequence !== view.selectionSequence) {
         if (Date.now() - requested.at > 5000) view.selectionSequence = requested.sequence;
@@ -58,6 +67,7 @@ export function initAgentView(view, cx) {
           view.selectionSequence = requested.sequence;
           view.focusedResident = address;
           revealResident(view, row, cx);
+          openTerminalDock(row.address);
           return;
         }
       }
@@ -147,6 +157,7 @@ export function filterAgentRows(rows, query, status = "all", source = "all") {
 }
 
 function openRow(view, row) {
+  if (inAgentMode() && !row.external && openTerminalDock(row.address)) return;
   if (inAgentMode()) leaveAgentMode();
   if (row.external) view.resume(row.external);
   else if (row.pane) run("pane.focus", { pane: row.pane });
@@ -197,7 +208,7 @@ function agentCard(view, row, t, focusedAddress) {
       .when(Boolean(marker), (el) => el.child(div().id(`overview-selected-${row.id}`).flex_none()
         .text_size(10).font_semibold().text_color(t.accent).child(marker)))
       .child(div().flex_1().min_w(0))
-      .child(button(`overview-details-${row.id}`, "View details", (cx) => selectVillageResident(view, row, cx), t).h(28).px(8).text_size(11))
+      .child(button(`overview-details-${row.id}`, "View details", (cx) => { view.composerOpen = true; selectVillageResident(view, row, cx); }, t).h(28).px(8).text_size(11))
       .child(button(`overview-open-${row.id}`, row.external ? "Open in Herdr" : "Open terminal", () => openRow(view, row), t)
         .h(28).px(8).text_size(11).border(1).border_color(t.border).bg(t.background).text_color(t.foreground)));
 }
@@ -232,8 +243,8 @@ export function renderAgentView(view) {
     cardRows.push(h_flex().gap(12).flex_none().children(chunk.map((row) => agentCard(view, row, t, focusedAddress)))
       .children(Array.from({ length: columns - chunk.length }, () => div().flex_1().min_w(0))));
   }
-  return v_flex().id("agent-view").track_focus(view.handle).relative().size_full().bg(t.background).text_size(12.5)
-    .on_size_change((size, cx) => { if (view.width !== size.width) { view.width = size.width; cx.notify(); } })
+  return dragViewport(v_flex().id("agent-view").track_focus(view.handle).relative().size_full().bg(t.background).text_size(12.5), view)
+    .on_size_change((size, cx) => { if (view.width !== size.width || view.height !== size.height) { view.width = size.width; view.height = size.height; cx.notify(); } })
     .child(overviewHeader(view, { t, rows, scope, states: STATES, sources: SOURCES }))
     .child(div().relative().flex_1().min_h(0).p(16)
       .child(v_flex().id(`overview-list-${view.page}`).size_full().overflow_y_scroll().gap(12)
@@ -245,5 +256,7 @@ export function renderAgentView(view) {
     .child(footer(rows.length ? `${start + 1}–${start + visible.length} of ${rows.length} agents · Activity updates automatically` : "Activity updates automatically", t,
       ...(pages > 1 ? [button("overview-prev", "Previous", (cx) => { view.page--; cx.notify(); }, t, { disabled: view.page === 0 }),
         button("overview-next", "Next", (cx) => { view.page++; cx.notify(); }, t, { disabled: view.page === pages - 1 })] : [])))
-    .when(Boolean(visible.find((row) => row.id === view.villageSelected)), (el) => el.child(villageDetails(view, visible.find((row) => row.id === view.villageSelected), t, STATES, view.width || 1100, openRow)));
+    .when(Boolean(visible.find((row) => row.id === view.villageSelected))
+      && (!inAgentMode() || !hasTerminalDock() || view.composerOpen || visible.find((row) => row.id === view.villageSelected)?.external),
+      (el) => el.child(villageDetails(view, visible.find((row) => row.id === view.villageSelected), t, STATES, view.width || 1100, openRow)));
 }

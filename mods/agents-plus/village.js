@@ -7,6 +7,9 @@ import { button, statusColor, statusMark, statusInfo, statusLabel, statusNotice 
 import { agentSprite } from "./agent-theme.js";
 import { selectVillageResident, renderVillageChat } from "./village-chat.js";
 import { renderSessionControls } from "./session-controls.js";
+import { inAgentMode } from "./agent-mode.js";
+import { hasTerminalDock } from "./terminal-dock.js";
+import { beginDrag, moveDrag, finishDrag, isDragging, consumeDragClick, clampPosition, normalizedPosition, restorePosition } from "./drag-layout.js";
 
 const ART = "mods/agents-plus/assets/chiikawa";
 const SCENERY = `${ART}/village`;
@@ -74,7 +77,7 @@ export function advanceVillage(view, rows, layout) {
     actor.moving = false;
     // Every visible resident roams, including the selected session and those
     // with a notice. Their labels and speech bubbles follow the same position.
-    if (!dt) continue;
+    if (!dt || isDragging(view, `resident-${row.id}`)) continue;
     if (actor.wait > 0) { actor.wait -= dt; continue; }
     const dx = actor.tx - actor.x, dy = actor.ty - actor.y, distance = Math.hypot(dx, dy);
     if (distance < 2) {
@@ -113,8 +116,11 @@ function resident(view, row, actor, layout, t) {
   return div().id(`overview-${row.id}`).absolute().left(actor.x).top(actor.y).w(size + 16).h(size + 44)
     .cursor_pointer().accessibility_label(`${row.agent}, ${status}, ${row.title}, ${row.project}`)
     .tooltip(identity)
+    .on_mouse_down("left", (e, cx) => beginDrag(view, `resident-${row.id}`, e, actor, layout, (point) => {
+      actor.x = point.x; actor.y = point.y; actor.tx = point.x; actor.ty = point.y; actor.wait = 0;
+    }, cx))
     .on_hover((over, cx) => { view.villageHovered = over ? row.id : null; cx.notify(); })
-    .on_click((_e, cx) => { cx.stop_propagation(); selectVillageResident(view, row, cx); })
+    .on_click((_e, cx) => { cx.stop_propagation(); if (!consumeDragClick(view, `resident-${row.id}`)) selectVillageResident(view, row, cx); })
     .when(selected, (el) => el.child(div().absolute().left(18).top(size + 2).w(size - 20).h(8).rounded(50)
       .bg(t.accent).opacity(0.2)))
     .when(!notice, (el) => el.child(h_flex().id(`village-status-${row.id}`).absolute().left((size + 16 - 84) / 2).top(-26)
@@ -157,27 +163,46 @@ function scenery(layout) {
 
 export function villageDetails(view, row, t, states, width, openRow) {
   const panelWidth = Math.min(760, width - 32);
+  const viewport = (view.presentation === "cards" ? view.height : view.villageHeight) || 660;
+  const height = view.detailCollapsed ? 54 : Math.min(inAgentMode() && hasTerminalDock() ? 320 : 740, Math.max(180, viewport - 32));
+  const bounds = { left: 16, top: 8, right: Math.max(16, width - panelWidth - 16), bottom: Math.max(8, viewport - height - 12) };
+  const anchors = { left: 16, top: 8, right: Math.max(16, width - 16), bottom: Math.max(8, viewport - 12) };
+  view.detailDragBounds = bounds;
+  const positions = view.detailPositions ??= new Map();
+  const position = clampPosition(restorePosition(positions.get(row.id), anchors, { x: (width - panelWidth) / 2, y: bounds.bottom }), bounds);
   const note = row.activity || statusInfo(row.status).summary;
-  return v_flex().id("village-details").absolute().left((width - panelWidth) / 2).bottom(20).w(panelWidth)
-    .h(Math.min(740, Math.max(240, (view.villageHeight || 660) - 32))).overflow_hidden()
+  return v_flex().id("village-details").absolute().left(position.x).top(position.y).w(panelWidth)
+    .h(height).overflow_hidden()
     .rounded(12).border(1).border_color(t.border).bg(t.raised).shadow_lg()
     .on_click((_e, cx) => cx.stop_propagation())
     .child(v_flex().flex_1().min_h(0).min_w(0).p(16).gap(9)
     .child(h_flex().flex_none().gap(8).items_center()
       .child(statusMark(t, row.status))
       .child(div().text_size(11).text_color(statusColor(t, row.status)).child(statusLabel(row.status)))
-      .child(div().flex_1().truncate().text_size(11).text_color(t.muted).child(`${row.agent} · ${row.project}`))
-      .child(button("village-close", "Close", (cx) => { view.villageSelected = null; cx.notify(); }, t)))
+      .child(div().id("village-detail-handle").flex_1().min_w(0).truncate().text_size(11).text_color(t.muted)
+        .cursor_pointer().tooltip("Drag to move this conversation")
+        .on_mouse_down("left", (e, cx) => beginDrag(view, `details-${row.id}`, e, position, () => view.detailDragBounds,
+          (point) => positions.set(row.id, normalizedPosition(point, anchors)), cx))
+        .on_click((_e, cx) => { consumeDragClick(view, `details-${row.id}`); cx.stop_propagation(); })
+        .child(`${row.agent} · ${row.project}`))
+      .child(button("village-detail-collapse", view.detailCollapsed ? "Expand" : "Collapse", (cx) => { view.detailCollapsed = !view.detailCollapsed; cx.notify(); }, t))
+      .child(button("village-close", "Close", (cx) => { view.villageSelected = null; view.composerOpen = false; cx.notify(); }, t)))
+    .when(!view.detailCollapsed, (el) => el.child(v_flex().id("session-detail-scroll").flex_1().min_h(0).overflow_y_scroll().gap(9)
     .child(div().flex_none().truncate().text_size(14).font_semibold().text_color(t.foreground).tooltip(row.title).child(row.title))
-    .child(v_flex().id("session-detail-scroll").flex_1().min_h(0).overflow_y_scroll().gap(9)
-    .child(div().id("village-activity").text_size(12).text_color(t.muted).whitespace_normal().max_h(52).overflow_y_scroll().child(note))
-    .child(h_flex().gap(8).items_center()
+    .child(div().id("village-activity").flex_none().text_size(12).text_color(t.muted).whitespace_normal().max_h(52).overflow_y_scroll().child(note))
+    .child(h_flex().flex_none().gap(8).items_center()
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted)
         .tooltip([row.cwd, row.context, row.address].filter(Boolean).join("\n"))
         .child(`${row.branch || row.sourceLabel} · ${row.address || "Outside session"}`))
       .child(button("village-open-session", "Open session", () => openRow(view, row), t)))
-    .when(Boolean(view.villageChats?.get(row.id)), (el) => el.child(renderSessionControls(view.villageChats.get(row.id), t))))
-    .child(renderVillageChat(view, row, t)));
+    .when(Boolean(view.villageChats?.get(row.id)) && (!inAgentMode() || !hasTerminalDock()), (el) => el.child(renderSessionControls(view.villageChats.get(row.id), t)))
+    .child(renderVillageChat(view, row, t)))));
+}
+
+export function dragViewport(element, view) {
+  return element.on_mouse_move((e, cx) => moveDrag(view, e, cx))
+    .on_mouse_up("left", (e, cx) => finishDrag(view, e, cx))
+    .on_hover((over, cx) => { if (!over) finishDrag(view, null, cx); });
 }
 
 export function renderVillage(view, state) {
@@ -185,13 +210,16 @@ export function renderVillage(view, state) {
   const width = view.villageWidth || view.width || 1100;
   const layout = villageLayout(width, view.villageHeight || 660, visible.length, visible.filter(villageNotice).length);
   const selected = visible.find((row) => row.id === view.villageSelected);
+  const dragging = view.pointerDrag?.id;
+  if (dragging && (dragging.startsWith("details-") ? dragging !== `details-${selected?.id}`
+    : !visible.some((row) => dragging === `resident-${row.id}`))) finishDrag(view, null);
   if (!selected) view.villageSelected = null;
   if (!visible.some((row) => row.id === view.villageHovered)) view.villageHovered = null;
   // Discard departed sessions, but keep off-page/filtered residents in place.
   if (view.villageActors) for (const id of view.villageActors.keys()) if (!all.some((row) => row.id === id)) view.villageActors.delete(id);
   const residents = advanceVillage(view, visible, layout);
   const scrollId = `overview-list-${view.page}`;
-  return v_flex().id("agent-view").track_focus(view.handle).size_full().min_h(0).bg(t.background).text_size(12)
+  return dragViewport(v_flex().id("agent-view").track_focus(view.handle).size_full().min_h(0).bg(t.background).text_size(12), view)
     .on_key_down((e, cx) => { if (e.key === "escape") { view.villageSelected = null; view.villageFilters = false; cx.notify(); } })
     .on_size_change((size, cx) => { if (view.width !== size.width) { view.width = size.width; cx.notify(); } })
     .child(overviewHeader(view, state))
@@ -199,14 +227,15 @@ export function renderVillage(view, state) {
       .on_size_change((size, cx) => { if (view.villageWidth !== size.width || view.villageHeight !== size.height) { view.villageWidth = size.width; view.villageHeight = size.height; cx.notify(); } })
       .child(div().id(scrollId).size_full().overflow_y_scroll()
         .child(div().id("chiikawa-village").relative().w(layout.width).h(layout.height).overflow_hidden().bg("#c3dea0")
-          .on_click((_e, cx) => { view.villageSelected = null; cx.notify(); })
+          .on_click((_e, cx) => { if (!consumeDragClick(view)) view.villageSelected = null; cx.notify(); })
           .child(scenery(layout))
           .children(residents.map(({ row, actor }) => resident(view, row, actor, layout, t)))
           .children(residents.filter(({ row }) => villageNotice(row)).map(({ row, actor }) => speechBubble(view, row, actor, layout, t)))
           .when(visible.length === 0, (el) => el.child(div().absolute().top(layout.height / 2).left(24).w(width - 48).text_center().text_size(13).text_color(t.foreground)
             .child(all.length ? "No matching agents. Adjust your search or filters." : "Agents appear here when they start working.")))))
       .child(Scrollbar.vertical(scrollId).absolute().inset_0())
-      .when(Boolean(selected), (el) => el.child(villageDetails(view, selected, t, states, width, openRow)))
+      .when(Boolean(selected) && (!inAgentMode() || !hasTerminalDock() || view.composerOpen || selected.external),
+        (el) => el.child(villageDetails(view, selected, t, states, width, openRow)))
       .when(!selected && pages === 1, (el) => el.child(div().absolute().bottom(16).left(16).text_size(11).text_color(t.foreground).opacity(0.65).child("Select a character to inspect the session and send a message"))))
     .when(pages > 1, (el) => el.child(h_flex().px(24).py(7).gap(12).items_center().border_t(1).border_color(t.border).flex_none()
       .child(div().text_size(11).text_color(t.muted).child(`${start + 1}–${start + visible.length} of ${rows.length} agents`))

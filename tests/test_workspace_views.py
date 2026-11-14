@@ -30,6 +30,30 @@ class WorkspaceViewsTests(unittest.TestCase):
         self.assertIsNone(installer.patch(source, {"workspace_views": {}}))
         self.assertEqual(source, once)
 
+    def test_native_dock_upgrades_owned_agent_block_without_changing_terminal(self):
+        terminal = {"id": "main", "type": "block", "content": {"tab": "active", "pane": {"gap": 8}}}
+        agent = {"id": "agent-world", "type": "block", "content": {
+            "mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}}
+        source = {"id": "workspace-views", "type": "stack", "active": "agent-world", "children": [terminal, agent]}
+        before = copy.deepcopy(terminal)
+        installer.patch(source, {"workspace_views": {}})
+        self.assertEqual(source["active"], "agent-world")
+        self.assertEqual(source["children"][0], before)
+        nodes = {node["id"]: node for node, _ in installer.blocks(source)}
+        self.assertEqual(nodes["agent-terminal-surface"]["content"], {"agent": "focused"})
+        self.assertTrue(nodes["agent-terminal-surface"]["hidden"])
+        self.assertEqual(nodes["agent-scene"]["content"], agent["content"])
+        once = copy.deepcopy(source)
+        self.assertIsNone(installer.patch(source, {"workspace_views": {}}))
+        self.assertEqual(source, once)
+
+    def test_custom_agent_surface_is_not_replaced(self):
+        source = {"id": "workspace-views", "type": "stack", "children": [
+            {"id": "agent-world", "type": "block", "content": {"mod": "custom"}}]}
+        before = copy.deepcopy(source)
+        self.assertIsNone(installer.patch(source, {"workspace_views": {}}))
+        self.assertEqual(source, before)
+
     def test_retire_only_owned_inactive_layout_with_backup(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)

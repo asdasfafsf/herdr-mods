@@ -42,7 +42,10 @@
         "workspace_views": {}
       }
     ],
-    "keys": {}
+    "keys": {
+      "cmd-shift-e": "agents-plus.toggle_view",
+      "cmd-shift-j": "agents-plus.toggle_terminal"
+    }
   },
   "chiikawa": {
     "about": "Standalone Chiikawa app palette, selectable in native Settings without installing Agent view",

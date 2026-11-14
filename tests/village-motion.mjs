@@ -33,6 +33,7 @@ const modules = new Map([
   ['./ui.js', stub({ button() {}, statusColor() {}, statusMark() {}, statusInfo() {}, statusLabel() {}, statusNotice: row => ['done', 'blocked'].includes(row.status) ? { label: row.status, text: 'Read me' } : null })],
   ['./village-chat.js', stub({ selectVillageResident() {}, renderVillageChat() {} })],
   ['./session-controls.js', stub({ renderSessionControls() {} })],
+  ['./terminal-dock.js', stub({ hasTerminalDock: () => false })],
 ]);
 async function load(name) {
   if (modules.has(name)) return modules.get(name);
@@ -52,6 +53,8 @@ assert.equal(view.motionPaused, false, 'old persisted pause must not freeze a ne
 const tick = elapsed => { now += elapsed; timers.get(50)(cx); };
 tick(50); assert.equal(view.themeClock, 50);
 visible = false; tick(1000); assert.equal(view.themeClock, 50, 'hidden presentation does not animate');
+view.pointerDrag = { id: 'resident-t1', moved: true };
+tick(50); assert.equal(view.pointerDrag, null, 'hiding the view releases a grabbed resident');
 visible = true; tick(50); assert.equal(view.themeClock, 100, 'visible presentation resumes without jumping');
 themeControls(view, {});
 handlers.get('overview-motion')({}, cx);
@@ -75,6 +78,16 @@ for (let frame = 0; frame < 240; frame++) {
   }
 }
 assert.deepEqual([...moved].sort(), rows.map(row => row.id).sort(), 'selected, hovered, notice and quiet residents all move');
+state.pointerDrag = { id: `resident-${rows[0].id}` };
+const grabbed = { ...state.villageActors.get(rows[0].id) };
+state.themeClock += 50;
+advanceVillage(state, rows, layout);
+assert.equal(state.villageActors.get(rows[0].id).x, grabbed.x, 'only the grabbed resident stays under the pointer');
+assert.equal(state.villageActors.get(rows[0].id).y, grabbed.y);
+state.pointerDrag = null;
+for (let frame = 0; frame < 100; frame++) { state.themeClock += 50; advanceVillage(state, rows, layout); }
+const released = state.villageActors.get(rows[0].id);
+assert.ok(Math.hypot(released.x - grabbed.x, released.y - grabbed.y) > 4, 'released residents resume roaming');
 const beforePause = [...state.villageActors].map(([id, actor]) => [id, actor.x, actor.y]);
 advanceVillage(state, rows, layout);
 assert.deepEqual([...state.villageActors].map(([id, actor]) => [id, actor.x, actor.y]), beforePause, 'a frozen clock leaves all positions still');
