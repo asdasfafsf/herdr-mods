@@ -1,74 +1,222 @@
-// Render the real usage view against synthetic credits; no account queries.
+// Synthetic presentation only. Never initialize a reader or select/confirm/use a
+// credit, even with a mock. Only the disclosure and popup-entry handlers run.
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { CHIIKAWA_THEME } from '../mods/theme-chiikawa/palette.js';
 
-const source=readFileSync('mods/usage-bar/main.js','utf8');
-const clicks=new Map();
-function builder() {
-  const node={ops:[]};
-  const proxy=new Proxy(node,{get(target,key) {
-    if(key==='toJSON') return ()=>node;
-    if(key==='when') return (condition,fn)=>condition?fn(proxy):proxy;
-    if(key in target) return target[key];
-    return (...args)=>{
-      if(key==='hover') return proxy;
-      if(key==='on_click') clicks.set(node.ops.find(([name])=>name==='id')?.[1][0],args[0]);
-      node.ops.push([key,args.map(value=>typeof value==='function'?'[handler]':value)]);
+const source = readFileSync('mods/usage-bar/main.js', 'utf8');
+const handlers = new Map();
+function builder(kind = 'div', id) {
+  const node = { kind, ops: id === undefined ? [] : [['id', [id]]] };
+  const proxy = new Proxy(node, { get(target, key) {
+    if (key === 'toJSON') return () => node;
+    if (key === 'when') return (condition, fn) => condition ? fn(proxy) : proxy;
+    if (key in target) return target[key];
+    return (...args) => {
+      const id = node.ops.find(([name]) => name === 'id')?.[1][0];
+      // Explicit allowlist: action buttons and Refresh have no callable handler here.
+      if ((key === 'on_change' && id === 'reset-credits-toggle') ||
+          (key === 'on_click' && id === 'usage-pill')) handlers.set(id, args[0]);
+      if (key === 'hover' || key === 'focus') args = [args[0](builder(`${key}-style`))];
+      node.ops.push([key, args.map(value => typeof value === 'function' ? '[handler]' : value)]);
       return proxy;
     };
   }});
   return proxy;
 }
-let properties={mode:'detail'}, overlay;
-const t=Object.fromEntries(['foreground','muted','dim','hover','selected','accent','border','working','blocked','popover','chrome'].map(key=>[key,'#123456']));
-const Type=new Function('View','div','image','svg','v_flex','h_flex','props','theme','openOverlay','closeOverlay','agoText','button','exec','appHome',
-  source.replace(/^import .*;\n/gm,'').replace('export default class UsageBar','return class UsageBar'))(
-  class {},builder,builder,builder,builder,builder,()=>properties,()=>t,value=>{overlay=value},()=>{},()=> 'just now',
-  (id,label,fn,_t,options={})=>builder().id(id).child(label).when(!options.disabled,el=>el.on_click((_e,cx)=>fn(cx))),
-  async()=>assert.fail('Usage rendering must never invoke reset actions'),()=>'/example');
-const view=new Type();
-const fixture=JSON.parse(readFileSync('docs/porting/fixtures/usage.json','utf8'));
-const credit={id:'one',title:'Bonus reset',status:'available',grantedAt:1794500000,expiresAt:1894500000,description:'A plan reset'};
-const render=summary=>{
-  view.usage=structuredClone(fixture);view.usage.codex.resetCredits=summary;
-  clicks.clear();return JSON.stringify(view.render({}));
-};
-assert.match(render(null),/Reset credit information isn't available/);
-assert.match(render({availableCount:0,credits:[],updated:100}),/No reset credits available/);
-assert.match(render({availableCount:2,credits:null,updated:100}),/Individual credit details aren't available/);
-let output=render({availableCount:2,credits:[credit],updated:100});
-for(const text of ['2 available','Bonus reset','Expires','Showing 1 of 2 available credits.','usage-refresh','usage-close']) assert.ok(output.includes(text),text);
-output=render({availableCount:1,credits:[{...credit,expiresAt:null}],updated:100});
-assert.match(output,/No expiration/);
-assert.ok(!output.includes('consume'),'displaying credits must not redeem them');
-properties={};view.width=720;
-output=JSON.stringify(view.render({}));
-assert.ok(output.includes('↺ 1'));
-clicks.get('usage-pill')();
-assert.equal(overlay.props.mode,'detail');assert.equal(overlay.width,380);
-view.width=360;
-output=JSON.stringify(view.render({}));
-assert.ok(output.includes('Reset credits: 1 available'),'narrow bar retains count in tooltip');
-console.log('usage rendering: unknown/zero/count-only/partial credits, expiration, refresh and detail entry passed');
+const component = kind => ({ new: id => builder(kind, id) });
+const forbidden = () => { throw new Error('Presentation checks cannot call host actions'); };
+let properties = { mode: 'detail' }, overlay, palette;
+const Type = new Function('View', 'div', 'image', 'svg', 'v_flex', 'h_flex',
+  'Accordion', 'AccordionItem', 'AccordionHeader', 'AccordionTrigger', 'AccordionPanel',
+  'props', 'theme', 'openOverlay', 'closeOverlay', 'agoText', 'button', 'exec', 'appHome',
+  source.replace(/^import .*;\n/gm, '').replace('export default class UsageBar', 'return class UsageBar'))(
+  class {}, () => builder(), () => builder('image'), () => builder('svg'),
+  () => builder('column'), () => builder('row'), component('accordion'), component('accordion-item'),
+  { new: trigger => builder('accordion-header').child(trigger) }, component('accordion-trigger'), component('accordion-panel'),
+  () => properties, () => palette, value => { overlay = value; }, forbidden, () => 'just now',
+  // Do not retain or invoke credit-selection or confirmation callbacks.
+  (id, label, _fn, _t, options = {}) => builder('button', id).child(label).disabled(Boolean(options.disabled)),
+  forbidden, forbidden);
 
-if(process.argv.includes('--native')) {
-  const directory=mkdtempSync(join(tmpdir(),'herdr-usage-view-'));
+const fixture = JSON.parse(readFileSync('docs/porting/fixtures/usage.json', 'utf8'));
+const credit = { id: 'one', title: 'Bonus reset', status: 'available', grantedAt: 1794500000,
+  expiresAt: 1894500000, description: 'A plan reset' };
+const summary = { availableCount: 2, credits: [credit], updated: 100 };
+const usageWith = summary => ({ ...structuredClone(fixture), codex: { ...structuredClone(fixture.codex), resetCredits: summary } });
+const cases = [
+  ['unavailable', null, 'Unavailable', "Reset credit information isn't available. Try Refresh."],
+  ['invalid', { availableCount: -1 }, 'Unavailable', "Reset credit information isn't available. Try Refresh."],
+  ['zero', { availableCount: 0, credits: [], updated: 100 }, '0 available', 'No reset credits available.'],
+  ['count-only', { availableCount: 2, credits: null, updated: 100 }, '2 available', "Individual credit details aren't available."],
+  ['partial', summary, '2 available', 'Showing 1 of 2 available credits.'],
+  ['no-expiration', { ...summary, availableCount: 1, credits: [{ ...credit, expiresAt: null }] }, '1 available', 'No expiration'],
+  ['expired', { ...summary, availableCount: 0, credits: [{ ...credit, expiresAt: 100 }] }, '0 available', 'Expired'],
+  ['long-list', { ...summary, availableCount: 12, credits: Array.from({ length: 12 }, (_, i) => ({
+    ...credit, id: `long-${i}`, title: `Bonus credit ${i + 1} with a longer title that should wrap`,
+    description: 'This longer description stays readable inside the expanded panel without relying on hover text.',
+  })) }, '12 available', 'Bonus credit 12'],
+];
+
+// Light/dark fixtures check token plumbing, not a copy of the host's palettes.
+const palettes = {
+  light: { foreground: '#222222', muted: '#555555', dim: '#777777', hover: '#eeeeee', selected: '#dddddd',
+    accent: '#315b90', border: '#cccccc', working: '#876523', blocked: '#a83232', popover: '#ffffff', chrome: '#f4f4f4' },
+  dark: { foreground: '#eeeeee', muted: '#bbbbbb', dim: '#999999', hover: '#333333', selected: '#444444',
+    accent: '#8cb4e8', border: '#555555', working: '#e5bd65', blocked: '#ed8888', popover: '#222222', chrome: '#181818' },
+  chiikawa: CHIIKAWA_THEME.colors,
+};
+const tree = view => { handlers.clear(); return JSON.parse(JSON.stringify(view.render({}))); };
+const nodes = node => !node || typeof node !== 'object' ? [] : Array.isArray(node)
+  ? node.flatMap(nodes) : [node, ...Object.values(node).flatMap(nodes)];
+const op = (node, name) => node?.ops?.find(([key]) => key === name)?.[1];
+const byId = (root, id) => nodes(root).find(node => op(node, 'id')?.[0] === id);
+const display = (root, label) => nodes(root).find(node => op(node, 'child')?.[0] === label);
+const assertCollapsed = root => {
+  const text = JSON.stringify(root);
+  assert.ok(text.includes('Show details'));
+  for (const hidden of ['reset-credits-details', 'reset-use-', 'Bonus reset', 'A plan reset', 'Granted ', 'Expires ', 'Expired ', 'As of ', 'No reset credits', 'Individual credit details', 'Showing ']) {
+    assert.ok(!text.includes(hidden), `Collapsed panel leaked: ${hidden}`);
+  }
+  assert.deepEqual(op(nodes(root).find(node => node.kind === 'accordion-item'), 'open'), [false]);
+};
+let notifications = 0;
+const cx = { notify() { notifications++; } };
+for (const [themeName, colors] of Object.entries(palettes)) {
+  palette = colors;
+  properties = { mode: 'detail' };
+  for (const [name, value, label, detail] of cases) {
+    const view = new Type(); // Deliberately skip init: no reads, timers or host calls.
+    view.usage = usageWith(value);
+    const original = JSON.stringify(view.usage);
+    let root = tree(view);
+    const collapsed = root;
+    assertCollapsed(root);
+    assert.ok(display(root, label), `${themeName}/${name}: ${label}`);
+    const trigger = byId(root, 'reset-credits-toggle');
+    assert.equal(trigger.kind, 'accordion-trigger');
+    assert.deepEqual(op(trigger, 'accessibility_label'), [`Reset credits: ${label}. Show details`]);
+    assert.deepEqual(op(trigger, 'bg'), [colors.hover]);
+    assert.deepEqual(op(trigger, 'border_color'), [colors.border]);
+    assert.deepEqual(op(display(root, label), 'text_color'), [value?.availableCount > 0 ? colors.accent : colors.muted]);
+
+    handlers.get('reset-credits-toggle')(true, cx);
+    root = tree(view);
+    assert.ok(JSON.stringify(root).includes(detail), `${themeName}/${name}: expanded detail`);
+    assert.ok(display(root, 'Hide details'));
+    for (const id of ['reset-credits-details', 'usage-detail-scroll', 'usage-close', 'usage-refresh']) assert.ok(byId(root, id));
+    const scroll = byId(root, 'usage-detail-scroll');
+    assert.deepEqual(op(scroll, 'min_h'), [0]);
+    assert.ok(op(scroll, 'overflow_y_scroll'));
+    assert.ok(op(scroll, 'flex_1'));
+    assert.ok(op(byId(root, 'reset-credits-details'), 'flex_none'));
+    if (name === 'long-list') {
+      assert.equal(nodes(scroll).filter(node => op(node, 'id')?.[0]?.startsWith('reset-credit-long-')).length, 12);
+      for (const item of value.credits) {
+        for (const text of [item.title, item.description]) {
+          assert.ok(op(display(root, text), 'whitespace_normal'));
+          assert.equal(op(display(root, text), 'truncate'), undefined);
+        }
+        assert.ok(op(byId(root, `reset-credit-${item.id}`), 'flex_none'));
+      }
+    }
+    if (name === 'partial') {
+      for (const text of ['Bonus reset', 'A plan reset']) assert.ok(op(display(root, text), 'whitespace_normal'));
+      assert.ok(JSON.stringify(root).includes('Expires'));
+    }
+    // Updating data in place preserves the local disclosure state.
+    view.usage = usageWith(value);
+    assert.ok(byId(tree(view), 'reset-credits-details'));
+    handlers.get('reset-credits-toggle')(false, cx);
+    const folded = tree(view);
+    assertCollapsed(folded);
+    assert.deepEqual(byId(folded, 'reset-credits'), byId(collapsed, 'reset-credits'), 'Folding restores the original summary size and tree');
+    assert.equal(JSON.stringify(view.usage), original, 'Disclosure never changes usage data');
+    const reopened = new Type();
+    reopened.usage = usageWith(value);
+    assertCollapsed(tree(reopened));
+  }
+}
+assert.equal(notifications, Object.keys(palettes).length * cases.length * 2);
+
+// Collapsed rendering must not inspect individual details, even when cached.
+properties = { mode: 'detail' };
+const view = new Type();
+view.usage = usageWith({ availableCount: 123, updated: 100 });
+Object.defineProperty(view.usage.codex.resetCredits, 'credits', { get: forbidden });
+assertCollapsed(tree(view));
+
+properties = {};
+for (const width of [360, 480, 720, 1200]) for (const [value, marker, label] of [
+  [null, '↺ —', 'Unavailable'], [{ availableCount: 0 }, '↺ 0', '0 available'], [summary, '↺ 2', '2 available'],
+]) {
+  view.width = width;
+  view.usage = usageWith(value);
+  const root = tree(view);
+  assert.ok(display(root, marker), `${width}: ${marker}`);
+  assert.ok(JSON.stringify(root).includes(`Reset credits: ${label}`));
+  assert.ok(byId(root, 'usage-refresh'));
+  assert.deepEqual(op(byId(root, 'usage-pill'), 'max_w'), [width - 116]);
+  assert.deepEqual(op(byId(root, 'usage-limits'), 'min_w'), [0]);
+  assert.ok(op(byId(root, 'usage-limits'), 'overflow_x_scroll'));
+  assert.ok(op(byId(root, 'usage-reset-count'), 'flex_none'));
+  assert.equal(byId(byId(root, 'usage-limits'), 'usage-reset-count'), undefined, 'Count stays outside the scrolling limits');
+  assert.ok(op(byId(root, 'usage-refresh'), 'flex_none'));
+  handlers.get('usage-pill')();
+  assert.equal(overlay.props.mode, 'detail');
+  assert.equal(overlay.width, 380);
+  assert.equal(overlay.height, 528, 'Popup height depends on limits and the summary only');
+}
+view.usage = usageWith(cases.find(([name]) => name === 'long-list')[1]);
+tree(view);
+handlers.get('usage-pill')();
+assert.equal(overlay.height, 528, 'A long credit list does not enlarge the popup');
+console.log('usage rendering: collapsed/open/close/reopen, unknown/zero/count-only/partial/expiry/long list, semantic palettes and 360–1200px descriptions passed');
+
+// Native eager-element checks only: temporary modules and synthetic data, never
+// installed. No layout, account calls, reset selection/redemption or real sessions.
+if (process.argv.includes('--native')) {
+  const directory = mkdtempSync(join(tmpdir(), 'herdr-usage-view-'));
   try {
-    for(const file of ['ui','state']) writeFileSync(join(directory,`${file}.js`),readFileSync(`lib/${file}.js`,'utf8').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-    writeFileSync(join(directory,'usage.js'),source.replaceAll('from "herdr"','from "./mock-herdr.js"'));
-    writeFileSync(join(directory,'mock-herdr.js'),`
-export const theme=()=>(${JSON.stringify(t)}),props=()=>({mode:'detail'}),shared=()=>null,setShared=()=>{};
-export const exec=async()=>({code:0,stdout:'{}'}),appHome=()=>'/example',openOverlay=()=>{},closeOverlay=()=>{};
+    for (const file of ['ui', 'state', 'agent-status']) writeFileSync(join(directory, `${file}.js`),
+      readFileSync(`lib/${file}.js`, 'utf8').replaceAll('from "herdr"', 'from "./synthetic-herdr.js"'));
+    writeFileSync(join(directory, 'usage.js'), source.replaceAll('from "herdr"', 'from "./synthetic-herdr.js"'));
+    let checks = 0;
+    const check = label => {
+      const result = spawnSync('herdr-app', ['check', directory], { encoding: 'utf8', timeout: 15000 });
+      assert.equal(result.status, 0, `${label}: ${result.stdout}${result.stderr}${result.error ?? ''}`);
+      checks++;
+    };
+    for (const [themeName, colors] of Object.entries(palettes)) {
+      writeFileSync(join(directory, 'synthetic-herdr.js'), `
+export const theme=()=>(${JSON.stringify(colors)}),props=()=>({mode:'detail'}),shared=()=>null;
+const forbidden=()=>{throw Error('Presentation checks cannot call host actions')};
+export const exec=forbidden,appHome=forbidden,openOverlay=forbidden,closeOverlay=forbidden,setShared=forbidden;
 `);
-    writeFileSync(join(directory,'main.js'),`
+      for (const [name, value] of cases.filter(([name]) => name !== 'invalid')) for (const expanded of [false, true]) {
+        writeFileSync(join(directory, 'main.js'), `
 import Usage from './usage.js';
-export default class Probe extends Usage {init(){this.usage=${JSON.stringify(view.usage)};}}
+export default class Probe extends Usage {
+  init(){this.usage=${JSON.stringify(usageWith(value))};this.resetCreditsExpanded=${expanded};}
+}
 `);
-    const result=spawnSync('herdr-app',['check',directory],{encoding:'utf8',timeout:15000});
-    assert.equal(result.status,0,result.stdout+result.stderr+String(result.error??''));
-    console.log('native usage detail: passed');
-  } finally {rmSync(directory,{recursive:true,force:true});}
+        check(`${themeName}/${name}/${expanded}`);
+      }
+      // Use the same native view at each width without opening a real popup.
+      writeFileSync(join(directory, 'synthetic-herdr.js'), readFileSync(join(directory, 'synthetic-herdr.js'), 'utf8').replace("mode:'detail'", "mode:'bar'"));
+      for (const width of [360, 480, 720, 1200]) {
+        writeFileSync(join(directory, 'main.js'), `
+import Usage from './usage.js';
+export default class Probe extends Usage {
+  init(){this.usage=${JSON.stringify(usageWith(summary))};this.width=${width};}
+}
+`);
+        check(`${themeName}/bar/${width}`);
+      }
+    }
+    console.log(`native usage: ${checks} synthetic descriptions passed (no layout or screenshot verification)`);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 }
