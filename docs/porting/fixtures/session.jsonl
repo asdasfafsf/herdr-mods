@@ -1,0 +1,7 @@
+{"schema": "agent-session/1", "id": "00000000-0000-4000-8000-000000000099", "created": "2030-01-01T00:00:00Z", "title": "가상 세션", "source": {"agent": "claude", "session": "00000000-0000-4000-8000-000000000001", "cwd": "/example/repos/demo", "model": "demo-model"}}
+{"role": "user", "content": "합계 함수를 확인해줘."}
+{"role": "assistant", "content": "관련 파일을 읽을게.", "tool_calls": [{"id": "demo-call-1", "name": "Read", "arguments": {"file_path": "sum.py"}}]}
+{"role": "tool", "tool_call_id": "demo-call-1", "name": "Read", "is_error": false, "content": "def add(a, b): return a + b"}
+{"role": "assistant", "content": "두 입력의 합을 반환해."}
+{"role": "system", "kind": "summary", "content": "합계 함수 동작 확인을 마쳤다."}
+{"role": "user", "content": "다음엔 테스트를 추가해줘."}

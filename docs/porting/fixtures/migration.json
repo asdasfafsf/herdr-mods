@@ -1,0 +1,44 @@
+{
+  "schema": "herdr-porting-example/1",
+  "implemented": false,
+  "note": "제안 envelope, 현재 앱이 읽는 파일이 아님",
+  "source_revision": "898a2c3ffe690fea307ae0b8c2856bcc25f666f1",
+  "mappings": [
+    {
+      "from": {
+        "machine": null,
+        "prefix": "/example/worktrees/demo"
+      },
+      "to": {
+        "machine": null,
+        "prefix": "/target/worktrees/demo"
+      }
+    }
+  ],
+  "expectations": [
+    {
+      "from": "/example/worktrees/demo/결제-개선",
+      "to": "/target/worktrees/demo/결제-개선"
+    },
+    {
+      "from": "/example/worktrees/demolition/task",
+      "to": "/example/worktrees/demolition/task"
+    }
+  ],
+  "preserve": [
+    "wt.meta",
+    "wt.repos",
+    "wt.sleep",
+    "hm.options",
+    "wt.repoColors",
+    "wt.sort",
+    "wt.linkTemplate"
+  ],
+  "rebuild": [
+    "wt.trees",
+    "wt.live",
+    "wt.results",
+    "ag.order",
+    "md.panes"
+  ]
+}

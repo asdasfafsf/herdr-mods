@@ -1,0 +1,199 @@
+// usage-bar (herdr-mods): Claude Code's and Codex's plan limits at the left end of the
+// bottom bar, as Orca shows them, all in one pill: "[Claude] 5h ▓░ 45% resets in 2h 10m · 7d … |
+// [Codex] 7d …", and a Refresh button at the end.
+//
+// The numbers come from usage.py next to this file: Claude's structured usage (including
+// Fable) and Codex's limits, asked every 5 minutes or on Refresh, plus Claude's status-line
+// snapshots and Codex's session rollouts. Numbers dim once they're over an hour old, and
+// a window whose reset time has passed says "reset" (how much is used since is unknown
+// until that agent's numbers move again). Each window says how long until it resets
+// ("4h 12m", "6d 14h"). Used 80% or more shows in the working color, all of it in the
+// blocked color. Hover: each reset's clock time (weekday this week, else the date) and how
+// old the numbers are. Click: the same, with bars.
+//
+// It sits before the shipped workspace-status in a row of the layout (see README), drawn
+// with the same background and border so the two read as one bar.
+
+import { View, div, image, svg } from "gpui-kit";
+import { v_flex, h_flex } from "gpui-base";
+import { exec, appHome, theme, props, openOverlay, closeOverlay } from "herdr";
+import { agoText } from "./ui.js";
+
+const EVERY = 30000;
+const AGENTS = [["claude", "Claude", "icons/claude.svg"], ["codex", "Codex", "icons/codex.svg"]];
+const P = () => props() ?? {};
+
+const when = (s) => {
+  if (!s) return "";
+  const d = new Date(s * 1000), now = new Date();
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return d.toDateString() === now.toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+};
+const passed = (w) => Boolean(w.resets) && w.resets * 1000 < Date.now();
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// When a window resets, as the bar says it: "18:00" today, "Fri 22:49" within six days
+// (a weekday that can't mean this week's), else "11/10 10:00".
+const at = (s) => {
+  const d = new Date(s * 1000), now = new Date();
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  if (d.toDateString() === now.toDateString()) return hm;
+  const days = Math.round((new Date(d.toDateString()) - new Date(now.toDateString())) / 86400000);
+  return days < 7 && days > 0 && d.getDay() !== now.getDay() ? `${DAYS[d.getDay()]} ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+};
+// How long until a reset, as the bar says it: "38m", "4h 12m", "6d 14h" (the clock time,
+// at(), is on hover and in the detail). Down to the minute: the bar reads every 30 s.
+const until = (s) => {
+  const mins = Math.max(1, Math.floor((s - Date.now() / 1000) / 60));
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  if (h < 24) return m ? `${h}h ${m}m` : `${h}h`;
+  const d = Math.floor(h / 24), hh = h % 24;
+  return hh ? `${d}d ${hh}h` : `${d}d`;
+};
+
+export default class UsageBar extends View {
+  init(_props, cx) {
+    this.usage = P().usage ?? null; // the detail popup starts with what the bar read
+    // ...and reads on as the bar does, so one left open doesn't show numbers from when it opened.
+    this.read(cx);
+    cx.timer.every(EVERY, (cx) => this.read(cx));
+  }
+
+  // Manual refresh reports direct-query outcomes, even when cached limits are usable.
+  read(cx, now = false) {
+    if (this.reading) return;
+    this.reading = true;
+    if (now) { this.refreshing = true; this.refreshed = 0; cx.notify(); }
+    cx.spawn(async (cx) => {
+      try {
+        const r = await exec("python3", ["-I", `${appHome()}/mods/usage-bar/usage.py`, ...(now ? ["--now"] : [])]);
+        if (r.code !== 0) throw new Error(`Usage reader exited ${r.code}`);
+        const data = JSON.parse(r.stdout);
+        if (!data || Array.isArray(data) || !AGENTS.every(([key]) => Object.prototype.hasOwnProperty.call(data, key) && (data[key] === null || (Array.isArray(data[key]?.windows) && data[key].windows.every((w) => w && typeof w.name === "string" && Number.isFinite(w.used)))))) throw new Error("Invalid usage response");
+        this.usage = data;
+        if (now) {
+          const succeeded = AGENTS.filter(([key]) => data.refresh?.[key]?.ok === true).length;
+          this.refreshResult = succeeded === AGENTS.length ? "Updated" : succeeded ? "Partial" : "Failed";
+          this.readError = AGENTS.filter(([key]) => data.refresh?.[key]?.ok !== true).map(([key, name]) => `${name}: ${data.refresh?.[key]?.error || "No fresh reading"}`).join("; ");
+        } else if (this.refreshResult !== "Failed" && this.refreshResult !== "Partial") this.readError = null;
+      } catch (error) {
+        this.readError = String(error.message ?? error);
+        if (now) this.refreshResult = "Failed";
+      } finally {
+        this.reading = false;
+        if (now) {
+          this.refreshing = false;
+          this.refreshed = Date.now();
+          cx.timer.after(2500, (cx) => cx.notify());
+        }
+        cx.notify();
+      }
+    });
+  }
+
+  // A window's color: the accent while there's room, the working color from 80%, the
+  // blocked color when it's used up; dim once it has reset.
+  tone(w, t) {
+    if (passed(w)) return t.dim;
+    return w.used >= 100 ? t.blocked : w.used >= 80 ? t.working : t.accent;
+  }
+
+  tip(name, u) {
+    const lines = u.windows.map((w) => `${w.name}: ${passed(w) ? "reset since" : `${Math.round(w.used)}% used`}${w.resets ? `, ${passed(w) ? `reset at ${when(w.resets)}` : `resets in ${until(w.resets)} (${at(w.resets)})`}` : ""}`);
+    return `${name}${u.plan ? ` (${u.plan})` : ""}\n${lines.join("\n")}\nas of ${agoText(u.updated)}`;
+  }
+
+  // One agent in the bar, all of it in view: its icon, then per window its name, a small
+  // bar, the share used and how long until it resets ("5h ▓░ 45% resets in 2h 10m"); a window past its
+  // reset says "reset". Numbers older than an hour are dimmed (how old shows on hover).
+  item(key, name, icon, u, t, compact = false, narrow = false) {
+    const old = Date.now() / 1000 - u.updated > 3600;
+    const win = (w) => {
+      const pct = passed(w) ? 0 : Math.max(0, Math.min(100, w.used));
+      return h_flex().gap(6).items_center()
+        .child(div().text_color(t.muted).child(w.name))
+        .when(!narrow, (el) => el.child(div().w(28).h(5).flex_none().rounded(3).bg(t.border).child(div().h_full().w(`${pct}%`).rounded(3).bg(this.tone(w, t)))))
+        .child(div().font_semibold().text_color(passed(w) ? t.dim : w.used >= 80 ? this.tone(w, t) : t.foreground).child(passed(w) ? "reset" : `${Math.round(w.used)}%`))
+        .when(!narrow && Boolean(w.resets) && !passed(w), (el) => el.child(h_flex().gap(4).items_center()
+          .when(!compact, (el) => el.child(div().text_color(t.dim).child("resets in")))
+          .child(div().text_color(t.foreground).child(until(w.resets)))));
+    };
+    // One agent's part of the pill (see pill): its icon, then its windows; its own hover.
+    return h_flex().id(`usage-${key}`).gap(9).items_center().tooltip(this.tip(name, u))
+      .child(image(icon).size(12).flex_none())
+      .children(u.windows.flatMap((w, i) => [...(i ? [div().text_color(t.dim).child("·")] : []), win(w)]))
+      .when(old, (el) => el.opacity(0.55));
+  }
+
+  // Every agent's numbers in one pill, a thin line between agents, so they read as one
+  // item apart from the bar's others. Click: the detail popup.
+  pill(u, t) {
+    const parts = AGENTS.filter(([k]) => u[k]);
+    if (!parts.length) return null;
+    // Budget against the actual block width, including icons, gaps and Refresh. Four
+    // windows already overflow a 720px block with full countdown labels. On narrower
+    // blocks keep names and percentages; reset times remain on hover and in detail.
+    const count = parts.reduce((n, [k]) => n + u[k].windows.length, 0);
+    const width = this.width ?? 720;
+    const compact = width < 120 + count * 180;
+    const narrow = width < 120 + count * 125;
+    return h_flex().id("usage-pill").flex_none().h(20).px(9).rounded(6).bg(t.hover).hover((s) => s.bg(t.selected)).gap(10).items_center().cursor_pointer()
+      .on_click(() => openOverlay({ mod: "usage-bar", kind: "popup", width: 300, height: Math.min(600, 64 + parts.length * 44 + count * 62), props: { mode: "detail", usage: this.usage } }))
+      .children(parts.flatMap(([k, name, icon], i) => [...(i ? [div().w(1).h(12).flex_none().bg(t.border)] : []), this.item(k, name, icon, u[k], t, compact, narrow)]));
+  }
+
+  renderDetail(t) {
+    const u = this.usage ?? {};
+    const bar = (w) => {
+      const pct = passed(w) ? 0 : Math.max(0, Math.min(100, w.used));
+      return v_flex().gap(4)
+        .child(h_flex().justify_between().text_size(11.5)
+          .child(div().text_color(t.muted).child(w.name))
+          .child(div().text_color(this.tone(w, t)).child(passed(w) ? "reset since" : `${Math.round(w.used)}%`)))
+        .child(div().h(5).w_full().rounded(3).bg(t.hover).child(div().h_full().w(`${pct}%`).rounded(3).bg(this.tone(w, t))))
+        .when(Boolean(w.resets), (el) => el.child(div().text_size(10.5).text_color(t.dim).child(passed(w) ? `reset at ${when(w.resets)}` : `resets in ${until(w.resets)} · ${at(w.resets)}`)));
+    };
+    return v_flex().id("usage-detail").size_full().overflow_y_scroll().p(14).gap(14).bg(t.popover).text_size(12.5)
+      .children(AGENTS.filter(([k]) => u[k]).map(([k, name, icon]) => v_flex().gap(8)
+        .child(h_flex().gap(7).items_center()
+          .child(image(icon).size(14).flex_none())
+          .child(div().flex_1().font_semibold().text_color(t.foreground).child(`${name}${u[k].plan ? ` · ${u[k].plan}` : ""}`))
+          .child(div().text_size(10.5).text_color(t.dim).child(agoText(u[k].updated))))
+        .children(u[k].windows.map(bar))
+        // Why these may be old: the last ask failed (offline, logged out, no answer).
+        .when(Boolean(u[k].error), (el) => el.child(div().text_size(10.5).text_color(t.blocked).child(`Couldn't ask just now: ${u[k].error}`)))))
+      .when(!AGENTS.some(([k]) => u[k]), (el) => el.child(div().text_color(t.dim).child("No usage seen yet: it shows once Claude Code or Codex has run.")));
+  }
+
+  render(cx) {
+    const t = theme();
+    if (P().mode === "detail") return this.renderDetail(t);
+    const u = this.usage ?? {};
+    // At the bar's left end (the layout puts this block first), before the shipped items.
+    return h_flex().id("usage-bar").size_full().pl(10).pr(6).gap(8).items_center()
+      .on_size_change((size, cx) => {
+        if (this.width !== size.width) { this.width = size.width; cx.notify(); }
+      })
+      .bg(t.chrome).border_t(1).border_color(t.border).text_size(12).text_color(t.muted)
+      .when(AGENTS.some(([k]) => u[k]), (el) => el.child(this.pill(u, t)))
+      .child(div().flex_1())
+      .child(this.refreshButton(t));
+  }
+
+  // At the end: read the numbers again now (both agents asked afresh). While it does, the icon
+  // spins; success says Updated briefly, failure/partial remains until another refresh.
+  // Last known numbers and their original timestamps stay available on failure.
+  refreshButton(t) {
+    const busy = Boolean(this.refreshing);
+    const failed = !busy && Boolean(this.readError);
+    const done = !busy && !failed && this.refreshResult === "Updated" && Date.now() - (this.refreshed ?? 0) < 2400;
+    return h_flex().id("usage-refresh").h(20).px(8).gap(5).flex_none().items_center().rounded(6).cursor_pointer()
+      .text_color(busy ? t.dim : t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .tooltip(busy ? "Reading the limits again…" : this.readError ? `${this.readError}. Unavailable services keep their last known readings and timestamps.` : "Read Claude's and Codex's limits again now")
+      .on_click((_e, cx) => this.read(cx, true))
+      .child(svg("mods/usage-bar/refresh.svg").size(12).flex_none().when(busy, (el) => el.spin(900)))
+      .when(done, (el) => el.text_color(t.ansi2))
+      .when(failed, (el) => el.text_color(t.working))
+      .child(div().flex_none().child(failed ? (this.refreshResult === "Partial" ? "Partial" : "Failed") : done ? "Updated" : "Refresh"));
+  }
+}

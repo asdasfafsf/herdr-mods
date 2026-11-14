@@ -1,0 +1,806 @@
+#!/usr/bin/env python3
+"""hm: what the herdr-mods sidebar and menus do, as commands, for agents and people.
+
+  hm ls [--all] [--json]                 every open repo's worktrees (* = the one you're in)
+  hm new [NAME] [--repo R] [--branch B] [--base B|#123|PR-URL] [--link L]     (R: a repo's name or path, open in Herdr or not)
+         [--agent claude|codex|...] [--prompt TEXT] [--setup CMD] [--copy PATTERNS] [--no-wait]
+                                         make a worktree (and its space; an agent in it); no NAME:
+                                         named from its PR's or issue's title, or the link's ticket key
+  hm add [DIR]                           open a folder as a project; a folder of repos: each repo not open yet
+  hm clone URL [--into DIR] [--host M]   add a project by cloning it (a new space clones it in its terminal)
+  hm project NAME [--in DIR] [--host M]  add a new project: an empty folder with git and a first commit
+  hm go [T]                              show it (opens it, wakes it if asleep)
+  hm sleep [T]                           close its space, keeping its agent sessions to resume
+  hm pin [T] | unpin [T]                 keep it at the top of its repo
+  hm archive [T] | unarchive [T]         hide it behind "N archived"
+  hm set [T] [--name X] [--comment X] [--link X] [--pr N|URL] [--status todo|in-progress|in-review|completed]
+                                         what the row menu edits ("" or none clears)
+  hm rm [T] [--force]                    remove it (the branch goes only if merged); not when it has
+                                         uncommitted changes or an agent at work, unless --force
+  hm clean [--repo R] [--review]         remove a repo's done worktrees (PR merged or branch merged,
+                                         nothing uncommitted, no agent); lists the rest with why.
+                                         --review: open the Clean up window for the person instead
+  hm term [T] [--agent K] [--prompt TEXT] [--name N]
+                                         a new tab in it: a shell, or an agent
+  hm sessions [T] [--search Q] [--json]  Claude Code / Codex sessions that ran in it
+  hm resume SESSION [--fork] [--into T] [--as AGENT]
+                                         continue a session in Herdr (in its worktree's space);
+                                         --fork: a new session from it, the original left as it is;
+                                         --into T: make it T's first (Claude or Codex), then open it there;
+                                         --into T --fork: open a fork of it in T, the original untouched
+                                         (even while it runs elsewhere, e.g. still answering in Slack);
+                                         --as AGENT: as another agent's new session (hm translate), then open it
+  hm translate SESSION --to A[,B…] [--into T]
+                                         the conversation as new sessions of other agents (claude, codex), via
+                                         the agent-session/1 standard file (~/.herdr/agent-sessions); the original stays
+  hm outside [--json]                    agents running outside Herdr (Orca, iTerm, ...)
+  hm usage [--json]                      Claude / Codex plan limits
+  hm logs [--json] [--watch|--once|--stop|--render|--restore] UI, render or restore diagnostics
+  hm sort activity|recent|name|created   how the sidebar orders worktrees
+  hm pin-agent [TERMINAL] [--off]        pin an agent to the top of the Agents list
+                                         (default: this terminal, $HC_TERMINAL_ID)
+  hm md FILE                             show a Markdown file rendered, in a pane beside this terminal
+                                         (as ⌘P's Docs view does; not twice; the keyboard stays where it is)
+  hm option [NAME VALUE]                 look choices (the settings window's): none lists them all with
+                                         their values; VALUE on|off, a number, a word (sidebar-cards
+                                         compact|detailed), or default
+  hm color REPO COLOR|auto               a repo's color: teal blue orange pink cyan brown slate lime, #rrggbb
+                                         (hm color all auto: every open repo a different color again)
+  hm seen all | TERMINAL...              done agents marked seen without opening them (Seen, not Done)
+  hm restore                             ask to resume the sessions the last restart stopped
+  hm skill                               how an agent should use hm (the herdr skill)
+
+T (a checkout) is a path, a worktree's name or branch ("repo/name" if two repos share one),
+or nothing: the checkout you're in, else the space shown in the window.
+Needs the herdr-mods bundles in the shown Herdr layout (./install.sh); the window must be open.
+Exception: logs reads saved diagnostics with the window closed (agents, or restore for --restore).
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
+
+HOME = os.environ.get("HERDR_APP_HOME") or os.path.expanduser("~/.config/herdr-app")
+STATUSES = ("todo", "in-progress", "in-review", "completed")
+SORTS = ("activity", "recent", "name", "created")
+
+
+class Fail(Exception):
+    pass
+
+
+# Herdr ---------------------------------------------------------------------------------
+
+def load(path, default=None):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def shared():
+    return load(os.path.join(HOME, "shared.json"), {}) or {}
+
+
+def herdr(*args):
+    r = subprocess.run(["herdr-app", *args], capture_output=True, text=True)
+    out = (r.stdout or "").strip()
+    try:
+        data = json.loads(out) if out else {}
+    except ValueError:
+        data = {"error": out or r.stderr.strip()}
+    if r.returncode != 0 or (isinstance(data, dict) and data.get("error")):
+        raise Fail((data.get("error") if isinstance(data, dict) else None) or r.stderr.strip() or "herdr-app failed")
+    return data
+
+
+def do(command, **args):
+    """A Herdr command; a mod's is <mod>.<command>[@<payload>]."""
+    flat = []
+    for k, v in args.items():
+        if v is not None:
+            flat += [f"--{k}", v if isinstance(v, str) else json.dumps(v)]
+    return herdr("do", command, *flat)
+
+
+def runs(mod):
+    """Whether the shown layout has the mod (a mod's commands reach shown copies only)."""
+    name = shared().get("layout") or "main"
+    text = json.dumps(load(os.path.join(HOME, "layouts", f"{name}.json"), {}))
+    return f'"mod": "{mod}"' in text or f'"mod":"{mod}"' in text
+
+
+def need(mod, bundle):
+    if not runs(mod):
+        raise Fail(f"{mod} isn't in the shown Herdr layout: install the {bundle} bundle (herdr-mods ./install.sh {bundle}) and show that layout.")
+
+
+def py(mod, script, *args):
+    r = subprocess.run(["python3", "-I", os.path.join(HOME, "mods", mod, script), *args], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Fail(f"{script}: {r.stderr.strip() or 'failed'}")
+    return json.loads(r.stdout or "null")
+
+
+# Checkouts -----------------------------------------------------------------------------
+
+def meta_key(path):
+    return json.dumps([None, path], separators=(",", ":"), ensure_ascii=False)  # as JSON.stringify
+
+
+def checkouts():
+    """Every checkout of every repo a space is in, as the sidebar lists them (local ones)."""
+    s = shared()
+    trees, meta = s.get("wt.trees"), s.get("wt.meta") or {}
+    if trees is None:
+        need("spaces-plus", "worktrees")
+        raise Fail("The sidebar hasn't listed any repo yet.")
+    out = []
+    for repo in trees.values():
+        if repo.get("machine"):
+            continue
+        for c in repo.get("checkouts", []):
+            m = meta.get(meta_key(c["path"])) or {}
+            out.append({**c, "repo": repo["name"], "meta": m, "name": m.get("name") or (repo["name"] if c.get("main") else os.path.basename(c["path"]))})
+    return out
+
+
+def inside(path, folder):
+    return path == folder or path.startswith(folder.rstrip("/") + "/")
+
+
+def containing(path, cs):
+    real = os.path.realpath(path)
+    hits = [c for c in cs if inside(path, c["path"]) or inside(real, os.path.realpath(c["path"]))]
+    return max(hits, key=lambda c: len(c["path"]), default=None)
+
+
+def focused_space():
+    try:
+        return herdr("status").get("space")
+    except Fail:
+        return None
+
+
+def resolve(target, cs=None):
+    """A checkout from a path, a name or branch, or nothing (where you are, else the shown space)."""
+    cs = cs if cs is not None else checkouts()
+    if not target:
+        here = containing(os.getcwd(), cs)
+        if here:
+            return here
+        sid = focused_space()
+        shown = next((c for c in cs if sid and c.get("space") == sid), None)
+        if shown:
+            return shown
+        raise Fail("Not in a worktree here, and the shown space isn't one: name one (hm ls).")
+    if target.startswith(("/", "~", ".")) or os.path.exists(target):
+        c = containing(os.path.abspath(os.path.expanduser(target)), cs)
+        if not c:
+            raise Fail(f"{target} isn't in a checkout the sidebar lists (hm ls).")
+        return c
+    want = target.lower()
+    repo, _, short = want.partition("/") if "/" in want and any(c["repo"].lower() == want.split("/")[0] for c in cs) else ("", "", want)
+
+    def names(c):
+        b = (c.get("branch") or "").lower()
+        return {c["name"].lower(), b, b.split("/")[-1], os.path.basename(c["path"]).lower()} - {""}
+
+    pool = [c for c in cs if not repo or c["repo"].lower() == repo]
+    exact = [c for c in pool if short in names(c)]
+    hits = exact or [c for c in pool if any(short in n for n in names(c))]
+    if len(hits) == 1:
+        return hits[0]
+    if not hits:
+        raise Fail(f'No worktree called "{target}" (hm ls).')
+    raise Fail(f'"{target}" could be: ' + ", ".join(f'{c["repo"]}/{c["name"]}' for c in hits) + ' (use repo/name or a path).')
+
+
+def git_main(folder):
+    """The main checkout of the git repo a folder is in, or None (as the New worktree form
+    takes any folder in a repo)."""
+    r = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=folder, capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    common = r.stdout.strip()
+    return common[:-5] if common.endswith("/.git") else common
+
+
+def repo_main(target):
+    """The main checkout of a repo: named (or any path in it), else the one you're in. A repo
+    Herdr has no space in yet works too: by its path, or by its folder's name in a folder
+    where the open repos are (~/Desktop/workspace, say)."""
+    cs = checkouts()
+    if target and not target.startswith(("/", "~", ".")) and not os.path.exists(target):
+        mains = [c for c in cs if c.get("main") and c["repo"].lower() == target.lower()]
+        if mains:
+            return mains[0]
+        for parent in sorted({os.path.dirname(c["path"]) for c in cs if c.get("main")}):
+            here = os.path.join(parent, target)
+            if os.path.isdir(here) and git_main(here):
+                main = git_main(here)
+                return {"path": main, "repo": os.path.basename(main), "main": True}
+    try:
+        c = resolve(target, cs)
+    except Fail:
+        folder = os.path.abspath(os.path.expanduser(target or os.getcwd()))
+        main = os.path.isdir(folder) and git_main(folder)
+        if not main:
+            raise
+        return {"path": main, "repo": os.path.basename(main), "main": True}
+    return next((m for m in cs if m.get("main") and m["repo"] == c["repo"]), c)
+
+
+def agent_run(key):
+    """How Herdr starts an agent (programs.json's run, as its menus do)."""
+    known = (shared().get("new-menu.agents") or {}).get("") or []
+    a = next((a for a in known if a.get("key") == key), None)
+    if not a:
+        raise Fail(f'No agent "{key}". Known: ' + ", ".join(a["key"] for a in known if a.get("installed") and a.get("agent")))
+    if not a.get("installed"):
+        raise Fail(f'"{key}" isn\'t installed here.')
+    return a["run"]
+
+
+# Output --------------------------------------------------------------------------------
+
+def ago(t):
+    if not t:
+        return ""
+    t = t / 1000 if t > 1e12 else t
+    d = time.time() - t
+    return f"{max(1, int(d / 60))}m" if d < 3600 else f"{int(d / 3600)}h" if d < 86400 else f"{int(d / 86400)}d"
+
+
+def flags(c):
+    m = c["meta"]
+    out = ["primary" if c.get("main") else None, "open" if c.get("space") else None, "sleeping" if c.get("sleeping") else None,
+           "pinned" if m.get("pinned") else None, "archived" if m.get("archived") else None, m.get("status")]
+    return " ".join(f for f in out if f)
+
+
+def show(c):
+    m = c["meta"]
+    extra = [m.get("link"), f'PR #{m["pr"]["number"]}' if isinstance(m.get("pr"), dict) and m["pr"].get("number") else None, m.get("comment")]
+    branch = c.get("branch") or "detached"
+    same = branch.lower() in (c["name"].lower(),) or branch.split("/")[-1].lower() == c["name"].lower()
+    return "  ".join(x for x in [c["name"], "" if same else f"[{branch}]", flags(c), " · ".join(e for e in extra if e)] if x)
+
+
+def emit(data, as_json, text):
+    print(json.dumps(data, ensure_ascii=False, indent=2) if as_json else text)
+
+
+# Commands ------------------------------------------------------------------------------
+
+def cmd_ls(o):
+    cs = checkouts()
+    here = containing(os.getcwd(), cs)
+    shown = [c for c in cs if o.get("all") or not c["meta"].get("archived")]
+    if o.get("json"):
+        return emit([{k: c[k] for k in ("repo", "name", "path", "branch", "main", "space", "sleeping", "meta")} for c in shown], True, "")
+    lines, last = [], None
+    for c in shown:
+        if c["repo"] != last:
+            lines.append(("" if last is None else "\n") + c["repo"])
+            last = c["repo"]
+        lines.append(f'{"*" if here is c else " "} {show(c)}\n    {c["path"]}')
+    print("\n".join(lines) if lines else "No repos open in Herdr.")
+
+
+def cmd_new(o, name):
+    need("spaces-plus", "worktrees")
+    main = repo_main(o.get("repo"))
+    request = uuid.uuid4().hex[:12]
+    spec = {"repo": main["path"], "name": name, "request": request}
+    for k in ("branch", "base", "link", "prompt", "setup"):
+        if o.get(k) is not None:
+            spec[k] = o[k]
+    if o.get("copy") is not None:
+        spec["include"] = o["copy"]
+    if o.get("agent"):
+        agent_run(o["agent"])  # fails here if it isn't installed
+        spec["agent"] = o["agent"]
+    do(f"spaces-plus.create@{json.dumps(spec, ensure_ascii=False)}")
+    if o.get("no-wait"):
+        return print(f"asked for {name} in {main['repo']}")
+    for _ in range(240):
+        r = (shared().get("wt.results") or {}).get(request)
+        if r:
+            if not r.get("ok"):
+                raise Fail(r.get("error") or "Not created.")
+            return print(r["path"])
+        time.sleep(0.5)
+    raise Fail("No answer from the window in 2 minutes: see the New worktree dialog.")
+
+
+def ask(kind, spec, wait=120):
+    """A spaces-plus <kind>@ request; its result from wt.results (see fromAgent there)."""
+    need("spaces-plus", "worktrees")
+    request = uuid.uuid4().hex[:12]
+    do(f"spaces-plus.{kind}@{json.dumps({**spec, 'request': request}, ensure_ascii=False)}")
+    for _ in range(wait * 2):
+        r = (shared().get("wt.results") or {}).get(request)
+        if r:
+            if not r.get("ok"):
+                raise Fail(r.get("error") or "Not done.")
+            return r
+        time.sleep(0.5)
+    raise Fail("No answer from the window.")
+
+
+def cmd_add(o, folder):
+    """A folder as a space (a repo shows under its repo); a folder of repos: each one Herdr
+    has no space in yet, as the Add project window's Browse folder does."""
+    folder = os.path.abspath(os.path.expanduser(folder or os.getcwd()))
+    if not os.path.isdir(folder):
+        raise Fail(f"{folder} isn't a folder.")
+    open_mains = {c["path"] for c in checkouts() if c.get("main")} if shared().get("wt.trees") is not None else set()
+    if git_main(folder) is None:
+        repos = sorted(os.path.join(folder, d) for d in os.listdir(folder) if os.path.exists(os.path.join(folder, d, ".git")))
+        if repos:
+            new = [r for r in repos if r not in open_mains]
+            for r in new:
+                do("space.new", folder=r, machine="")
+            return print(f"opened {len(new)} of the {len(repos)} repos in {folder}" + (":\n  " + "\n  ".join(os.path.basename(r) for r in new) if new else " (all were open)"))
+    if folder in open_mains:
+        return print(f"{folder} is open already (hm go)")
+    do("space.new", folder=folder, machine="")
+    print(f"opened {folder}")
+
+
+def cmd_clone(o, url):
+    spec = {"url": url, "host": o.get("host")}
+    if o.get("into"):
+        spec["parent"] = os.path.abspath(os.path.expanduser(o["into"])) if not o.get("host") else o["into"]
+    r = ask("clone", spec)
+    print(f"cloning into {r['path']} in a new space (its terminal shows the clone)")
+
+
+def cmd_project(o, name):
+    spec = {"name": name, "host": o.get("host")}
+    if o.get("in"):
+        spec["parent"] = os.path.abspath(os.path.expanduser(o["in"])) if not o.get("host") else o["in"]
+    r = ask("project", spec)
+    print(r["path"] + (f"\n{r['note']}" if r.get("note") else ""))
+
+
+def cmd_go(o, t):
+    need("spaces-plus", "worktrees")
+    c = resolve(t)
+    do(f"spaces-plus.go@{c['path']}")
+    print(f"{'showing' if c.get('space') else 'opening'} {c['repo']}/{c['name']}")
+
+
+def cmd_sleep(o, t):
+    need("spaces-plus", "worktrees")
+    c = resolve(t)
+    if c.get("main"):
+        raise Fail("A repo's primary checkout doesn't sleep: only its worktrees.")
+    if not c.get("space"):
+        raise Fail(f"{c['name']} isn't open" + (" (it's asleep)." if c.get("sleeping") else "."))
+    ask("sleep", {"path": c["path"]}, wait=30)
+    print(f"{c['name']} is asleep; hm go {c['name']} wakes it.")
+
+
+def patch(c, p, said):
+    do(f"spaces-plus.meta@{json.dumps({'path': c['path'], 'patch': p}, ensure_ascii=False)}")
+    print(f"{c['repo']}/{c['name']}: {said}")
+
+
+def cmd_flag(o, t, field, value):
+    need("spaces-plus", "worktrees")
+    c = resolve(t)
+    if field == "archived" and c.get("main"):
+        raise Fail("A repo's primary checkout can't be archived.")
+    patch(c, {field: value}, f"{'' if value else 'un'}{'pinned' if field == 'pinned' else 'archived'}")
+
+
+def cmd_set(o, t):
+    need("spaces-plus", "worktrees")
+    c = resolve(t)
+    clear = lambda v: None if v in ("", "none", "null") else v
+    p = {}
+    for k in ("name", "comment", "link"):
+        if o.get(k) is not None:
+            p[k] = clear(o[k])
+    if o.get("status") is not None:
+        st = clear(o["status"])
+        if st and st not in STATUSES:
+            raise Fail(f"status: one of {', '.join(STATUSES)} (or none)")
+        p["status"] = st
+    if o.get("pr") is not None:
+        v = clear(o["pr"])
+        n = None if v is None else (v.lstrip("#") if v.lstrip("#").isdigit() else (v.split("/pull/")[1].split("/")[0] if "/pull/" in v else None))
+        if v is not None and not n:
+            raise Fail("pr: #123 or a pull request URL (or none)")
+        pr = None
+        if n:
+            r = subprocess.run(["gh", "pr", "view", n, "--json", "number,url,title,state"], cwd=c["path"], capture_output=True, text=True)
+            pr = json.loads(r.stdout) if r.returncode == 0 else {"number": int(n)}
+        p["pr"] = pr
+    if not p:
+        raise Fail("Nothing to set: --name, --comment, --link, --pr or --status.")
+    patch(c, p, ", ".join(f"{k} {'cleared' if v is None else 'set'}" for k, v in p.items()))
+
+
+def cmd_rm(o, t):
+    c = resolve(t)
+    if c.get("main"):
+        raise Fail("A repo's primary checkout can't be removed: only its worktrees.")
+    r = ask("remove", {"path": c["path"], "force": bool(o.get("force"))})
+    print(f"removed {c['repo']}/{c['name']}" + (f"\n{r['branch']}" if r.get("branch") else ""))
+
+
+def cmd_clean(o):
+    need("spaces-plus", "worktrees")
+    main = repo_main(o.get("repo"))
+    if not o.get("review"):
+        r = ask("clean", {"repo": main["path"]}, wait=300)
+        lines = [f"removed {x['name']}  ({x['why']})" for x in r.get("removed") or []]
+        lines += [f"kept    {x['name']}  {x['why']}" + (f"  ({x['stop']})" if x.get("stop") else "") for x in r.get("left") or []]
+        return print(f"{main['repo']}: " + ("\n" + "\n".join(lines) if lines else "nothing to clean up."))
+    request = uuid.uuid4().hex[:12]
+    do(f"spaces-plus.clean@{json.dumps({'repo': main['path'], 'request': request, 'review': True}, ensure_ascii=False)}")
+    for _ in range(180):
+        r = (shared().get("wt.results") or {}).get(request)
+        if r:
+            if not r.get("ok"):
+                raise Fail(r.get("error") or "Couldn't look.")
+            found = r.get("found") or []
+            if not found:
+                return print(f"{main['repo']}: nothing to clean up (the window shows it; it can be closed).")
+            lines = [f"{'[x]' if f.get('picked') else '[ ]'} {f['name']}  {f['why']}" + (f"  ({f['stop']})" if f.get("stop") else "") for f in found]
+            return print(f"{main['repo']}: Clean up is open in the window; the person confirms.\n" + "\n".join(lines))
+        time.sleep(0.5)
+    raise Fail("No answer from the window in 90 s: see the Clean up dialog.")
+
+
+def cmd_term(o, t):
+    c = resolve(t)
+    argv = agent_run(o["agent"]) if o.get("agent") else None
+    args = {"folder": c["path"], "argv": argv, "task": o.get("prompt") if argv else None, "name": o.get("name")}
+    if c.get("space"):
+        do("tab.new", space=c["space"], **args)
+    else:
+        do("space.new", **{**args, "name": c["meta"].get("name") or None, "tab": o.get("name")})
+    print(f"{'agent ' + o['agent'] if argv else 'terminal'} in {c['repo']}/{c['name']}")
+
+
+def cmd_sessions(o, t):
+    c = resolve(t)
+    rows = py("wt-sessions", "sessions.py", *(["search", o["search"]] if o.get("search") else ["list"]), c["path"])
+    if o.get("json"):
+        return emit(rows, True, "")
+    print("\n".join(f'{s["id"]}  {s["agent"]:<6} {ago(s.get("updated")):>4}  {s.get("title") or ""}' for s in rows) or "No sessions ran here yet.")
+
+
+def find_session(sid):
+    """A session by id (or its start): running outside Herdr, else one that ran in a checkout."""
+    try:
+        for x in py("agents-plus", "outside.py") or []:
+            if x.get("session", "").startswith(sid):
+                return {k: x.get(k) for k in ("agent", "session", "argv", "cwd", "title")}
+    except (Fail, OSError, ValueError):
+        pass
+    cs = checkouts()
+    for s in py("wt-sessions", "sessions.py", "list", *[c["path"] for c in cs]) or []:
+        if s["id"].startswith(sid):
+            return {"agent": s["agent"], "session": s["id"], "argv": agent_run(s["agent"]), "cwd": s.get("cwd"), "title": s.get("title")}
+    raise Fail(f"No session {sid} (hm sessions, hm outside).")
+
+
+def move_session(sid, target):
+    """Make a session belong to the checkout `target` (wt-sessions' sessions.py move), for resuming it there.
+
+    Found in a checkout: that copy moves (--from). Only elsewhere (e.g. a headless run's folder that is
+    no checkout): Claude is copied and the original stays (--keep). A running session isn't moved.
+    Codex keeps the same history/ID and defers metadata changes to native resume --cd."""
+    try:
+        found = find_session(sid)
+    except Fail:
+        found = None
+    where = ["--from", found["cwd"]] if found and found.get("cwd") and containing(found["cwd"], checkouts()) else ["--keep"]
+    moved = py("wt-sessions", "sessions.py", "move", sid, target["path"], *where)
+    print(f"{'prepared to resume' if moved.get('deferred') else 'moved'} {moved['agent']} {moved['id']} in {moved['cwd']}")
+    argv = agent_run(moved["agent"])
+    if moved.get("deferred"):
+        argv = [*argv, "--cd", moved["cwd"]]
+    return {"agent": moved["agent"], "session": moved["id"], "argv": argv, "cwd": moved["cwd"], "title": (found or {}).get("title")}
+
+
+def translate(sid, agents, folder=None):
+    """The session as new sessions of `agents` (the session-translate skill's translate.py convert): [{agent, id, cwd}]."""
+    if not folder:
+        try:
+            folder = find_session(sid).get("cwd")
+        except Fail:
+            folder = None
+    script = next((p for p in (os.path.expanduser(f"~/.{a}/skills/session-translate/scripts/translate.py") for a in ("claude", "codex")) if os.path.exists(p)), None)
+    if not script:
+        raise Fail("The session-translate skill isn't installed: herdr-mods ./install.sh commands")
+    r = subprocess.run(["python3", "-I", script, "convert", sid, "--to", ",".join(agents), *(["--cwd", folder] if folder else [])], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Fail(f"translate.py: {r.stderr.strip() or 'failed'}")
+    out = json.loads(r.stdout)
+    for s in out["sessions"]:
+        print(f"translated {sid} to {s['agent']} {s['id']} in {s['cwd']} (standard {out['std']})")
+    return out["sessions"]
+
+
+def cmd_translate(o):
+    sid = o.get("_sid")
+    agents = [a.strip() for a in (o.get("to") or "").split(",") if a.strip()]
+    if not sid or not agents:
+        needs("translate SESSION --to claude|codex[,…] [--into T]")
+    translate(sid, agents, resolve(o["into"])["path"] if o.get("into") else None)
+
+
+def open_fork(agent, session, cwd):
+    """A new tab (in cwd's space, else a new space) forking `session` there: Claude's
+    --resume ID --fork-session, Codex's fork --cd CWD ID (without --cd, Codex run in another
+    folder than the session's stops to ask which folder the fork gets)."""
+    run = agent_run(agent)
+    argv = [*run, "--resume", session, "--fork-session"] if agent == "claude" else [*run, "fork", "--cd", cwd, session]
+    c = containing(cwd, checkouts())
+    if c and c.get("space"):
+        do("tab.new", space=c["space"], folder=cwd, argv=argv)
+    else:
+        do("space.new", folder=cwd, argv=argv)
+
+
+def fork_into(sid, target):
+    """A fork of the session opened in the checkout `target`; the original stays as it is (its
+    file byte for byte, so it may be running: e.g. a Slack session that keeps answering).
+
+    Claude: sessions.py copy writes the transcript into target's project folder (Claude resumes an
+    id only from there), the fork opens from it, and drop-copy removes that copy once the fork has
+    read it, so the original's id isn't left listed in target. Codex: fork --cd target writes a new
+    rollout there itself; nothing is copied."""
+    try:
+        found = find_session(sid)
+    except Fail:
+        found = None
+    made = py("wt-sessions", "sessions.py", "copy", sid, target["path"], *(["--from", found["cwd"]] if found and found.get("cwd") else []))
+    since = int(time.time() * 1000)
+    open_fork(made["agent"], made["id"], made["cwd"])
+    note = ""
+    if made.get("copy"):
+        dropped = py("wt-sessions", "sessions.py", "drop-copy", made["copy"], made["id"], made["cwd"], str(since))
+        note = f" as {dropped['fork']}" if dropped.get("fork") else f" ({dropped.get('why')})" if dropped.get("why") else ""
+    print(f"forked {made['agent']} {made['id']} in {made['cwd']}{note}; the original is as it was")
+
+
+def cmd_resume(o, sid):
+    if o.get("as"):
+        if o.get("fork"):
+            raise Fail("--as already makes a new session: drop --fork.")
+        made = translate(sid, [o["as"]], resolve(o["into"])["path"] if o.get("into") else None)[0]
+        rec = {"agent": made["agent"], "session": made["id"], "argv": agent_run(made["agent"]), "cwd": made["cwd"], "title": None}
+    elif o.get("into"):
+        if o.get("fork"):
+            return fork_into(sid, resolve(o["into"]))
+        rec = move_session(sid, resolve(o["into"]))
+    else:
+        rec = find_session(sid)
+    if not o.get("fork"):
+        need("spaces-plus", "worktrees")
+        do(f"spaces-plus.resume@{json.dumps(rec, ensure_ascii=False)}")
+        return print(f"resuming {rec['agent']} {rec['session']} in {rec['cwd']}")
+    open_fork(rec["agent"], rec["session"], rec["cwd"])
+    print(f"forked {rec['agent']} {rec['session']} in {rec['cwd']}")
+
+
+def cmd_outside(o):
+    rows = py("agents-plus", "outside.py") or []
+    if o.get("json"):
+        return emit(rows, True, "")
+    print("\n".join(f'{x.get("session", "")}  {x.get("agent", ""):<6} {x.get("status", ""):<8} {x.get("app", "")}  {x.get("title") or ""}\n    {x.get("cwd", "")}' for x in rows) or "No agents running outside Herdr.")
+
+
+def cmd_usage(o):
+    u = py("usage-bar", "usage.py") or {}
+    if o.get("json"):
+        return emit(u, True, "")
+    out = []
+    for agent, v in u.items():
+        if not v:
+            continue
+        parts = [f'{w["name"]} {round(w["used"])}%' + (f' (resets {time.strftime("%m-%d %H:%M", time.localtime(w["resets"]))})' if w.get("resets") else "") for w in v.get("windows", [])]
+        out.append(f"{agent}: " + (", ".join(parts) or "no numbers yet"))
+    print("\n".join(out) or "No usage known yet.")
+
+
+def cmd_sort(o, mode):
+    need("spaces-plus", "worktrees")
+    if mode not in SORTS:
+        raise Fail(f"sort: one of {', '.join(SORTS)}")
+    do(f"spaces-plus.sort@{mode}")
+    print(f"worktrees ordered by {mode}")
+
+
+def cmd_pin_agent(o, term):
+    term = term or os.environ.get("HC_TERMINAL_ID")
+    if not term:
+        raise Fail("Which terminal? (hc ls; inside Herdr it's $HC_TERMINAL_ID)")
+    do("terminal.pin", terminal=term, pinned=not o.get("off"))
+    print(f"{term} {'unpinned' if o.get('off') else 'pinned'}")
+
+
+MARKDOWN = (".md", ".markdown", ".mdx")
+
+
+def cmd_md(o, f):
+    path = os.path.realpath(os.path.expanduser(f))
+    if not os.path.isfile(path):
+        raise Fail(f"No file {path}")
+    if not path.lower().endswith(MARKDOWN):
+        raise Fail(f"Not a Markdown file ({', '.join(MARKDOWN)}): {path}")
+    if not os.path.exists(os.path.join(HOME, "mods", "md-view", "main.js")):
+        raise Fail("md-view isn't installed: herdr-mods ./install.sh docs")
+    r = ask("doc", {"file": path, "terminal": os.environ.get("HC_TERMINAL_ID")}, wait=15)
+    print(f"{'already shown beside this terminal' if r.get('how') == 'shown' else 'opened beside this terminal'}: {path}")
+
+
+def camel(name):
+    head, *rest = name.split("-")
+    return head + "".join(w[:1].upper() + w[1:] for w in rest)
+
+
+def kebab(name):
+    return "".join("-" + ch.lower() if ch.isupper() else ch for ch in name)
+
+
+def cmd_option(o, name, value):
+    """The settings window's choices (lib/state.js's OPTION_DEFS, through spaces-plus's option@)."""
+    if not name:
+        r = ask("option", {}, wait=10)
+        if o.get("json"):
+            return emit(r.get("options"), True, "")
+        for x in r.get("options") or []:
+            v = x["value"]
+            shown = ("on" if v else "off") if isinstance(v, bool) else str(v)
+            print(f"{kebab(x['name']):<18} {shown:<5} {x.get('group', '')}: {x.get('about', '')}" + ("" if v == x.get("default") else f"  (default {x.get('default')})"))
+        return
+    if not value:
+        raise Fail("usage: hm option NAME on|off|NUMBER|default (hm option lists them)")
+    v = {"on": True, "true": True, "off": False, "false": False, "default": None}.get(value.lower())
+    if v is None and value.lower() != "default":
+        try:
+            v = float(value) if "." in value else int(value)
+        except ValueError:
+            v = value.lower()  # one of its words (sidebar-cards detailed); the window says if not
+    try:
+        ask("option", {"name": camel(name), "value": v}, wait=10)
+    except Fail as e:
+        known = str(e).split("Options: ", 1)
+        raise Fail(f"No option {name}. Options: " + ", ".join(kebab(w.strip()) for w in known[1].split(",")) if len(known) == 2 else str(e))
+    print(f"{name} {value}")
+
+
+def cmd_color(o, repo, color):
+    if not repo or not color:
+        raise Fail("usage: hm color REPO teal|blue|orange|pink|cyan|brown|slate|lime|#rrggbb|auto")
+    ask("color", {"repo": repo, "color": color}, wait=10)
+    print(f"{repo}: {color}")
+
+
+def cmd_seen(o, which):
+    if not which:
+        raise Fail("usage: hm seen all | TERMINAL... (addresses from herdr-app ls)")
+    r = ask("seen", {"terminals": [] if which == ["all"] else which}, wait=10)
+    print(f"marked seen: {r.get('count', 0)}" + (f" ({', '.join(r.get('names') or [])})" if r.get("names") else ""))
+
+
+def cmd_restore(o):
+    need("wt-restore", "restore")
+    do("wt-restore.ask")
+    print("Asked in the window.")
+
+
+def cmd_skill(o):
+    here = os.path.dirname(os.path.realpath(__file__))
+    for p in (os.path.join(here, "..", "skills", "herdr", "SKILL.md"), os.path.expanduser("~/.claude/skills/herdr/SKILL.md")):
+        if os.path.exists(p):
+            return print(open(p).read())
+    print(__doc__)
+
+
+def cmd_logs(o):
+    """Read errors/timings or run the independent UI-status recorder outside the VM."""
+    if o.get("restore") and any(o.get(k) for k in ("watch", "once", "stop", "render")):
+        raise Fail("--restore cannot be combined with another log mode")
+    script = os.path.join(HOME, "mods", "wt-restore" if o.get("restore") else "agents-plus", "diagnostics.py")
+    if not os.path.isfile(script):
+        raise Fail("Recorder is not installed: run ./install.sh " + ("restore" if o.get("restore") else "agents") + " commands")
+    args = ([HOME, "--read", *(["--json"] if o.get("json") else [])] if o.get("restore") else
+            ["--" + name for name in ("watch", "once", "stop", "render", "json") if o.get(name)])
+    try:
+        result = subprocess.run(["python3", "-I", script, *args])
+    except KeyboardInterrupt:
+        return
+    if result.returncode:
+        raise Fail("UI recorder exited unsuccessfully (see message above)")
+
+
+# Arguments -----------------------------------------------------------------------------
+
+VALUED = {"repo", "branch", "base", "link", "agent", "prompt", "setup", "copy", "name", "comment", "pr", "status", "search", "into", "in", "host", "to", "as"}
+
+
+def parse(argv):
+    pos, o = [], {}
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a.startswith("--") and len(a) > 2:
+            k, eq, v = a[2:].partition("=")
+            if k in VALUED and not eq:
+                if i + 1 >= len(argv):
+                    raise Fail(f"--{k} needs a value")
+                v = argv[i + 1]
+                i += 1
+            o[k] = v if (eq or k in VALUED) else True
+        else:
+            pos.append(a)
+        i += 1
+    return pos, o
+
+
+def needs(what):
+    raise Fail(f"usage: hm {what}")
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    pos, o = parse(rest)
+    arg = pos[0] if pos else None
+    table = {
+        "ls": lambda: cmd_ls(o),
+        "new": lambda: cmd_new(o, " ".join(pos)) if pos or o.get("base") or o.get("link") else needs("new NAME (or --base '#123' / --link URL to name it from)"),
+        "add": lambda: cmd_add(o, arg),
+        "clone": lambda: cmd_clone(o, arg) if arg else needs("clone URL"),
+        "project": lambda: cmd_project(o, " ".join(pos)) if pos else needs("project NAME"),
+        "go": lambda: cmd_go(o, arg), "open": lambda: cmd_go(o, arg), "wake": lambda: cmd_go(o, arg),
+        "sleep": lambda: cmd_sleep(o, arg),
+        "pin": lambda: cmd_flag(o, arg, "pinned", True), "unpin": lambda: cmd_flag(o, arg, "pinned", False),
+        "archive": lambda: cmd_flag(o, arg, "archived", True), "unarchive": lambda: cmd_flag(o, arg, "archived", False),
+        "set": lambda: cmd_set(o, arg),
+        "rm": lambda: cmd_rm(o, arg), "remove": lambda: cmd_rm(o, arg),
+        "clean": lambda: cmd_clean(o),
+        "term": lambda: cmd_term(o, arg),
+        "sessions": lambda: cmd_sessions(o, arg),
+        "resume": lambda: cmd_resume(o, arg) if arg else needs("resume SESSION"),
+        "translate": lambda: cmd_translate({**o, "_sid": arg}),
+        "outside": lambda: cmd_outside(o),
+        "usage": lambda: cmd_usage(o),
+        "logs": lambda: cmd_logs(o),
+        "sort": lambda: cmd_sort(o, arg or ""),
+        "pin-agent": lambda: cmd_pin_agent(o, arg),
+        "md": lambda: cmd_md(o, arg) if arg else needs("md FILE"),
+        "option": lambda: cmd_option(o, pos[0] if pos else "", pos[1] if len(pos) > 1 else ""),
+        "color": lambda: cmd_color(o, pos[0] if pos else "", pos[1] if len(pos) > 1 else ""),
+        "seen": lambda: cmd_seen(o, pos),
+        "restore": lambda: cmd_restore(o),
+        "skill": lambda: cmd_skill(o),
+    }
+    if cmd not in table:
+        print(f"hm: no command {cmd!r}\n{__doc__}", file=sys.stderr)
+        return 2
+    try:
+        table[cmd]()
+    except Fail as e:
+        print(f"hm: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

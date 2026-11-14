@@ -1,0 +1,39 @@
+{
+  "claude": {
+    "updated": 1893456000,
+    "windows": [
+      {
+        "name": "5h",
+        "used": 15,
+        "resets": 1893470400,
+        "updated": 1893456060,
+        "source": "snapshot"
+      },
+      {
+        "name": "7d",
+        "used": 95,
+        "resets": 1893542400,
+        "updated": 1893456060,
+        "source": "snapshot"
+      },
+      {
+        "name": "7d Fable",
+        "used": 0,
+        "resets": 1893542400,
+        "updated": 1893456000,
+        "source": "live"
+      }
+    ]
+  },
+  "codex": {
+    "updated": 1893456000,
+    "plan": "demo",
+    "windows": [
+      {
+        "name": "7d",
+        "used": 2,
+        "resets": 1893956000
+      }
+    ]
+  }
+}

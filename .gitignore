@@ -1,0 +1,12 @@
+# Herdr 가 mod 폴더마다 써 넣는 파일 (매 실행 시 다시 생성됨)
+jsconfig.json
+*.d.ts
+*.error
+.DS_Store
+upstream-changes/
+
+# copied from lib/ by install.sh
+mods/*/resume.js
+mods/*/ui.js
+mods/*/worktree.js
+__pycache__/

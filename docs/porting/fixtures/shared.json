@@ -1,0 +1,60 @@
+{
+  "wt.meta": {
+    "[null,\"/example/worktrees/demo/결제-개선\"]": {
+      "name": "결제 개선",
+      "branch": "feature/payment",
+      "base": "origin/main",
+      "link": "TASK-42",
+      "pr": {
+        "number": 42,
+        "url": "https://example.invalid/team/demo/pull/42",
+        "title": "결제 개선"
+      },
+      "comment": "재시도 확인",
+      "status": "in-review",
+      "pinned": true,
+      "archived": false,
+      "unread": true,
+      "agent": "claude",
+      "created": 1893456000000,
+      "newBranch": true
+    }
+  },
+  "wt.repos": {
+    "[null,\"/example/repos/demo\"]": {
+      "setup": "echo prepare-demo",
+      "include": ".env.example,node_modules/"
+    }
+  },
+  "wt.sleep": {
+    "[null,\"/example/worktrees/demo/결제-개선\"]": {
+      "at": 1893456000000,
+      "sessions": [
+        {
+          "agent": "claude",
+          "session": "00000000-0000-4000-8000-000000000001",
+          "argv": [
+            "claude",
+            "--model",
+            "demo-model"
+          ],
+          "cwd": "/example/worktrees/demo/결제-개선",
+          "title": "결제 재시도"
+        }
+      ]
+    }
+  },
+  "hm.options": {
+    "seenMinutes": 60,
+    "sidebarCards": "detailed",
+    "pickerRepoNames": false
+  },
+  "wt.repoColors": {
+    "[null,\"/example/repos/demo\"]": "#5b8def"
+  },
+  "wt.sort": "recent",
+  "wt.linkTemplate": "https://example.invalid/issues/{key}",
+  "project.parent": {
+    "": "/example/repos"
+  }
+}

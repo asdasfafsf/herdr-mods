@@ -1,0 +1,129 @@
+{
+  "worktrees": {
+    "about": "Sidebar of repos, their worktrees (open or not) and terminals; Add project (folder, folder of repos, clone, new), New worktree, PR state and checks, Clean up, row menu, sessions, sleep",
+    "mods": [
+      "spaces-plus",
+      "worktree-plus",
+      "wt-menu",
+      "wt-sessions",
+      "project-add",
+      "hm-settings"
+    ],
+    "layout": [
+      {
+        "swap": {
+          "from": "spaces",
+          "to": "spaces-plus"
+        }
+      }
+    ],
+    "keys": {
+      "cmd-shift-down": "spaces-plus.next",
+      "cmd-shift-up": "spaces-plus.prev",
+      "cmd-alt-]": "spaces-plus.next",
+      "cmd-alt-[": "spaces-plus.prev",
+      "cmd-alt-t": "spaces-plus.new_terminal"
+    }
+  },
+  "agents": {
+    "about": "Agents list that also shows agents running outside Herdr (Orca, iTerm…), an Active section, and what each working, waiting or finished agent is doing or said",
+    "mods": [
+      "agents-plus"
+    ],
+    "layout": [
+      {
+        "swap": {
+          "from": "agents",
+          "to": "agents-plus"
+        }
+      }
+    ],
+    "keys": {}
+  },
+  "palette": {
+    "about": "⌘P / ⌘J that also finds worktrees (with the worktrees bundle) and makes new ones",
+    "mods": [
+      "picker-plus"
+    ],
+    "layout": [],
+    "keys": {
+      "cmd-p": "mod.open:picker-plus",
+      "cmd-j": "mod.open:picker-plus"
+    }
+  },
+  "restore": {
+    "about": "Resumes the agent sessions that ran when Herdr's core went (reboot, logout, crash)",
+    "mods": [
+      "wt-restore"
+    ],
+    "layout": [
+      {
+        "float": {
+          "id": "wt-restore",
+          "mod": "wt-restore",
+          "edge": "bottom",
+          "align": "start"
+        }
+      }
+    ],
+    "keys": {}
+  },
+  "usage": {
+    "about": "Claude Code and Codex plan limits at the left end of the bottom bar",
+    "mods": [
+      "usage-bar"
+    ],
+    "layout": [
+      {
+        "status": {
+          "id": "usage",
+          "mod": "usage-bar",
+          "px": 720
+        }
+      }
+    ],
+    "keys": {},
+    "note": "Claude and Codex limits are read from their installed CLIs, including Fable weekly limits on supported Claude Code versions. Optional snapshot fallback: hm-statusline before the Claude statusLine command, or ClaudeHUD display.externalUsageWritePath = ~/.herdr/usage/claude.json."
+  },
+  "notify": {
+    "about": "macOS notification banners when an agent finishes or needs you while Herdr isn't in front",
+    "mods": [
+      "mac-notify"
+    ],
+    "layout": [
+      {
+        "float": {
+          "id": "mac-notify",
+          "mod": "mac-notify",
+          "edge": "bottom",
+          "align": "end"
+        }
+      }
+    ],
+    "keys": {},
+    "note": "Banners with Herdr's icon: build the helper app once with sh mods/mac-notify/notifier/build.sh (needs Xcode Command Line Tools); without it they come from Script Editor."
+  },
+  "docs": {
+    "about": "Markdown files shown rendered in a pane beside the terminals (⌘P's Docs view, or an agent's hm md); it follows the file as it changes",
+    "mods": [
+      "md-view"
+    ],
+    "layout": [],
+    "keys": {}
+  },
+  "commands": {
+    "about": "Lets agents (Claude Code, Codex) do what the sidebar and menus do, from words: the hm command and its skill",
+    "mods": [],
+    "layout": [],
+    "keys": {},
+    "bin": [
+      "hm",
+      "hm-statusline"
+    ],
+    "skills": [
+      "herdr",
+      "session-translate"
+    ],
+    "note": "hm works with the bundles it drives: worktrees for most commands, agents for hm outside, usage for hm usage, restore for hm restore, docs (and worktrees) for hm md. hm --help lists them."
+  }
+}

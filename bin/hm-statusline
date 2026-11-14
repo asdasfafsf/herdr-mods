@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""hm-statusline (herdr-mods): sits in front of Claude Code's status line command and keeps the plan limits
+Claude Code hands it, for the usage bar (mods/usage-bar), then runs that command unchanged.
+
+    statusLine.command: hm-statusline <the status line command, e.g. bash -c '...'>
+
+Claude Code runs the status line on every refresh with a JSON on stdin; its `rate_limits`
+(five_hour, seven_day, and any others it sends, such as one per model) are written to
+~/.herdr/usage/claude-raw.json as { updated_at (unix s), rate_limits }. Nothing else from the
+JSON is kept. The command after it gets the same stdin, and its output and exit code are this one's.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+OUT = os.path.join(os.path.expanduser("~"), ".herdr", "usage", "claude-raw.json")
+
+
+def keep(data):
+    try:
+        limits = json.loads(data).get("rate_limits")
+    except (ValueError, AttributeError):
+        return
+    if not isinstance(limits, dict) or not limits:
+        return
+    try:
+        os.makedirs(os.path.dirname(OUT), exist_ok=True)
+        with open(OUT + ".tmp", "w") as f:
+            json.dump({"updated_at": int(time.time()), "rate_limits": limits}, f)
+        os.replace(OUT + ".tmp", OUT)
+    except OSError:
+        pass
+
+
+def main(argv):
+    data = sys.stdin.buffer.read()
+    keep(data)
+    if not argv:
+        return 0
+    return subprocess.run(argv, input=data).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

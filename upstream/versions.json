@@ -1,0 +1,22 @@
+{
+  "app": "0.1.12",
+  "note": "Herdr's shipped mods these clones were last merged with (installed.json hashes).",
+  "mods": {
+    "spaces": {
+      "main.js": "ab767ba06ac5f0d7",
+      "mod.json": "4a42ed2202338077"
+    },
+    "worktree": {
+      "main.js": "b29c1fb575b13320",
+      "mod.json": "433fbf9dfa3e359a"
+    },
+    "picker": {
+      "main.js": "bbae52d90ac9e130",
+      "mod.json": "e83a267b6fca8488"
+    },
+    "agents": {
+      "main.js": "2a835dd6c3ed356f",
+      "mod.json": "c1d087260ba7b076"
+    }
+  }
+}

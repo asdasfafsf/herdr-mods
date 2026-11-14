@@ -1,0 +1,75 @@
+{
+  "clock_seconds": 1893456060,
+  "raw": {
+    "updated_at": 1893456060,
+    "rate_limits": {
+      "five_hour": {
+        "used_percentage": 15,
+        "resets_at": 1893470400
+      },
+      "seven_day": {
+        "used_percentage": 95,
+        "resets_at": 1893542400
+      }
+    }
+  },
+  "claude_control": {
+    "type": "control_response",
+    "response": {
+      "subtype": "success",
+      "request_id": "usage",
+      "response": {
+        "rate_limits_available": true,
+        "rate_limits": {
+          "five_hour": {
+            "utilization": 14,
+            "resets_at": 1893470400
+          },
+          "seven_day": {
+            "utilization": 94,
+            "resets_at": 1893542400
+          },
+          "model_scoped": [
+            {
+              "display_name": "Fable",
+              "utilization": 0,
+              "resets_at": 1893542400
+            }
+          ]
+        },
+        "behaviors": null
+      }
+    }
+  },
+  "claude_live_observed_at": 1893456000,
+  "codex_control": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "rateLimits": {
+        "planType": "demo",
+        "primary": null,
+        "secondary": {
+          "usedPercent": 2,
+          "windowDurationMins": 10080,
+          "resetsAt": 1893956000
+        }
+      }
+    }
+  },
+  "expect_claude_windows": [
+    {
+      "name": "5h",
+      "used": 15
+    },
+    {
+      "name": "7d",
+      "used": 95
+    },
+    {
+      "name": "7d Fable",
+      "used": 0
+    }
+  ],
+  "expect_claude_updated": 1893456000
+}

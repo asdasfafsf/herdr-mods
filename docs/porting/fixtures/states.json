@@ -1,0 +1,39 @@
+{
+  "clock_ms": 1893456000000,
+  "seen_minutes": 120,
+  "cases": [
+    {
+      "status": "done",
+      "info": {
+        "acked": 1893455940000
+      },
+      "expected": "seen"
+    },
+    {
+      "status": "idle",
+      "info": {
+        "seen": 1893455940000
+      },
+      "expected": "seen"
+    },
+    {
+      "status": "idle",
+      "info": {
+        "seen": 1893448799999
+      },
+      "expected": "idle"
+    },
+    {
+      "status": "working",
+      "info": {
+        "seen": 1893455940000
+      },
+      "expected": "working"
+    },
+    {
+      "status": "blocked",
+      "info": {},
+      "expected": "blocked"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "core": {
+    "pid": 12345,
+    "start": 1893452400000
+  },
+  "sessions": {
+    "demo-terminal": {
+      "address": "demo-terminal",
+      "space": "demo-space",
+      "tab": "demo-tab",
+      "agent": "claude",
+      "session": "00000000-0000-4000-8000-000000000001",
+      "argv": [
+        "claude",
+        "--model",
+        "demo-model"
+      ],
+      "cwd": "/example/worktrees/demo/결제-개선",
+      "status": "working",
+      "title": "結合テスト / 결제 개선"
+    }
+  }
+}

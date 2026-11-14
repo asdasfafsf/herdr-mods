@@ -1,0 +1,512 @@
+{
+  "schema": "porting-acceptance/1",
+  "note": "문서 기반 수동/자동 시나리오; 대상 앱에서 아직 실행하지 않음",
+  "cases": [
+    {
+      "id": "AC-P01",
+      "feature": "P01",
+      "setup": "primary가 열린 app-a, 닫힌 app-b를 담은 부모 폴더",
+      "action": "UI Browse 후 Pick all; 별도로 CLI add 실행",
+      "expected": [
+        "UI 초기 선택은 비어 있다",
+        "이미 열린 app-a는 중복 생성하지 않는다",
+        "app-b를 연다",
+        "CLI는 미개방 레포를 모두 연다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-P02",
+      "feature": "P02",
+      "setup": "존재하는 부모와 인증이 필요한 테스트 remote",
+      "action": "Clone 실행 후 같은 목적지로 다시 요청; 실패도 재현",
+      "expected": [
+        "인증 입력이 가능한 터미널이 열린다",
+        "중복 요청은 거부한다",
+        "성공 시 새 폴더의 셸이다",
+        "실패 시 이유와 셸이 남는다",
+        "요청 접수를 clone 완료로 보고하지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-P03",
+      "feature": "P03",
+      "setup": "빈 부모 폴더, Git identity 설정/미설정 두 환경",
+      "action": "New project 실행; 같은 이름으로 재실행",
+      "expected": [
+        "초기 repo와 빈 커밋을 생성한다",
+        "동일 목적지를 덮어쓰지 않는다",
+        "identity 미설정이면 첫 커밋 실패 note와 열린 폴더를 제공한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-W01",
+      "feature": "W01",
+      "setup": "origin/main, 기존 로컬/원격 브랜치, PR, 경로 충돌을 갖는 테스트 repo",
+      "action": "새 이름/기존 브랜치/PR로 UI와 CLI 생성 비교",
+      "expected": [
+        "기본 base와 분기 우선순위가 behavior와 같다",
+        "명시한 브랜치 편집을 유지한다",
+        "경로 충돌은 번호를 붙인다",
+        "잘못된 이름/미설치 agent는 명확한 오류다",
+        "UI와 CLI 결과가 같다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-W02",
+      "feature": "W02",
+      "setup": "tracked 파일, ignored .env, 기존 목적지 파일, 성공/실패 setup",
+      "action": "복사 패턴과 setup으로 생성",
+      "expected": [
+        "tracked/기존 목적지 파일은 덮어쓰지 않는다",
+        "일치한 미추적 파일만 복사한다",
+        "setup 성공 뒤만 agent가 시작한다",
+        "실패하면 이유와 셸이 남는다",
+        "원격 복사 미지원은 명시한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-W03",
+      "feature": "W03",
+      "setup": "fixtures/shared.json에 해당하는 가상 checkout",
+      "action": "이름·메모·링크·PR·작업 상태를 UI/CLI 양쪽에서 편집; pin/archive/read 변경",
+      "expected": [
+        "사이드바와 검색에 같은 값이 보인다",
+        "빈 값으로 제거 가능하다",
+        "primary에서 archive/Sleep/remove가 없다",
+        "경로·브랜치 복사와 에디터/파일 위치 열기가 대상에 적용된다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-W04",
+      "feature": "W04",
+      "setup": "dirty/working/blocked/merged/unmerged/기존 브랜치인 checkout 각각",
+      "action": "UI remove와 CLI rm; 승인된 경우에만 force",
+      "expected": [
+        "primary는 거부한다",
+        "dirty/working/blocked는 기본 차단한다",
+        "Git status 실패를 깨끗함으로 보지 않는다",
+        "기존/미merge 브랜치는 보존한다",
+        "UI 확인과 CLI 결과 반환을 구별한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-W05",
+      "feature": "W05",
+      "setup": "OPEN/MERGED/CLOSED PR, merged branch, no-commit, dirty, pinned 사례",
+      "action": "Clean 후보 보기와 CLI clean 비교",
+      "expected": [
+        "OPEN은 제외한다",
+        "MERGED 또는 자기 commit이 merge된 안전 후보만 기본 선택한다",
+        "closed-unmerged/no-commit은 기본 미선택이다",
+        "dirty/busy/pinned/status 오류는 보류한다",
+        "성공과 남은 이유를 함께 보고한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-B01",
+      "feature": "B01",
+      "setup": "primary 닫힘, secondary 열림, 다른 secondary 미개방",
+      "action": "레포 트리 표시 후 미개방 행 클릭",
+      "expected": [
+        "primary가 닫혀도 레포 묶음이 남는다",
+        "모든 checkout이 보인다",
+        "미개방은 구별되고 클릭 시 열린다",
+        "터미널은 자신의 checkout 아래에 있다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-B02",
+      "feature": "B02",
+      "setup": "여러 레포/터미널로 화면을 넘는 목록",
+      "action": "접기/공간 전환/드래그/앱 재열기",
+      "expected": [
+        "접힘 선호를 기억한다",
+        "들어간 공간은 펼쳐진다",
+        "다른 경로에서 선택해도 현재 행이 보인다",
+        "드래그 대상과 경계가 보인다",
+        "머신 간 공간 순서를 섞지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-B03",
+      "feature": "B03",
+      "setup": "열린/닫힌/접힌 checkout과 서로 다른 활동·생성 시각",
+      "action": "4개 정렬 모드와 다음/이전 단축키 실행",
+      "expected": [
+        "선택 정렬이 유지된다",
+        "이동은 보이는 열린 공간을 따른다",
+        "닫힌 checkout을 자동으로 열지 않는다",
+        "끝에서 순환한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-B04",
+      "feature": "B04",
+      "setup": "PR/check 응답과 local listen port, gh 미설치 환경",
+      "action": "배지 갱신 및 해당 표시 옵션 변경",
+      "expected": [
+        "repo+branch로 PR을 맞춘다",
+        "draft/open/merged/closed/CI를 구별한다",
+        "로컬 포트만 확실히 연결한다",
+        "gh 없으면 기록 번호로 축소한다",
+        "숨김 옵션이 반영된다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-B05",
+      "feature": "B05",
+      "setup": "테스트 checkout 공간, working agent, 단절된 remote",
+      "action": "외부에서 checkout 삭제; remote 조회 실패도 제공",
+      "expected": [
+        "로컬 삭제를 표시한다",
+        "일하는 agent가 있으면 즉시 종료하지 않는다",
+        "작업 종료 뒤 남은 공간을 정리한다",
+        "원격 실패를 삭제로 취급하지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-B06",
+      "feature": "B06",
+      "setup": "한 checkout에 Claude/Codex 세션과 일반 셸",
+      "action": "Sleep 후 다시 열기; 이미 살아 있는 세션도 준비",
+      "expected": [
+        "세션 ID/cwd/argv 저장 후 공간을 닫는다",
+        "Git 폴더는 보존한다",
+        "세션을 resume한다",
+        "지원 세션이 없으면 셸을 연다",
+        "LIVE로 확인된 동일 세션을 중복 실행하지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-A01",
+      "feature": "A01",
+      "setup": "각 상태, 현재 탭, pinned, blocked child를 갖는 agent 목록",
+      "action": "우선순위와 공간별 보기 전환; 현재 agent를 done으로 전환",
+      "expected": [
+        "Active 위치를 유지한다",
+        "우선순위는 blocked/done/working/seen/idle이다",
+        "pin을 구별한다",
+        "child 긴급도를 부모에 반영한다",
+        "상태 표시가 세 화면에서 같다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-A02",
+      "feature": "A02",
+      "setup": "외부 Claude/Codex, 내부 세션, 종료된 PID",
+      "action": "탐지 후 외부 행 선택",
+      "expected": [
+        "살아 있는 외부만 표시한다",
+        "내부 중복은 제외한다",
+        "외부 앱 표식이 있다",
+        "원래 프로세스를 종료하지 않는다",
+        "worktree 기능이 없어도 폴더 공간/탭으로 이어간다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-A03",
+      "feature": "A03",
+      "setup": "도구 중/도구 사이/승인 대기/완료/idle transcript 예제",
+      "action": "activity 갱신",
+      "expected": [
+        "doing/허용 대기/said 첫 줄을 상황에 맞게 표시한다",
+        "소식 없는 idle은 한 줄이다",
+        "동명이면 repo/branch로 구별한다",
+        "변경 없는 기록을 계속 전체 파싱하지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-A04",
+      "feature": "A04",
+      "setup": "fixtures/states.json의 고정 now와 done/idle/working",
+      "action": "확인 처리, 기간 경과, seen off, working 전환",
+      "expected": [
+        "기본 120분간 Seen이다",
+        "기간이 지나면 Idle이다",
+        "working이면 Seen이 아니다",
+        "seen off면 보존하지 않는다",
+        "확인 처리가 프로세스 종료/메시지 전송을 하지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-A05",
+      "feature": "A05",
+      "setup": "checkout pin과 agent pin이 없는 목록",
+      "action": "pin-agent와 --off 실행",
+      "expected": [
+        "agent pin만 바뀐다",
+        "checkout pin과 독립이다",
+        "대상 생략은 호출 터미널을 쓴다",
+        "터미널 종료 후 잘못된 ID를 새 agent에 물려주지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-Q01",
+      "feature": "Q01",
+      "setup": "이름/branch/메모/티켓/PR 필드가 서로 다른 checkout",
+      "action": "단어 순서를 바꾼 검색; 닫힌 결과 선택",
+      "expected": [
+        "모든 단어가 검색 조건에 반영된다",
+        "원래 필드로 찾을 수 있다",
+        "닫힌 결과가 열린다",
+        "worktree 기능 없을 때는 기본 탭 검색이 남는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-Q02",
+      "feature": "Q02",
+      "setup": "공유 agent 순서/최근 시각/문서가 있는 공간",
+      "action": "Needs you/Agents/Recent/Name/Docs와 Tab/방향키/Enter 사용",
+      "expected": [
+        "선택 보기를 기억한다",
+        "Agents는 목록과 같은 순서다",
+        "Recent와 Name 기준이 다르다",
+        "Docs는 현재 repo에 한정한다",
+        "키보드 선택과 실행이 일치한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-Q03",
+      "feature": "Q03",
+      "setup": "PR URL, issue URL, #123, 결과 없는 일반 이름",
+      "action": "생성 행 선택",
+      "expected": [
+        "입력에 맞는 base/link/name이 폼에 전달된다",
+        "단순 입력만으로 생성하지 않는다",
+        "사용자가 수정할 수 있다",
+        "worktree 미지원이면 생성 행이 없다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-S01",
+      "feature": "S01",
+      "setup": "여러 cwd, 중첩 worktree, 제목/메시지 검색어, 빈 목록",
+      "action": "목록/제목 필터/전체 검색/원격 요청",
+      "expected": [
+        "최근 수정순이다",
+        "중첩 제외 규칙을 따른다",
+        "전체 검색은 별도 선택으로 실행한다",
+        "loading/empty/error가 구별된다",
+        "원격 미지원을 명시한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-S02",
+      "feature": "S02",
+      "setup": "테스트용 세션과 argv; 열림/닫힘 공간",
+      "action": "Resume/Enter와 Fork/Alt+Enter 실행",
+      "expected": [
+        "resume은 기존 ID, fork는 새 세션이다",
+        "cwd와 적절한 옵션을 보존한다",
+        "맞는 공간의 탭을 연다",
+        "취소하면 실행하지 않는다",
+        "Resume/Fork가 argv 변수와 호스트 run 함수의 이름 충돌 없이 탭을 연다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-S03",
+      "feature": "S03",
+      "setup": "정지 세션과 실행 중 세션, 목적지 cwd",
+      "action": "resume --into 또는 sessions.py move",
+      "expected": [
+        "실행 중 세션은 거부한다",
+        "Claude 프로젝트 위치와 transcript cwd를 일치시킨다",
+        "Codex는 기록을 직접 고치지 않고 native resume --cd로 목적지를 전달한다",
+        "단순 앱 전환에는 이동을 강요하지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-S04",
+      "feature": "S04",
+      "setup": "fixtures/session.jsonl, 원본 사본, 분리된 임시 agent home",
+      "action": "export/import/convert와 resume --as 비교",
+      "expected": [
+        "원본이 바뀌지 않는다",
+        "대상별 새 ID다",
+        "tool은 텍스트이며 재실행하지 않는다",
+        "긴 결과/이미지/reasoning 손실을 명시한다",
+        "파일 생성과 실제 CLI resume 성공을 별도로 검증한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-R01",
+      "feature": "R01",
+      "setup": "가상 old/new runtime, bare shell, 다른 실행 프로그램, 외부 중복 세션",
+      "action": "runtime 변경 이벤트; 복구 선택과 auto 선호 조합",
+      "expected": [
+        "같은 runtime이면 재실행하지 않는다",
+        "중복/다른 프로그램 대상은 제외한다",
+        "working만 continue 기본 선택이며 Codex 서버가 살아 있거나 확인 실패면 해제한다",
+        "기록된 옵션/cwd로 이어간다",
+        "사라진 공간은 임의 복구하지 않는다",
+        "영속 저장 실패를 성공으로 간주하지 않는다",
+        "저장 실패를 다음 주기에 재시도하며 복원 안내를 중복하지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-U01",
+      "feature": "U01",
+      "setup": "fixtures/usage-sources.json, CLI 성공/timeout/오류 mock",
+      "action": "주기 조회/Refresh; generic-only 최신 snapshot과 Fable 병합",
+      "expected": [
+        "0% Fable을 보존한다",
+        "새 generic 값이 Fable을 지우지 않는다",
+        "실패 시 이전 시각을 유지한다",
+        "5분 캐시와 중복 잠금이 동작한다",
+        "모델 prompt와 credential 노출이 없다",
+        "statusline 뒤 명령의 stdin/출력/exit를 보존한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-U02",
+      "feature": "U02",
+      "setup": "fixtures/usage.json, 화면 480/720/1200px, reset 경과/오래된 데이터",
+      "action": "바와 상세를 표시하고 자동 갱신 관찰",
+      "expected": [
+        "모든 사용률과 Refresh가 보인다",
+        "0%와 unknown이 다르다",
+        "80/100% 상태가 구별된다",
+        "reset 뒤 값을 0%로 꾸미지 않는다",
+        "hover/detail에 시각과 나이가 있다",
+        "상세는 스크롤하고 갱신된다",
+        "직접 조회 결과에 따라 Updated/Partial/Failed를 구분한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-N01",
+      "feature": "N01",
+      "setup": "앱 활성/비활성, 초기/working/done/blocked 상태 시퀀스",
+      "action": "상태 전이와 알림 클릭, 도우미 부재 실행",
+      "expected": [
+        "초기 읽기와 활성 앱에서는 알림하지 않는다",
+        "working→done/idle와 새 blocked에 알린다",
+        "동일 상태 반복 알림 없다",
+        "지원 도우미 클릭은 대상 terminal로 간다",
+        "fallback의 클릭 제한을 숨기지 않는다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-D01",
+      "feature": "D01",
+      "setup": "fixtures/sample.md, 상대 md 링크, 같은 탭 기존 pane, 다른 탭",
+      "action": "사용자 Docs 선택과 CLI md, 파일 변경, Back/외부 링크",
+      "expected": [
+        "같은 탭/머신/파일은 중복 생성하지 않는다",
+        "사용자는 focus 이동, agent는 원래 focus 유지다",
+        "변경을 따라간다",
+        "Markdown 상대 링크와 Back이 동작한다",
+        "임의 URI/파일을 명령으로 실행하지 않는다",
+        "크기 초과/삭제/원격 실패를 표시한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-C01",
+      "feature": "C01",
+      "setup": "cwd/현재 공간 불일치, 동명 checkout, 기능 일부 미설치",
+      "action": "각 CLI 명령의 대상/응답/오류 및 UI 결과 비교",
+      "expected": [
+        "cwd가 대상 생략의 우선이다",
+        "동명이면 모호함을 보고한다",
+        "버튼과 같은 업무 규칙이다",
+        "요청 ID 결과가 다른 요청과 섞이지 않는다",
+        "타임아웃을 취소 완료로 보고하지 않는다",
+        "미지원 기능을 명시한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-C02",
+      "feature": "C02",
+      "setup": "기본값, 구키 repoNames/agentNews, 새 override, 색 중복",
+      "action": "UI와 option/color로 변경 후 default/all auto",
+      "expected": [
+        "기본값/구키 우선순위가 같다",
+        "seenMinutes 제한을 지킨다",
+        "UI/CLI가 같은 값을 쓴다",
+        "잘못된 값은 오류다",
+        "repo 색은 상태색과 구별된다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-I01",
+      "feature": "I01",
+      "setup": "분리된 HERDR_APP_HOME, 비소유 mod, 키 충돌, 기본 레이아웃",
+      "action": "dry-run 후 선택 설치/재설치/제거 절차 검증",
+      "expected": [
+        "dry-run은 변경하지 않는다",
+        "비소유 파일과 충돌 키를 기본 보존한다",
+        "필요한 lib와 번들만 설치한다",
+        "기본 레이아웃은 복제한다",
+        "변경 전 설정 백업이 있다",
+        "재설치로 블록/키가 중복되지 않는다",
+        "검사 실패는 nonzero이고 교체 후 실패한 mod는 이전 파일로 복구한다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-I02",
+      "feature": "I02",
+      "setup": "원본/로컬 변경/새 upstream의 작은 테스트 사본",
+      "action": "동기화 확인과 merge 충돌 사례",
+      "expected": [
+        "기준 버전을 식별한다",
+        "로컬 기능을 조용히 덮어쓰지 않는다",
+        "충돌과 변경 목록을 검토할 수 있다",
+        "새 앱에서는 그 앱의 확장 API 호환 검사로 대체할 수 있다"
+      ],
+      "status": "not_run_on_target"
+    },
+    {
+      "id": "AC-C03",
+      "feature": "C03",
+      "setup": "가상 상태 응답: 정상 → interrupted 반복 → 조회 실패 → 오류 유지 → 정상",
+      "action": "오류 감시·기록 읽기·로그 회전을 실행한다",
+      "expected": [
+        "오류 스택과 발생 시각이 파일에 남는다",
+        "동일 오류는 매초 중복 기록하지 않는다",
+        "조회 실패를 복구로 기록하지 않는다",
+        "회복 후 같은 오류가 다시 나면 새 발생으로 남긴다",
+        "파일 용량과 보존 개수가 제한된다",
+        "대화·제목·실행 인자 전체를 상태 자료로 복사하지 않는다",
+        "폴링 사이의 짧은 오류 누락 가능성을 명시한다",
+        "렌더 구간 합계·최대와 25ms 이상 완료를 기록하되 계측이 redraw를 만들지 않는다",
+        "렌더 중 I/O 없이 메모리 집계하고 저장 실패 시 한 묶음을 재시도한다",
+        "미완료 후 60초가 지나도 그 대기를 렌더 시간으로 기록하지 않는다",
+        "느린 표본 개수·로그 용량을 제한하고 미저장 표본의 VM 폐기 시 유실을 명시한다"
+      ],
+      "status": "not_run_on_target"
+    }
+  ]
+}
