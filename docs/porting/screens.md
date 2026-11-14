@@ -30,7 +30,7 @@ primary와 linked worktree, 열림과 미개방, sleeping과 archived를 구별�
 | New worktree | 이름 자동 채움/수동 편집, PR 조회 중/실패, 미설치 agent, 생성 실패, setup 실패 | Create/Cancel, ⌘Enter, 입력 중 자동값이 편집값을 덮어쓰지 않음 |
 | Clean / Remove | 기본 선택/미선택/차단 사유, dirty/busy/pinned, 일부 삭제 실패 | 위험 동작 확인, 차단 항목 선택 금지, 결과별 이유 |
 | Agents | Active, pin, child, 같은 이름, outside, 5개 상태, Seen 만료 | 숨김/상태 변경으로 현재 대상 위치를 잃지 않음 |
-| Agent view | 전체 작업 영역의 탭, 기본 카드/치이카와 마을 테마, 동일한 세션과 24개 페이지, 마을의 자유 배회·선택 상세·접힌 검색 필터·세로 스크롤·움직임 끄기, 모든 프로젝트, pane 없는 child, 외부 세션, 검색 0건, 상태·출처 필터, 페이지 이동 | View all로 열기/기존 탭 재사용, 테마 전환 시 검색·필터·페이지 유지, 카드/마을 선택 상세에서 해당 pane/peek/외부 이어 열기 |
+| Agent view | 전체 작업 영역의 탭, 기본 카드/치이카와 마을 테마, 동일한 세션과 24개 페이지, 마을의 자유 배회·현재 상태·입력 대기/미확인 답변 말풍선·선택 상세·접힌 검색 필터·세로 스크롤·움직임 끄기, 모든 프로젝트, pane 없는 child, 외부 세션, 검색 0건, 상태·출처 필터, 페이지 이동 | View all로 열기/기존 탭 재사용, 테마 전환 시 검색·필터·페이지 유지, 카드/마을 선택 상세에서 해당 pane/peek/외부 이어 열기 |
 | 팔레트 | 5개 보기, 검색 0건, 생성 행, 미개방 worktree, Docs | Tab/↑↓/Enter/Esc, 화면과 선택 대상 일치 |
 | Sessions | Reading, 빈 목록, 제목 필터, 메시지 검색 중, 실패, 결과 snippet | Enter Resume, Alt+Enter Fork, Esc Close; 실행 가능한 버튼 구별 |
 | Restore | working/idle 후보, 대상 없음, 외부 실행 중, 자동 선호 | continue 항목별 선택, Not now, 중복 복구 금지 |

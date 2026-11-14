@@ -287,6 +287,40 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   console.log('agent themes: shared sessions, opt-in filters/details, roaming bounds, motion pause, selection and navigation passed');
 }
 
+// Read-required bubbles follow host unread state without acknowledging on sight.
+{
+  const data=fixture(4);data.props={mode:'overview',skin:'chiikawa'};data.outside=[];
+  delete data.state['ag.acked'].t1;
+  data.state['ag.info']={t1:{said:'수정 완료: 결과를 확인해주세요.',at:now},t3:{doing:'이 명령을 실행하도록 승인해주세요.',at:now}};
+  const env=await environment(data,null);
+  let output=JSON.stringify(env.render());
+  assert.ok(output.includes('village-status-t0') && output.includes('작업 중'));
+  assert.ok(output.includes('village-status-t2') && output.includes('쉬는 중'));
+  assert.ok(!output.includes('village-notice-t0') && !output.includes('village-notice-t2'));
+  for(const text of ['village-notice-t1','village-notice-t3','수정 완료: 결과를 확인해주세요.','이 명령을 실행하도록 승인해주세요.']) assert.ok(output.includes(text),text);
+  assert.equal(env.writes.length,0,'showing unread messages never marks them read');
+  const waiting=env.instance.villageActors.get('t3'), position=[waiting.x,waiting.y];
+  for(let i=0;i<100;i++) {env.instance.themeClock+=50;env.render();}
+  assert.deepEqual([waiting.x,waiting.y],position,'residents with unread work stand still');
+  env.click('village-notice-t1');
+  assert.equal(env.instance.villageSelected,'t1');
+  assert.equal(env.writes.length,0,'previewing a bubble does not acknowledge the host session');
+  data.state['ag.acked'].t1=now;
+  data.agents[3].status='working';
+  data.elapsed=2100;
+  output=JSON.stringify(env.render());
+  assert.ok(!output.includes('village-notice-t1') && !output.includes('village-notice-t3'),'read or resumed work removes its bubble');
+  assert.ok(output.includes('village-status-t1') && output.includes('확인함'));
+  for(const width of [360,640,1100]) {
+    const layout=env.village.villageLayout(width,600,24,24);
+    for(const x of [layout.left,layout.right]) for(const y of [layout.top,layout.bottom]) {
+      const box=env.village.noticeBounds({x,y},layout);
+      assert.ok(box.left>=0 && box.left+box.width<=width && box.top>=0 && box.top+box.height<=layout.height,'speech bubbles fit within the village');
+    }
+  }
+  console.log('village status: current state, real unread previews, no automatic acknowledgement, stable reading and clearing passed');
+}
+
 // Persistence stays outside render, avoids redraws, serializes writers, and retries
 // one bounded failed batch without losing the new aggregate collected meanwhile.
 {

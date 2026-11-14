@@ -1,5 +1,5 @@
-// A quiet village: sessions wander freely; only the selected resident shows work.
-import { div, image } from "gpui-kit";
+// A quiet village: small status labels, speech bubbles only for unread work.
+import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex, Input, Scrollbar } from "gpui-base";
 import { run } from "herdr";
 import { button, statusColor, statusMark } from "./ui.js";
@@ -8,6 +8,19 @@ import { themeControls, agentSprite } from "./agent-theme.js";
 const ART = "mods/agents-plus/assets/chiikawa";
 const SCENERY = `${ART}/village`;
 const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
+const STATUS = { working: "작업 중", blocked: "입력 대기", done: "완료", seen: "확인함", idle: "쉬는 중" };
+export function villageNotice(row) {
+  if (row.status !== "blocked" && row.status !== "done") return null;
+  return { label: row.status === "blocked" ? "확인이 필요해요" : "새 답변이 있어요",
+    text: row.activity?.trim() || (row.status === "blocked" ? "입력이나 승인을 기다리고 있어요." : "작업을 마쳤어요. 결과를 확인해주세요.") };
+}
+
+export function noticeBounds(actor, layout) {
+  const width = Math.min(208, layout.width - 24);
+  const left = clamp(actor.x + (layout.size + 16 - width) / 2, 12, layout.width - width - 12);
+  return { left, top: actor.y - 102, width, height: 88,
+    tail: clamp(actor.x + (layout.size + 16) / 2 - left - 8, 12, width - 28) };
+}
 function seed(text) {
   let n = 2166136261;
   for (let i = 0; i < text.length; i++) n = Math.imul(n ^ text.charCodeAt(i), 16777619) >>> 0;
@@ -18,13 +31,15 @@ function random(actor) {
   return actor.random / 4294967296;
 }
 
-export function villageLayout(width, viewportHeight, count) {
+export function villageLayout(width, viewportHeight, count, noticeCount = 0) {
   const size = count > 12 ? 82 : 108;
-  const top = Math.min(260, Math.max(100, width * 0.19));
-  const height = Math.max(420, viewportHeight, top + count * 18000 / Math.max(280, width));
+  const top = Math.min(260, Math.max(120, width * 0.19));
   const inset = Math.min(110, Math.max(20, width * 0.08));
+  const columns = Math.max(1, Math.floor((width - inset * 2) / (noticeCount ? 230 : 150)));
+  const height = Math.max(420, viewportHeight, top + count * 18000 / Math.max(280, width),
+    noticeCount ? top + Math.ceil(count / columns) * (size + 118) + 64 : 0);
   return { width, height, size, left: inset, right: Math.max(inset, width - inset - size),
-    top, bottom: Math.max(top, height - size - 64) };
+    top, bottom: Math.max(top, height - size - 64), columns, noticeCount };
 }
 
 // Stable per-session state survives filtering and refreshes. Clock time is already
@@ -34,14 +49,16 @@ export function advanceVillage(view, rows, layout) {
   const dt = clamp((clock - (view.villageClock ?? clock)) / 1000, 0, 0.16);
   view.villageClock = clock;
   const actors = view.villageActors ??= new Map();
-  const columns = Math.max(1, Math.ceil(Math.sqrt(rows.length * layout.width / layout.height)));
+  const columns = Math.min(layout.columns, Math.max(1, Math.ceil(Math.sqrt(rows.length * layout.width / layout.height))));
   const lines = Math.max(1, Math.ceil(rows.length / columns));
   const current = rows.map((row, i) => {
     let actor = actors.get(row.id);
     if (!actor) {
       actor = { random: seed(row.id), wait: 0, moving: false };
-      const u = ((i % columns) + 0.25 + random(actor) * 0.5) / columns;
-      const v = (Math.floor(i / columns) + 0.25 + random(actor) * 0.5) / lines;
+      const u = layout.noticeCount ? (columns > 1 ? (i % columns) / (columns - 1) : 0.5)
+        : ((i % columns) + 0.25 + random(actor) * 0.5) / columns;
+      const v = layout.noticeCount ? (lines > 1 ? Math.floor(i / columns) / (lines - 1) : 0.5)
+        : (Math.floor(i / columns) + 0.25 + random(actor) * 0.5) / lines;
       actor.x = layout.left + u * (layout.right - layout.left);
       actor.y = layout.top + v * (layout.bottom - layout.top);
       actor.tx = actor.x; actor.ty = actor.y;
@@ -57,7 +74,7 @@ export function advanceVillage(view, rows, layout) {
   });
   for (const { row, actor } of current) {
     actor.moving = false;
-    if (!dt || view.villageSelected === row.id || view.villageHovered === row.id) continue;
+    if (!dt || villageNotice(row) || view.villageSelected === row.id || view.villageHovered === row.id) continue;
     if (actor.wait > 0) { actor.wait -= dt; continue; }
     const dx = actor.tx - actor.x, dy = actor.ty - actor.y, distance = Math.hypot(dx, dy);
     if (distance < 2) {
@@ -79,19 +96,41 @@ export function advanceVillage(view, rows, layout) {
   return current;
 }
 
-function resident(view, row, actor, layout, t, states) {
+function resident(view, row, actor, layout, t) {
   const sprite = agentSprite(view, row, true);
   const size = layout.size, scale = Math.min(size / sprite.height, (size + 16) / sprite.width);
   const width = sprite.width * scale, height = sprite.height * scale;
   const selected = view.villageSelected === row.id;
-  const status = states.find(([key]) => key === row.status)?.[1] || "Unknown";
+  const status = STATUS[row.status] || "상태 확인 중";
+  const notice = villageNotice(row), color = statusColor(t, row.status) || t.muted;
   return div().id(`overview-${row.id}`).absolute().left(actor.x).top(actor.y).w(size + 16).h(size + 12)
     .cursor_pointer().accessibility_label(`${row.agent}, ${status}, ${row.title}, ${row.project}`)
     .on_hover((over, cx) => { view.villageHovered = over ? row.id : null; cx.notify(); })
     .on_click((_e, cx) => { cx.stop_propagation(); view.villageSelected = row.id; cx.notify(); })
     .when(selected, (el) => el.child(div().absolute().left(18).bottom(2).w(size - 20).h(8).rounded(50)
       .bg(t.accent).opacity(0.2)))
+    .when(!notice, (el) => el.child(h_flex().id(`village-status-${row.id}`).absolute().left((size + 16 - 84) / 2).top(-26)
+      .w(84).h(22).gap(5).items_center().justify_center().rounded(11).bg(t.raised)
+      .child(div().size(5).rounded(3).bg(color))
+      .child(div().text_size(10).text_color(color).child(status))))
     .child(image(sprite.path).absolute().left((size + 16 - width) / 2).top(size - height).w(width).h(height));
+}
+
+function speechBubble(view, row, actor, layout, t) {
+  const notice = villageNotice(row), box = noticeBounds(actor, layout);
+  const color = statusColor(t, row.status) || t.accent;
+  return div().id(`village-notice-${row.id}`).absolute().left(box.left).top(box.top).w(box.width).h(box.height + 12)
+    .cursor_pointer().tooltip(`${row.project} · ${row.title}\n${notice.text}`)
+    .accessibility_label(`${row.project}, ${notice.label}, ${notice.text}`)
+    .on_click((_e, cx) => { cx.stop_propagation(); view.villageSelected = row.id; cx.notify(); })
+    .child(v_flex().w_full().h(box.height).p(11).gap(6).rounded(12).border(1).border_color(t.border).bg(t.raised)
+      .hover((el) => el.border_color(color))
+      .child(h_flex().gap(5).items_center()
+        .child(div().size(5).rounded(3).bg(color))
+        .child(div().text_size(10).font_semibold().text_color(color).child(notice.label))
+        .child(div().flex_1().truncate().text_size(9).text_color(t.muted).child(row.project)))
+      .child(div().text_size(11).line_height(1.4).text_color(t.foreground).whitespace_normal().h(32).overflow_hidden().child(notice.text)))
+    .child(svg(`${SCENERY}/speech-tail.svg`).absolute().left(box.tail).top(box.height - 1).w(16).h(10).text_color(t.raised));
 }
 
 function scenery(layout) {
@@ -113,7 +152,7 @@ function details(view, row, t, states, width, openRow) {
     .on_click((_e, cx) => cx.stop_propagation())
     .child(h_flex().gap(8).items_center()
       .child(statusMark(t, row.status))
-      .child(div().text_size(11).text_color(statusColor(t, row.status)).child(states.find(([key]) => key === row.status)?.[1] || "Unknown"))
+      .child(div().text_size(11).text_color(statusColor(t, row.status)).child(STATUS[row.status] || "상태 확인 중"))
       .child(div().flex_1().truncate().text_size(11).text_color(t.muted).child(`${row.agent} · ${row.project}`))
       .child(button("village-close", "닫기", (cx) => { view.villageSelected = null; cx.notify(); }, t)))
     .child(div().truncate().text_size(14).font_semibold().text_color(t.foreground).tooltip(row.title).child(row.title))
@@ -126,7 +165,7 @@ function details(view, row, t, states, width, openRow) {
 export function renderVillage(view, state) {
   const { t, all, scope, rows, visible, start, pages, back, canGoBack, states, sources, openRow } = state;
   const width = view.villageWidth || view.width || 1100, small = width < 840, narrow = width < 660;
-  const layout = villageLayout(width, view.villageHeight || 660, visible.length);
+  const layout = villageLayout(width, view.villageHeight || 660, visible.length, visible.filter(villageNotice).length);
   const selected = visible.find((row) => row.id === view.villageSelected);
   if (!selected) view.villageSelected = null;
   if (!visible.some((row) => row.id === view.villageHovered)) view.villageHovered = null;
@@ -168,7 +207,8 @@ export function renderVillage(view, state) {
         .child(div().id("chiikawa-village").relative().w(layout.width).h(layout.height).overflow_hidden().bg("#c3dea0")
           .on_click((_e, cx) => { view.villageSelected = null; cx.notify(); })
           .child(scenery(layout))
-          .children(residents.map(({ row, actor }) => resident(view, row, actor, layout, t, states)))
+          .children(residents.map(({ row, actor }) => resident(view, row, actor, layout, t)))
+          .children(residents.filter(({ row }) => villageNotice(row)).map(({ row, actor }) => speechBubble(view, row, actor, layout, t)))
           .when(visible.length === 0, (el) => el.child(div().absolute().top(layout.height / 2).left(24).w(width - 48).text_center().text_size(13).text_color(t.foreground)
             .child(all.length ? "검색된 에이전트가 없어요. 검색어나 필터를 바꿔보세요." : "에이전트가 작업을 시작하면 이곳에 나타나요.")))))
       .child(Scrollbar.vertical(scrollId).absolute().inset_0())

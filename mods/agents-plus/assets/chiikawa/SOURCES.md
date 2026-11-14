@@ -1,6 +1,6 @@
 # Chiikawa theme artwork
 
-The existing agent overview uses this artwork as an optional village theme. Sessions, filters, sorting, pagination and navigation are shared with the default card theme. The Chiikawa theme lets residents wander around the village. Work details appear only when a resident is selected.
+The existing agent overview uses this artwork as an optional village theme. Sessions, filters, sorting, pagination and navigation are shared with the default card theme. The Chiikawa theme lets residents wander around the village. Small labels show current status. Speech bubbles preview unread answers or requests needing user input; full details appear when a resident is selected.
 
 The six animations are public previews from Doga Kobo (動画工房), Anime Chiikawa animated LINE stickers vol.1 and vol.2. Copyright: ©nagano / chiikawa committee. These character assets are not covered by this repository's code license. Retrieved 2026-11-14.
 
