@@ -1,12 +1,14 @@
 // Metadata-only second resource pack exercised through the real shared view modules.
 // No images, CLI execution, messages, approvals or reset-credit calls.
-// node --experimental-vm-modules tests/theme-adapters.mjs
+// node --experimental-vm-modules tests/theme-adapters.mjs [--mod-dir INSTALLED_MOD] [--seed N]
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import vm from 'node:vm';
 const root = resolve(import.meta.dirname, '..');
-const installed = null;
+const modIndex = process.argv.indexOf('--mod-dir');
+if (modIndex >= 0) assert.ok(process.argv[modIndex + 1], '--mod-dir requires a directory');
+const installed = modIndex < 0 ? null : resolve(process.argv[modIndex + 1]);
 let now = 1893456000000;
 const program = { key: 'codex', name: 'Codex', agent: true };
 const session = (address, status) => ({ address, status, program, pane: `pane-${address}`, tab: `tab-${address}`, title: `Session ${address}` });
@@ -115,7 +117,7 @@ async function hostFixture({ skin = 'fixture-garden', native = 'graphite', prese
     drag: cache.get(resolve(modRoot, 'drag-layout.js')).namespace,
     mode: cache.get(resolve(modRoot, 'agent-mode.js')).namespace,
     dock: cache.get(resolve(modRoot, 'terminal-dock.js')).namespace,
-    status: cache.get(resolve(root, 'lib/agent-status.js')).namespace,
+    status: cache.get(installed ? resolve(modRoot, 'agent-status.js') : resolve(root, 'lib/agent-status.js')).namespace,
     overview: cache.get(resolve(modRoot, 'overview.js')).namespace,
     workspace: cache.get(resolve(modRoot, 'workspace-controls.js')).namespace };
 }
@@ -152,6 +154,9 @@ const element = (tree, id) => nodes(tree).find(node => property(node, 'id') === 
 const paths = tree => nodes(tree).map(node => node.path).filter(Boolean);
 const failures = [];
 let checks = 0;
+const seedIndex = process.argv.indexOf('--seed');
+const stressSeed = seedIndex < 0 ? 20261115 : Number(process.argv[seedIndex + 1]);
+assert.ok(Number.isInteger(stressSeed) && stressSeed >= 0 && stressSeed <= 0xffffffff, '--seed must be an unsigned 32-bit integer');
 async function check(name, fn) {
   try { await fn(); checks++; }
   catch (error) { failures.push(`${name}: ${error.message.split('\n')[0]} ${error.stack.match(/at file:[^\n]+/)?.[0] || ''}`); }
@@ -423,6 +428,56 @@ await check('working without progress has a label and no fabricated speech bubbl
     assert.ok(element(output, 'village-status-one'));
     assert.match(JSON.stringify(output), /Working/);
   }
+});
+await check(`400-step mixed sequence preserves workspace and drafts (seed ${stressSeed})`, async () => {
+  const sessions = [session('one', 'working'), session('two', 'working'), session('three', 'done')];
+  const env = await hostFixture({ presentation: 'village', agents: sessions });
+  env.render(); env.click('overview-one');
+  const chat = env.view.villageChats.get('one');
+  chat.input.set_value('Unsent draft — 전환해도 보존');
+  chat.images.push({ path: '/synthetic/draft.png' });
+  const originalLayout = JSON.stringify(env.layout), originalFocus = JSON.stringify(env.focus);
+  const hostCalls = env.calls.length;
+  let randomState = stressSeed, lastClock = env.view.themeClock;
+  const random = max => { randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0; return Math.floor(randomState / 0x100000000 * max); };
+  const packs = ['default', 'chiikawa', 'fixture-garden', 'fixture-cards'];
+  const palettes = ['graphite', 'paper', 'herdr-chiikawa'];
+  const operations = new Set();
+  for (let step = 0; step < 400; step++) {
+    const operation = random(6);
+    env.render();
+    if (operation === 0) { env.click(`overview-pack-${packs[random(packs.length)]}`); operations.add(operation); }
+    if (operation === 1) { env.setTheme(palettes[random(palettes.length)]); operations.add(operation); }
+    if (operation === 2 && env.definitions.hasVillage(env.view.pack)) {
+      env.click(`overview-layout-${random(2) ? 'cards' : 'village'}`); operations.add(operation);
+    }
+    if (operation === 3 && env.definitions.hasResidents(env.view.pack)) {
+      if (!env.view.villageFilters) { env.click('village-filters'); env.render(); }
+      env.click('overview-motion'); operations.add(operation);
+    }
+    if (operation === 4 && env.definitions.hasVillage(env.view.pack) && env.view.presentation === 'village' && env.view.villageActors?.has('two')) {
+      const actor = env.view.villageActors.get('two');
+      env.drag.beginDrag(env.view, 'resident-two', { position: { x: 20, y: 20 } }, actor,
+        env.village.villageLayout(1100, 660, 3), point => Object.assign(actor, point), env.cx);
+      env.drag.moveDrag(env.view, { position: { x: 25 + random(60), y: 30 + random(60) } }, env.cx);
+      // Changing a pack must release an in-flight drag without choosing a session.
+      env.click(`overview-pack-${packs[random(packs.length)]}`);
+      assert.equal(env.view.pointerDrag, null); operations.add(operation);
+    }
+    if (operation === 5) { sessions[1].status = ['working', 'blocked', 'done', 'idle'][random(4)]; operations.add(operation); }
+    env.tick(50); env.render();
+    assert.equal(env.view.pack, env.packState.selectedResourcePack(), `pack at step ${step}`);
+    assert.equal(env.view.villageSelected, 'one', `selection at step ${step}`);
+    assert.equal(env.view.villageChats.get('one'), chat);
+    assert.equal(chat.input.value(), 'Unsent draft — 전환해도 보존');
+    assert.equal(chat.images[0].path, '/synthetic/draft.png');
+    assert.equal(JSON.stringify(env.layout), originalLayout, `split at step ${step}`);
+    assert.equal(JSON.stringify(env.focus), originalFocus, `focus at step ${step}`);
+    assert.equal(env.calls.length, hostCalls, `unexpected host action at step ${step}`);
+    assert.ok(Number.isFinite(env.view.themeClock) && env.view.themeClock >= lastClock);
+    lastClock = env.view.themeClock;
+  }
+  assert.equal(operations.size, 6, 'every transition class was exercised');
 });
 console.log(`Resource pack checks: ${checks} passed, ${failures.length} failed`);
 for (const failure of failures) console.error(failure);

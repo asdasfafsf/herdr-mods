@@ -76,6 +76,8 @@ Light → herdr chiikawa**를 선택한다. 이 번들은 레이아웃·키·모
 따라 추가하며 공통 상태·말풍선·이동·선택·드래그·터미널 동작을 복사하지 않는다.
 현재 설치 절차와 외부 팩 가져오기·커스텀 보존·업데이트의 후속 설계는
 [Agent workspace 설치와 커스텀 팩](docs/agent-workspace-packs.md)에 구분해 정리했다.
+실행 앱에 설치하지 않고 확인하려면 `python3 scripts/test-agent-workspace.py --native`를
+사용한다. [별도 테스트 안내](docs/agent-workspace-testing.md)에 격리 범위와 반복 실행 방법이 있다.
 기존 `herdr-chiikawa` 테마 ID와 선택 상태는 유지된다. Light와 Dark의 테마는
 각각 보존하며, 과거 Agent 테마 선택이 두 모드를 치이카와로 고정한 경우 저장된
 다크 테마(없으면 graphite)를 한 번 복구한다. Appearance 전환은 즉시 반영된다.
