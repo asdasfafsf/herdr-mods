@@ -336,7 +336,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
         view.themeClock+=50;env.village.advanceVillage(view,rows,layout);
         distance=Math.max(distance,Math.hypot(actor.x-x,actor.y-y));
       }
-      assert.ok(distance>4,'deselecting a resident resumes roaming');
+      assert.ok(distance>4,`deselecting a resident resumes roaming (${width}px, ${count} residents, ${distance}px)`);
     }
   }
   console.log('agent themes: shared sessions, opt-in filters/details, roaming bounds, motion pause, selection and navigation passed');
@@ -624,7 +624,7 @@ for (const presentation of ['cards','village']) {
   if(presentation==='village') for(let i=0;i<120;i++) {
     env.instance.themeClock+=50;env.render();
     const layout=env.instance.villageBounds;
-    const boxes=env.instance.visibleOverviewRows.map(row=>env.village.noticeBounds(env.instance.villageActors.get(row.id),layout,{width:320,height:340}));
+    const boxes=env.instance.visibleOverviewRows.map(row=>env.village.noticeBounds(env.instance.villageActors.get(row.id),layout,{width:320,height:340,artTop:env.village.residentSpacing(env.instance,row,layout.size).geometry.art.top}));
     for(let a=0;a<boxes.length;a++) for(let b=a+1;b<boxes.length;b++) {
       const x=boxes[a],y=boxes[b];
       assert.ok(x.left+x.width<=y.left || y.left+y.width<=x.left || x.top+x.height+12<=y.top || y.top+y.height+12<=x.top,'expanded approval buttons remain unobscured while roaming');
@@ -856,7 +856,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','pack-chiikawa','resource-packs','resource-pack-state','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','approval-providers','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','sprite-motion','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','pack-chiikawa','resource-packs','resource-pack-state','themes','legacy-theme','agent-mode','theme-contrast','village','village-spacing','village-chat','session-controls','approval-providers','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','sprite-motion','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);

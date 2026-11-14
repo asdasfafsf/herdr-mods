@@ -100,12 +100,16 @@ function spriteFramePath(definition, name, frame, facing) {
     ? `${definition.art}/directional/${name}/${file}.svg` : `${definition.art}/${name}/${file}.png`;
 }
 
-export function agentSprite(view, row, roaming = false, facing, actor) {
-  let clock = (view.themeClock ?? 0) + seed(row.id) % 12000;
-  const definition = packDefinition(view.pack), pool = residentPool(view.pack);
+export function agentResident(view, row, pool = residentPool(view.pack)) {
   if (!pool.length) return null;
   const assigned = view.residentAssignments?.get(row.id);
-  const resident = pool.includes(assigned) ? assigned : pool[seed(row.id) % pool.length];
+  return pool.includes(assigned) ? assigned : pool[seed(row.id) % pool.length];
+}
+
+export function agentSprite(view, row, roaming = false, facing, actor) {
+  let clock = (view.themeClock ?? 0) + seed(row.id) % 12000;
+  const definition = packDefinition(view.pack), resident = agentResident(view, row);
+  if (resident == null) return null;
   const motion = spriteMotion(definition, resident, roaming ? actor : null);
   const name = motion.name;
   const sprite = definition.sprites[name];

@@ -73,6 +73,31 @@ generator는 항상 `--check`로 실행한다. timeout/중단 시 해당 fixture
 예를 들어 `--native --repeat 3`의 `66 passed`는 고정 검사 22개 × 3회를 뜻한다.
 개별 assertion 개수와 native 시나리오 결과는 각 로그에서 확인한다.
 
+### 주민 간격 회귀 검사
+
+`village-motion.mjs`는 실제 `advanceVillage`와 `renderVillage`를 synthetic host에서
+실행한다. 같은 높이에서 접근하는 주민의 이름표가 겹치던 경로, body 기준 확대된
+Rakko의 content 돌출, 양방향/atlas 및 motion resource 변경, 이름표의 명시 높이와
+텍스트 줄·padding·border 합계, 상태표시·말풍선과 그림 사이의 교차를 검사한다.
+240/360/700/1400px 장면의 4/24명 배회, 선택 정지, 겹친 시작점과 말풍선 내부에서
+탈출, 실제 drag handler, resize/filter 재진입도 고정된 seed/clock으로 재현한다.
+
+공통 `village-spacing.js`는 모든 motion content를 포함하는 보수적인 사각 영역을
+예약한다. 조밀한 장면은 세로 스크롤 공간을 늘린다. 정상 이동은 속도를 유지하며
+기존 지면 높이 위로 올라가지 않는다. 빈 방향으로 돌아서고, resize/filter/팩·표시 영역 변경이나 드래그 종료 후 갇힌
+경우에는 겹친 unlocked 주민만 가까운 빈 공간에 한 번 재배치한다. 시계가 멈춰
+있으면 재배치를 보류한다. 지면과 고정 말풍선 사이에서 기존 겹침을 벗어나려는
+시도가 0.75초 동안 막힌 경우에도 해당 unlocked 주민에만 빈자리 복구를 적용한다.
+선택 좌표는 접근 가능한 범위에서 유지하고, 축소로
+장면 밖에 고립될 때만 안쪽으로 보정하며 드래그 중 포인터 소유권은 유지한다.
+
+렌더 트리와 예약 영역의 수치 일치 검사는 native 화면의 글꼴 래스터화, GPU 그림
+디코딩이나 최종 시각 배치를 확인한 것이 아니다. `agents-render.mjs --native`는
+새 모듈도 임시 fixture에 복사하며, bundle matrix는 임시 설치본에 포함되는지 검사한다.
+팩 정의·resident·크기별 content 영역을 캐시하고 이동 단계의 spec을 렌더에 재사용한다.
+초기/정지 프레임은 충돌 계산을 생략하며, 영역 변경은 참조 비교로 판정한다.
+native 200명 시나리오도 기존 실행 제한으로 검사한다.
+
 ## 별도 GUI 미리보기는 왜 아직 실행하지 않는가
 
 현재 확인한 CLI에는 독립 GUI preview 명령이 없고, `HERDR_APP_HOME`은 앱 창의
