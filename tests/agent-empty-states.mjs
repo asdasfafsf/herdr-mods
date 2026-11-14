@@ -36,7 +36,7 @@ async function hostFixture({ skin = 'default', presentation = 'cards', agents = 
     } });
     return proxy;
   }
-  const shared = { ...state };
+  const shared = { 'ag.resourcePack': skin, ...state };
   if (skin === 'chiikawa') shared['ag.presentation'] = presentation;
   const host = {
     agents: () => structuredClone(agents), terminals: () => structuredClone(terminals),
@@ -45,8 +45,8 @@ async function hostFixture({ skin = 'default', presentation = 'cards', agents = 
     layout: () => layout, layouts: () => [], window: () => ({ active: true }),
     shared: key => structuredClone(shared[key]), setShared: (key, value) => { shared[key] = structuredClone(value); },
     theme: () => new Proxy({}, { get: () => '#56789a' }),
-    settings: () => ({ theme: skin === 'chiikawa' ? 'herdr-chiikawa' : 'paper', dark: false }),
-    themes: () => [{ name: 'paper', light: true }, { name: 'graphite', light: false }, ...(skin === 'chiikawa' ? [{ name: 'herdr-chiikawa', light: true }] : [])],
+    settings: () => ({ theme: 'graphite', dark: true }),
+    themes: () => [{ name: 'paper', light: true }, { name: 'graphite', light: false }],
     setAgentOrder: order => calls.push(['order', order]),
     run: (name, args) => {
       calls.push([name, args]);

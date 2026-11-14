@@ -3,7 +3,9 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { layout, shared, setShared, run, props, theme, themes, focused, panes, settings } from "herdr";
-import { THEMES, VIEW_LAYOUTS, hasVillage, themeDefinition } from "./themes.js";
+import { THEMES, themeDefinition } from "./themes.js";
+import { VIEW_LAYOUTS, hasVillage, packDefinition } from "./resource-packs.js";
+import { initResourcePack, selectedResourcePack } from "./resource-pack-state.js";
 import { LEGACY_CHIIKAWA_COLORS } from "./legacy-theme.js";
 import { setThemeContrast } from "./theme-contrast.js";
 import { workspaceSplit, sceneVisible, showWorkspaceScene, showWorkspaceTerminal } from "./terminal-dock.js";
@@ -90,6 +92,7 @@ export function migrateWorkspaceTheme() {
 }
 
 export function initWorkspaceTheme(cx) {
+  initResourcePack(workspaceTheme());
   migrateAppearanceTheme();
   migrateWorkspaceTheme();
   let previous, previousLook;
@@ -160,9 +163,9 @@ export function renderViewSwitch() {
         .text_color(agent === value ? t.foreground : t.muted).when(agent === value, (el) => el.bg(t.selected))
         .cursor_pointer().hover((el) => el.bg(t.hover)).tooltip("Switch Terminal / Agent · ⌘⇧E")
         .on_click(() => setWorkspaceView(value)).child(label))))
-    .when(agent && hasVillage(workspaceTheme()), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
+    .when(agent && hasVillage(selectedResourcePack()), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
       .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(10).py(4).rounded(5).text_size(11)
-        .text_color(t.foreground).when((shared("ag.presentation") || "village") === key, (el) => el.bg(t.selected))
+        .text_color(t.foreground).when((shared("ag.presentation") || packDefinition(selectedResourcePack()).layout) === key, (el) => el.bg(t.selected))
         .cursor_pointer().hover((el) => el.bg(t.hover)).on_click(() => setShared("ag.presentation", key)).child(label)))))
     .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted)
       .child(pane?.title || "Select a session"));

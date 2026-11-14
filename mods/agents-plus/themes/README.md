@@ -1,4 +1,4 @@
-# Native themes and agent adapters
+# Native palettes and independent agent resource packs
 
 The standalone Chiikawa palette lives in
 [theme-chiikawa/palette.js](../../theme-chiikawa/palette.js). Its `chiikawa` bundle
@@ -6,12 +6,22 @@ installs only `themes/herdr-chiikawa.json`: no agent view, layout, key bindings 
 CLI configuration changes. Install with `./install.sh chiikawa`, then select it
 in Settings → Look. Install `agents` separately for card/village presentation.
 
-Herdr's effective native theme is the single authority. `../themes.js` maps
-native theme IDs to optional agent artwork and layouts; it owns no active
-palette. Cards and village consume native semantic colors unchanged. The
-workspace toolbar contains view controls, not a second theme selector.
+Herdr's effective native theme is the authority for app colors. `../themes.js`
+contains only palette policies; Cards and Village consume native semantic colors
+unchanged. Character and scene data live in `../resource-packs.js`, independently
+selected by **Pack** in the common scene header. **Cards / Village** remains in
+that header, above the original terminal split. For example, a dark app can show
+Chiikawa Village, and any app palette can use a future Shin-chan pack.
 
-Use [the adapter template](TEMPLATE.md) to add a palette, background and character metadata without editing the shared view engine. `theme-chiikawa.js` contains only presentation data; `themes.js` registers adapters by native theme ID.
+The `agents` bundle includes Plain and Chiikawa packs without requiring the
+`chiikawa` palette bundle. Pack selection persists in `ag.resourcePack`; only its
+first initialization imports the previous theme-derived choice. Selecting Plain
+removes character artwork without changing Settings, terminal contrast, focus or
+split proportions. Native palette changes alone control reversible contrast.
+
+Use [the resource pack template](TEMPLATE.md) to add character metadata and a
+background without editing the shared view engine. `pack-chiikawa.js` contains
+only presentation data. Pack metadata has no native theme or contrast field.
 
 Generate native JSON for every `theme-*` palette package with:
 
@@ -20,8 +30,8 @@ node scripts/build-agent-themes.mjs
 node scripts/build-agent-themes.mjs --check
 ```
 
-Declare the theme file in its own bundle. Add an agent adapter only if that theme
-needs distinct artwork or presentation. Keep all 16 ANSI colors readable against
+Declare the theme file in its own bundle. Palettes do not need a resource pack.
+Keep all 16 ANSI colors readable against
 the theme background. The installer preserves user-owned theme files and keeps
 Codex/Claude configuration unchanged. `legacy-theme.js` is a frozen migration
 snapshot, not a second palette definition.

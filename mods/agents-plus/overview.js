@@ -8,7 +8,7 @@ import { AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, OPTIONS, TREES, LIVE } 
 import { shownStatus, seenFor, statusMark, statusColor, statusNotice, statusActivity, statusPreview, button, footer, agoText, STATUS_FILTERS, statusRank, statusInfo, statusLabel, normalizeStatus } from "./ui.js";
 import { inside } from "./places.js";
 import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
-import { hasResidents, hasVillage, residentPool } from "./themes.js";
+import { hasResidents, hasVillage, residentPool } from "./resource-packs.js";
 import { assignResidents } from "./resident-assignment.js";
 import { spriteLayout } from "./sprite-layout.js";
 import { agentEmptyState, renderAgentEmptyState } from "./agent-empty-state.js";
@@ -182,7 +182,7 @@ function agentCard(view, row, t, focusedAddress) {
   const selected = view.villageSelected === row.id;
   const active = Boolean(row.address && row.address === focusedAddress);
   const marker = active ? "Active" : selected ? "Selected" : null;
-  const themed = hasResidents(view.skin), sprite = themed ? agentSprite(view, row, true) : null;
+  const themed = hasResidents(view.pack), sprite = themed ? agentSprite(view, row, true) : null;
   const art = sprite ? spriteLayout(sprite, 64, 64) : null;
   const identity = `${row.agent} · ${row.address || row.sourceLabel}`;
   return v_flex().id(`overview-${row.id}`).flex_1().min_w(0).min_h(246).p(12).gap(8)
@@ -228,9 +228,9 @@ function agentCard(view, row, t, focusedAddress) {
 }
 
 export function renderAgentView(view) {
-  const t = agentTheme(theme(), view.skin), now = Date.now();
+  const t = agentTheme(theme(), view.pack), now = Date.now();
   // Repainting GIFs must not reread every live session on every animation frame.
-  if (!hasResidents(view.skin) || !view.overviewRows || now - view.overviewRowsAt > 2000 || view.overviewOutside !== view.outside) {
+  if (!hasResidents(view.pack) || !view.overviewRows || now - view.overviewRowsAt > 2000 || view.overviewOutside !== view.outside) {
     view.overviewRows = agentViewRows(view.outside);
     view.overviewRowsAt = now;
     view.overviewOutside = view.outside;
@@ -238,7 +238,7 @@ export function renderAgentView(view) {
   const focusedAddress = focused()?.terminal;
   // Focus, pinning and sidebar sort changes must reach even cached Chiikawa rows.
   view.overviewRows = orderAgentRows(view.overviewRows);
-  if (hasResidents(view.skin)) assignResidents(view, view.overviewRows, residentPool(view.skin));
+  if (hasResidents(view.pack)) assignResidents(view, view.overviewRows, residentPool(view.pack));
   const all = inAgentMode() ? view.overviewRows.filter((row) => !statusInfo(row.status).quiet || row.address === focusedAddress
     || row.id === view.villageSelected) : view.overviewRows;
   view.lastThemeRender = now;
@@ -255,7 +255,7 @@ export function renderAgentView(view) {
     openTerminal: inAgentMode() && findViewStack() ? leaveAgentMode : undefined,
     clearFilters: (cx) => { view.input.set_value(""); view.statusFilter = "all"; view.sourceFilter = "all"; view.page = 0; cx.notify(); },
   };
-  if (hasVillage(view.skin) && view.presentation !== "cards") return renderVillage(view, { t, all, scope, rows, visible, start, pages, back, canGoBack, empty, emptyActions, states: STATES, sources: SOURCES, openRow });
+  if (hasVillage(view.pack) && view.presentation !== "cards") return renderVillage(view, { t, all, scope, rows, visible, start, pages, back, canGoBack, empty, emptyActions, states: STATES, sources: SOURCES, openRow });
   const columns = Math.max(1, Math.min(4, Math.floor(((view.width ?? 1100) - 32 + 12) / (300 + 12))));
   const cardRows = [];
   for (let i = 0; i < visible.length; i += columns) {

@@ -5,7 +5,7 @@ import { h_flex, v_flex, Scrollbar } from "gpui-base";
 import { run, focused } from "herdr";
 import { button, statusColor, statusMark, statusInfo, statusLabel, statusNotice } from "./ui.js";
 import { agentSprite } from "./agent-theme.js";
-import { themeDefinition } from "./themes.js";
+import { packDefinition } from "./resource-packs.js";
 import { spriteLayout } from "./sprite-layout.js";
 import { renderAgentEmptyState } from "./agent-empty-state.js";
 import { selectVillageResident, renderVillageChat } from "./village-chat.js";
@@ -219,7 +219,7 @@ export function dragViewport(element, view) {
 export function renderVillage(view, state) {
   const { t, all, rows, visible, start, pages, states, openRow, empty, emptyActions } = state;
   const width = view.villageWidth || view.width || 1100;
-  const definition = themeDefinition(view.skin);
+  const definition = packDefinition(view.pack);
   const layout = villageLayout(width, view.villageHeight || 660, visible.length, visible.filter(villageNotice).length);
   const selected = visible.find((row) => row.id === view.villageSelected);
   const focusedAddress = focused()?.terminal;

@@ -1,20 +1,24 @@
-// Both themes share the overview's sessions, filters, pagination and actions.
+// All resource packs share the overview's sessions, filters, pagination and actions.
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { props, panes, focused, shared, setShared } from "herdr";
-import { THEMES, VIEW_LAYOUTS, themeTokens, themeDefinition, residentPool, hasResidents, hasVillage } from "./themes.js";
-import { inAgentMode, agentViewVisible, applyModeTheme, workspaceTheme } from "./agent-mode.js";
+import { RESOURCE_PACKS, VIEW_LAYOUTS, packDefinition, residentPool, hasResidents, hasVillage } from "./resource-packs.js";
+import { inAgentMode, agentViewVisible, workspaceTheme } from "./agent-mode.js";
 import { finishDrag } from "./drag-layout.js";
 import { frameFacing } from "./sprite-directions.js";
+import { initResourcePack, selectedResourcePack, selectResourcePack } from "./resource-pack-state.js";
 
-const SKINS = Object.entries(THEMES).map(([key, value]) => [key, value.label]);
-const preferredPresentation = (skin) => (inAgentMode() ? shared("ag.presentation")
-  : localStorage.getItem("overview.presentation") || localStorage.getItem("overview.chiikawaLayout")) || themeDefinition(skin).layout || "cards";
+const preferredPresentation = (pack) => {
+  const saved = inAgentMode() ? shared("ag.presentation")
+    : localStorage.getItem("overview.presentation") || localStorage.getItem("overview.chiikawaLayout");
+  return hasVillage(pack) ? (VIEW_LAYOUTS.some(([key]) => key === saved) ? saved : packDefinition(pack).layout || "cards") : "cards";
+};
 
 export function initAgentTheme(view, cx) {
-  const saved = inAgentMode() ? workspaceTheme() : props()?.skin || localStorage.getItem("overview.theme");
-  view.skin = SKINS.some(([key]) => key === saved) ? saved : "default";
-  view.presentation = preferredPresentation(view.skin);
+  // Read the old theme-derived choice once, then own a separate persisted pack.
+  initResourcePack(inAgentMode() ? workspaceTheme() : props()?.resourcePack || props()?.skin || localStorage.getItem("overview.theme"));
+  view.pack = selectedResourcePack();
+  view.presentation = preferredPresentation(view.pack);
   view.themeClock = 0;
   // Motion is on whenever this view opens. A pause belongs to this view's
   // current interaction, not a hidden preference inherited from an old session.
@@ -24,10 +28,10 @@ export function initAgentTheme(view, cx) {
   cx.timer.every(50, (cx) => {
     const now = Date.now(), elapsed = Math.min(160, now - previous);
     previous = now;
-    const saved = inAgentMode() ? workspaceTheme() : localStorage.getItem("overview.theme");
-    if (inAgentMode() && THEMES[saved] && saved !== view.skin) { finishDrag(view, null, cx); view.skin = saved; cx.notify(); }
-    const presentation = shared("ag.presentation") || themeDefinition(view.skin).layout || "cards";
-    if (inAgentMode() && view.presentation !== presentation) { finishDrag(view, null, cx); view.presentation = presentation; cx.notify(); }
+    const pack = selectedResourcePack();
+    if (pack !== view.pack) { finishDrag(view, null, cx); view.pack = pack; cx.notify(); }
+    const presentation = preferredPresentation(view.pack);
+    if (view.presentation !== presentation) { finishDrag(view, null, cx); view.presentation = presentation; cx.notify(); }
     if (inAgentMode() && !agentViewVisible()) { finishDrag(view, null, cx); return; }
     // A slow render is not a hidden pane. In particular, typing or another
     // busy mod may leave a gap longer than 300ms while this tab is still shown.
@@ -35,28 +39,31 @@ export function initAgentTheme(view, cx) {
       view.overviewTab ??= panes().find((pane) => pane.mod === "agents-plus")?.tab;
       if (view.overviewTab ? focused()?.tab !== view.overviewTab : now - (view.lastThemeRender ?? 0) > 300) { finishDrag(view, null, cx); return; }
     }
-    if (!hasResidents(view.skin) || view.motionPaused) return;
+    if (!hasResidents(view.pack) || view.motionPaused) return;
     view.themeClock += elapsed;
     cx.notify();
   });
 }
 
-export function agentTheme(base, skin) {
-  return inAgentMode() ? base : themeTokens(base, skin);
-}
+export function agentTheme(base) { return base; }
 
 export function themeControls(view, t) {
   return h_flex().gap(4).items_center().flex_none().flex_wrap()
-    .when(!inAgentMode(), (el) => el.child(h_flex().p(2).rounded(7).border(1).border_color(t.border)
-      .children(SKINS.map(([key, label]) => div().id(`overview-theme-${key}`).px(9).py(5).rounded(5)
-        .text_size(11).text_color(view.skin === key ? t.foreground : t.muted)
-        .when(view.skin === key, (el) => el.bg(t.selected)).cursor_pointer().hover((el) => el.bg(t.hover))
-        .on_click((_e, cx) => { finishDrag(view, null, cx); view.skin = key; view.presentation = preferredPresentation(key); localStorage.setItem("overview.theme", key); applyModeTheme(key); cx.notify(); }).child(label)))))
-    .when(hasVillage(view.skin), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
+    .child(h_flex().gap(4).items_center()
+      .child(div().text_size(11).text_color(t.muted).child("Pack"))
+      .child(h_flex().flex_wrap().p(2).rounded(7).border(1).border_color(t.border)
+        .children(Object.entries(RESOURCE_PACKS).map(([key, definition]) => div().id(`overview-pack-${key}`).px(9).py(5).rounded(5)
+          .text_size(11).text_color(view.pack === key ? t.foreground : t.muted)
+          .when(view.pack === key, (el) => el.bg(t.selected)).cursor_pointer().hover((el) => el.bg(t.hover))
+          .on_click((_e, cx) => {
+            finishDrag(view, null, cx); selectResourcePack(key); view.pack = selectedResourcePack();
+            view.presentation = preferredPresentation(view.pack); cx.notify();
+          }).child(definition.label)))))
+    .when(hasVillage(view.pack), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
       .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(8).py(5).rounded(5).text_size(11)
         .text_color(t.foreground).when(view.presentation === key, (el) => el.bg(t.selected)).cursor_pointer()
         .on_click((_e, cx) => { finishDrag(view, null, cx); view.presentation = key; if (inAgentMode()) setShared("ag.presentation", key); else localStorage.setItem("overview.presentation", key); cx.notify(); }).child(label)))))
-    .when(hasResidents(view.skin), (el) => el.child(div().id("overview-motion").px(8).py(5).rounded(5)
+    .when(hasResidents(view.pack), (el) => el.child(div().id("overview-motion").px(8).py(5).rounded(5)
       .text_size(11).text_color(t.muted).cursor_pointer().hover((el) => el.bg(t.hover))
       .on_click((_e, cx) => { view.motionPaused = !view.motionPaused; cx.notify(); })
       .child(view.motionPaused ? "Resume" : "Pause")));
@@ -68,8 +75,8 @@ function seed(text) {
   return n;
 }
 
-export function spriteFrame(skin, name, clock, facing) {
-  const definition = themeDefinition(skin), sprite = definition.sprites[name];
+export function spriteFrame(pack, name, clock, facing) {
+  const definition = packDefinition(pack), sprite = definition.sprites[name];
   let time = ((clock % sprite.duration) + sprite.duration) % sprite.duration;
   let frame = 0;
   while (frame < sprite.frames - 1 && time >= sprite.durations[frame]) time -= sprite.durations[frame++];
@@ -81,10 +88,10 @@ export function spriteFrame(skin, name, clock, facing) {
 
 export function agentSprite(view, row, roaming = false, facing) {
   const clock = (view.themeClock ?? 0) + seed(row.id) % 12000;
-  const definition = themeDefinition(view.skin), pool = residentPool(view.skin);
+  const definition = packDefinition(view.pack), pool = residentPool(view.pack);
   if (!pool.length) return null;
   const assigned = view.residentAssignments?.get(row.id);
   const name = pool.includes(assigned) ? assigned : pool[seed(row.id) % pool.length];
-  const path = spriteFrame(view.skin, name, clock, roaming ? facing : undefined);
+  const path = spriteFrame(view.pack, name, clock, roaming ? facing : undefined);
   return { ...definition.sprites[name], name, clock, path, mirrored: path.endsWith(".svg") };
 }

@@ -1,4 +1,4 @@
-// Metadata-only second theme exercised through the real shared view modules.
+// Metadata-only second resource pack exercised through the real shared view modules.
 // No images, CLI execution, messages, approvals or reset-credit calls.
 // node --experimental-vm-modules tests/theme-adapters.mjs
 import assert from 'node:assert/strict';
@@ -17,7 +17,7 @@ const stack = () => ({ id: 'root', type: 'row', children: [{ id: 'workspace-view
   ] },
 ] }] });
 const find = (node, id) => node?.id === id ? node : node?.children?.map(child => find(child, id)).find(Boolean);
-async function hostFixture({ skin = 'fixture-garden', presentation = 'cards', agents = [], state = {}, focus = {}, layout = stack(), mode = 'overview', terminals = [] } = {}) {
+async function hostFixture({ skin = 'fixture-garden', native = 'graphite', presentation = 'cards', agents = [], state = {}, focus = {}, layout = stack(), mode = 'overview', terminals = [] } = {}) {
   const handlers = new Map(), calls = [], timers = new Map(), cache = new Map();
   function builder(type, path) {
     const node = { type, path, ops: [] };
@@ -37,16 +37,16 @@ async function hostFixture({ skin = 'fixture-garden', presentation = 'cards', ag
     } });
     return proxy;
   }
-  const shared = { ...state };
+  const shared = { 'ag.resourcePack': skin, ...state };
   shared['ag.presentation'] = presentation;
-  let nativeTheme = skin === 'default' ? 'paper' : skin === 'chiikawa' ? 'herdr-chiikawa' : `herdr-${skin}`;
+  let nativeTheme = native;
   const host = {
     agents: () => structuredClone(agents), terminals: () => structuredClone(terminals),
     panes: () => agents.map(a => ({ id: a.pane, terminal: a.address, tab: a.tab, title: a.title, program: a.program })),
     spaces: () => [], focused: () => focus, props: () => ({ mode, integrated: true }),
     layout: () => layout, layouts: () => [], window: () => ({ active: true }),
     shared: key => structuredClone(shared[key]), setShared: (key, value) => { shared[key] = structuredClone(value); },
-    theme: () => new Proxy({}, { get: () => '#56789a' }),
+    theme: () => new Proxy({}, { get: () => nativeTheme === 'graphite' ? '#123456' : '#abcdef' }),
     settings: () => ({ theme: nativeTheme, dark: false }),
     themes: () => [{ name: 'paper', light: true }, { name: 'graphite', light: false }, { name: 'herdr-chiikawa', light: true }, { name: 'herdr-fixture-garden', light: true }],
     setAgentOrder: order => calls.push(['order', order]),
@@ -86,9 +86,9 @@ async function hostFixture({ skin = 'fixture-garden', presentation = 'cards', ag
     return module(path);
   };
   await main.link(link);
-  const definitions = cache.get(resolve(modRoot, 'themes.js'));
+  const definitions = cache.get(resolve(modRoot, 'resource-packs.js'));
   await definitions.evaluate();
-  Object.assign(definitions.namespace.THEMES, fixtureThemes());
+  Object.assign(definitions.namespace.RESOURCE_PACKS, fixturePacks());
   await main.evaluate();
   const helper = module(resolve(modRoot, 'agent-empty-state.js'));
   if (helper.status === 'unlinked') await helper.link(link);
@@ -100,6 +100,7 @@ async function hostFixture({ skin = 'fixture-garden', presentation = 'cards', ag
   const click = id => { assert.ok(handlers.has(id), `missing recovery/navigation control ${id}`); handlers.get(id)({}, cx); };
   return { view, render, click, calls, shared, layout, focus, helper: helper.namespace, cx,
     setTheme(value) { nativeTheme = value; },
+    packState: cache.get(resolve(modRoot, 'resource-pack-state.js')).namespace,
     tick(ms = 50) { now += ms; timers.get(50)?.(cx); },
     definitions: definitions.namespace,
     theme: cache.get(resolve(modRoot, 'agent-theme.js')).namespace,
@@ -112,11 +113,11 @@ async function hostFixture({ skin = 'fixture-garden', presentation = 'cards', ag
     overview: cache.get(resolve(modRoot, 'overview.js')).namespace,
     workspace: cache.get(resolve(modRoot, 'workspace-controls.js')).namespace };
 }
-function fixtureThemes() {
+function fixturePacks() {
   const sprite = { width: 80, height: 100, frames: 2, durations: [50, 150], duration: 200, content: [10, 20, 60, 70] };
   const definitions = {
     'fixture-garden': {
-      label: 'Fixture garden', native: 'herdr-fixture-garden', layout: 'village',
+      label: 'Fixture garden', layout: 'village',
       art: 'synthetic/garden', residents: ['circle', 'triangle'], sprites: { circle: sprite, triangle: { ...sprite, body: [20, 30, 40, 60] } },
       facing: { circle: [1, 0], triangle: -1 },
       scene: { width: 960, height: 600, background: '#334455', layers: [
@@ -125,13 +126,13 @@ function fixtureThemes() {
         { path: 'canopy.svg', x: 50, y: 100, width: 100, height: 300, clipHeight: 150 },
       ] },
     },
-    'fixture-empty': { label: 'Empty', native: 'herdr-fixture-empty', residents: [], scene: { width: 960, height: 600 } },
-    'fixture-invalid': { label: 'Invalid', native: 'herdr-fixture-invalid', art: 'synthetic/bad', residents: ['missing', 'zero', 'negative', 'timing', 'infinite'], sprites: {
+    'fixture-empty': { label: 'Empty', residents: [], scene: { width: 960, height: 600 } },
+    'fixture-invalid': { label: 'Invalid', art: 'synthetic/bad', residents: ['missing', 'zero', 'negative', 'timing', 'infinite'], sprites: {
       zero: { ...sprite, width: 0 }, negative: { ...sprite, height: -1 }, timing: { ...sprite, durations: [0, 200] }, infinite: { ...sprite, width: Infinity },
     }, scene: { width: 960, height: 600 } },
-    'fixture-malformed': { label: 'Malformed', native: 'herdr-fixture-malformed', residents: 'not-an-array' },
+    'fixture-malformed': { label: 'Malformed', residents: 'not-an-array' },
   };
-  definitions['fixture-cards'] = { ...definitions['fixture-garden'], label: 'Card garden', native: 'herdr-fixture-cards', layout: 'cards' };
+  definitions['fixture-cards'] = { ...definitions['fixture-garden'], label: 'Card garden', layout: 'cards' };
   return definitions;
 }
 function nodes(tree, result = []) {
@@ -155,7 +156,7 @@ for (const presentation of ['cards', 'village']) {
       'ag.info': { one: { doing: 'Choose the next step' }, two: { doing: 'Reading the example source' }, three: { said: 'Example result ready' } },
     } });
     const output = env.render();
-    assert.equal(env.view.skin, 'fixture-garden');
+    assert.equal(env.view.pack, 'fixture-garden');
     assert.ok(paths(output).some(path => path.startsWith('synthetic/garden/')));
     assert.ok(paths(output).every(path => !path.includes('chiikawa')));
     for (const label of ['Needs you', 'Working', 'Done', 'Choose the next step', 'Example result ready']) assert.ok(JSON.stringify(output).includes(label), label);
@@ -183,6 +184,91 @@ for (const presentation of ['cards', 'village']) {
     assert.ok(env.calls.some(([name, args]) => name === 'pane.focus' && args.pane === 'pane-one'));
   });
 }
+for (const native of ['graphite', 'paper', 'herdr-chiikawa']) {
+  for (const skin of ['default', 'chiikawa', 'fixture-garden']) {
+    await check(`${native} + ${skin}: palette and pack are independent`, async () => {
+      const env = await hostFixture({ native, skin, presentation: 'village', agents: [session('one', 'working')] });
+      const output = env.render();
+      assert.equal(env.view.pack, skin);
+      assert.equal(Boolean(element(output, 'agent-village')), skin !== 'default');
+      assert.equal(property(element(output, 'overview-header'), 'bg'), native === 'graphite' ? '#123456' : '#abcdef');
+      assert.ok(element(output, 'overview-pack-chiikawa'));
+      assert.ok(element(output, 'overview-pack-fixture-garden'), 'metadata registration alone adds the selector');
+      assert.equal(element(output, 'workspace-view-agent'), undefined, 'no Terminal / Agent row returns');
+      const layout = JSON.stringify(env.layout), focus = JSON.stringify(env.focus);
+      for (const choice of ['fixture-garden', 'chiikawa', 'default']) {
+        env.render(); env.click(`overview-pack-${choice}`); env.tick();
+        assert.equal(env.view.pack, choice);
+        assert.equal(env.shared['ag.resourcePack'], choice);
+        assert.equal(JSON.stringify(env.layout), layout, 'pack selection leaves the terminal split and palette untouched');
+        assert.equal(JSON.stringify(env.focus), focus);
+        assert.equal(env.calls.length, 0, 'pack selection performs no host action');
+      }
+    });
+  }
+}
+await check('native palette changes preserve artwork, selection and active drag', async () => {
+  const env = await hostFixture({ skin: 'chiikawa', presentation: 'village', agents: [session('one', 'working')] });
+  env.render(); env.click('overview-one');
+  const actor = env.view.villageActors.get('one');
+  env.drag.beginDrag(env.view, 'resident-one', { position: { x: 0, y: 0 } }, actor,
+    env.village.villageLayout(1100, 660, 1), () => {}, env.cx);
+  const drag = env.view.pointerDrag, calls = env.calls.length;
+  for (const native of ['paper', 'herdr-chiikawa', 'graphite']) {
+    env.setTheme(native); env.tick(); const output = env.render();
+    assert.equal(env.view.pack, 'chiikawa');
+    assert.equal(env.view.presentation, 'village');
+    assert.equal(env.view.villageSelected, 'one');
+    assert.equal(env.view.pointerDrag, drag);
+    assert.ok(paths(output).some(path => path.includes('/chiikawa/')));
+    assert.equal(property(element(output, 'overview-header'), 'bg'), native === 'graphite' ? '#123456' : '#abcdef');
+  }
+  assert.equal(env.calls.length, calls);
+});
+await check('pack preference survives remount and one-time migration never overwrites it', async () => {
+  for (const native of ['paper', 'herdr-chiikawa']) {
+    const env = await hostFixture({ native, state: { 'ag.resourcePack': null }, presentation: null });
+    const migrated = native === 'paper' ? 'default' : 'chiikawa';
+    assert.equal(env.shared['ag.resourcePack'], migrated);
+    env.render(); env.click('overview-pack-fixture-garden');
+    env.mode.initWorkspaceTheme(env.cx);
+    assert.equal(env.shared['ag.resourcePack'], 'fixture-garden', 'palette initialization cannot overwrite a saved pack');
+    const restored = await hostFixture({ native: 'graphite', state: env.shared, presentation: null });
+    assert.equal(restored.view.pack, 'fixture-garden');
+    assert.equal(restored.view.presentation, 'village');
+  }
+});
+await check('an unavailable saved pack falls back without losing its saved ID', async () => {
+  const env = await hostFixture({ skin: 'not-installed', native: 'herdr-chiikawa', presentation: 'village', agents: [session('one', 'working')] });
+  assert.equal(env.view.pack, 'default');
+  assert.equal(env.shared['ag.resourcePack'], 'not-installed');
+  assert.equal(element(env.render(), 'agent-village'), undefined);
+  env.definitions.RESOURCE_PACKS['not-installed'] = fixturePacks()['fixture-garden'];
+  env.tick();
+  assert.equal(env.view.pack, 'not-installed');
+  assert.ok(element(env.render(), 'agent-village'));
+});
+await check('Plain and scene-less packs preserve the preferred presentation for returning to a village', async () => {
+  const env = await hostFixture({ presentation: 'village', agents: [session('one', 'working')] });
+  env.definitions.RESOURCE_PACKS['fixture-portraits'] = { ...fixturePacks()['fixture-garden'], label: 'Portraits', scene: undefined };
+  env.render(); env.click('overview-pack-fixture-portraits');
+  let output = env.render();
+  assert.equal(env.view.presentation, 'cards');
+  assert.equal(element(output, 'overview-layout-village'), undefined);
+  assert.ok(element(output, 'overview-resident-one'));
+  assert.ok(paths(output).some(path => path.startsWith('synthetic/garden/')));
+  env.click('overview-pack-default');
+  output = env.render();
+  assert.equal(element(output, 'overview-resident-one'), undefined);
+  assert.equal(env.shared['ag.presentation'], 'village');
+  env.click('overview-pack-fixture-garden');
+  assert.equal(env.view.presentation, 'village');
+  env.render(); env.click('overview-layout-cards');
+  env.render(); env.click('overview-pack-default');
+  env.render(); env.click('overview-pack-chiikawa');
+  assert.equal(env.view.presentation, 'cards');
+  assert.equal(env.shared['ag.presentation'], 'cards');
+});
 await check('sprite frame durations and per-frame mirroring come from adapter data', async () => {
   const env = await hostFixture();
   assert.match(env.theme.spriteFrame('fixture-garden', 'circle', 0, 1), /^synthetic\/garden\/circle\/001\.png$/);
@@ -195,15 +281,15 @@ await check('adapter default presentation is used only without an explicit prefe
   const env = await hostFixture({ skin: 'fixture-cards', presentation: null, agents: [session('one', 'working')] });
   assert.equal(env.view.presentation, 'cards');
   assert.equal(element(env.render(), 'agent-village'), undefined);
-  env.setTheme('herdr-fixture-garden'); env.tick();
+  env.packState.selectResourcePack('fixture-garden'); env.tick();
   assert.equal(env.view.presentation, 'village');
   assert.ok(element(env.render(), 'agent-village'));
   env.shared['ag.presentation'] = 'cards'; env.tick();
   assert.equal(env.view.presentation, 'cards');
-  env.setTheme('herdr-fixture-cards'); env.tick();
+  env.packState.selectResourcePack('fixture-cards'); env.tick();
   assert.equal(env.view.presentation, 'cards');
 });
-await check('second theme opens the same native terminal surface without creating a session', async () => {
+await check('second pack opens the same native terminal surface without creating a session', async () => {
   const layout = stack();
   find(layout, 'agent-scene').size.weight = 1;
   find(layout, 'agent-terminal-dock').size.weight = 0;
@@ -231,16 +317,16 @@ await check('a registered village shares motion, pause and drag behavior', async
   assert.equal(env.drag.finishDrag(env.view, null, env.cx), true);
   assert.equal(env.view.pointerDrag, null);
 });
-await check('hot theme switches keep selection, draft, focus, positions and native session', async () => {
+await check('hot pack switches keep selection, draft, focus, positions and native session', async () => {
   const env = await hostFixture({ presentation: 'village', agents: [session('one', 'working'), session('two', 'working')] });
   env.render(); env.click('overview-one');
   const chat = env.view.villageChats.get('one');
   chat.input.set_value('Unsent draft'); chat.images.push({ path: '/synthetic/untouched.png' });
   const actors = env.view.villageActors, selected = env.view.villageSelected;
   env.drag.beginDrag(env.view, 'resident-two', { position: { x: 0, y: 0 } }, actors.get('two'), env.village.villageLayout(1100, 660, 2), () => {}, env.cx);
-  for (const [native, skin] of [['herdr-chiikawa', 'chiikawa'], ['paper', 'default'], ['herdr-fixture-garden', 'fixture-garden']]) {
-    env.setTheme(native); env.tick(); const output = env.render();
-    assert.equal(env.view.skin, skin);
+  for (const skin of ['chiikawa', 'default', 'fixture-garden']) {
+    env.render(); env.click(`overview-pack-${skin}`); env.tick(); const output = env.render();
+    assert.equal(env.view.pack, skin);
     assert.equal(env.view.villageSelected, selected);
     assert.equal(env.view.villageChats.get('one'), chat);
     assert.equal(chat.input.value(), 'Unsent draft'); assert.equal(chat.images.length, 1);
@@ -304,6 +390,6 @@ await check('working without progress has a label and no fabricated speech bubbl
     assert.match(JSON.stringify(output), /Working/);
   }
 });
-console.log(`Theme adapter checks: ${checks} passed, ${failures.length} failed`);
+console.log(`Resource pack checks: ${checks} passed, ${failures.length} failed`);
 for (const failure of failures) console.error(failure);
 if (failures.length) process.exitCode = 1;

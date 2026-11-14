@@ -67,8 +67,13 @@ KCD 계정으로 로그인해야 받을 수 있는 사내 레포다. Herdr 앱(`
 치이카와 색상만 쓰려면 `./install.sh chiikawa`로 설치한 뒤 **Settings → Look →
 Light → herdr chiikawa**를 선택한다. 이 번들은 레이아웃·키·모드·기존 설정을
 바꾸지 않고 테마 파일만 추가한다. Agent view도 함께 쓰려면
-`./install.sh agents chiikawa`로 설치한다. Agent view는 선택된 native 테마를 읽어
-치이카와 캐릭터와 Cards/Village 표현을 제공하며, 앱 색상을 따로 소유하지 않는다.
+`./install.sh agents`로 설치한다. 공통 장면 헤더의 **Pack → Plain / Chiikawa**는
+**Settings → Look**의 앱 팔레트와 독립적이므로 다크 앱에서도 치이카와 마을을
+사용할 수 있다. 색상과 팩을 모두 설치하려면 `./install.sh agents chiikawa`를 쓴다.
+**Cards / Village**는 같은 헤더에 있으며 기존 터미널과 드래그 split·단일 포커스를
+공유한다. 팩 선택은 `ag.resourcePack`에 저장하고 기존 테마 기반 선택은 최초
+한 번만 가져온다. 새 캐릭터/장면 팩은 [메타데이터 계약](mods/agents-plus/themes/TEMPLATE.md)에
+따라 추가하며 공통 상태·말풍선·이동·선택·드래그·터미널 동작을 복사하지 않는다.
 기존 `herdr-chiikawa` 테마 ID와 선택 상태는 유지된다. Light와 Dark의 테마는
 각각 보존하며, 과거 Agent 테마 선택이 두 모드를 치이카와로 고정한 경우 저장된
 다크 테마(없으면 graphite)를 한 번 복구한다. Appearance 전환은 즉시 반영된다.

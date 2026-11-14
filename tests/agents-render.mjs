@@ -203,7 +203,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
     {agent:'codex',pid:99,session:'two',cwd:'/another',title:'External two',status:'blocked',updated:2}];
   const env=await environment(data,null);
   env.render();
-  assert.equal(env.writes.length,0,'overview rendering must not change sidebar state');
+  assert.deepEqual(env.writes.map(([key])=>key),['ag.resourcePack'],'only the initial pack migration writes a preference');
   let rows=env.overview.agentViewRows(data.outside);
   assert.equal(rows.length,6,'4 parent agents and 2 sessions on the same PID');
   assert.equal(env.overview.filterAgentRows(rows,'External').length,2);
@@ -254,9 +254,9 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   const ids=output=>[...output.matchAll(/"overview-(?:t\d+|child-[^"]+|outside-[^"]+)"/g)].map(m=>m[0]);
   env.render();env.click('overview-next');
   const before=JSON.stringify(env.render()), page=env.instance.page;
-  env.click('overview-theme-chiikawa');
+  env.click('overview-pack-chiikawa');
   const themed=JSON.stringify(env.render());
-  assert.equal(env.instance.skin,'chiikawa');
+  assert.equal(env.instance.pack,'chiikawa');
   assert.equal(env.instance.page,page,'changing a theme keeps the current page');
   assert.deepEqual(ids(themed),ids(before),'themes show the same agents in the same order');
   assert.ok(themed.includes('agent-village'),'the Chiikawa theme displays the village');
@@ -286,10 +286,10 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   data.focused={pane:'p0',tab:'b0'};
   data.elapsed+=50;env.timers.get(50)();
   assert.equal(env.instance.themeClock,810,'a different active tab suspends the village');
-  env.render();env.click('overview-theme-default');
-  assert.equal(env.instance.skin,'default');
+  env.render();env.click('overview-pack-default');
+  assert.equal(env.instance.pack,'default');
   assert.deepEqual(ids(JSON.stringify(env.render())),ids(before));
-  env.click('overview-theme-chiikawa');env.render();env.click('village-filters');env.render();env.click('overview-status-working');
+  env.click('overview-pack-chiikawa');env.render();env.click('village-filters');env.render();env.click('overview-status-working');
   assert.equal(env.instance.page,0);
   env.instance.input.text='Task 0';env.render();
   const priorWrites=env.writes.length;
@@ -346,9 +346,9 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(env.mode.workspaceTheme(),'default');
   assert.ok(!JSON.stringify(env.mode.renderViewSwitch()).includes('workspace-theme-'),'toolbar has no duplicate theme selector');
   data.layout.theme='herdr-chiikawa'; env.timers.get(50)();
-  assert.equal(env.instance.skin,'chiikawa','Settings changes reach Agent mode');
+  assert.equal(env.instance.pack,'default','Settings leaves the independently saved pack unchanged');
   data.layout.theme='ink'; env.timers.get(50)();
-  assert.equal(env.instance.skin,'default','leaving Chiikawa restores native presentation');
+  assert.equal(env.instance.pack,'default','leaving Chiikawa also preserves the pack');
   env.mode.applyModeTheme('chiikawa'); env.timers.get(50)();
   assert.deepEqual(data.layout.theme,{light:'herdr-chiikawa',dark:'ink'},'native selection preserves the opposite appearance');
   env.mode.applyModeTheme('default'); env.timers.get(50)();
@@ -384,9 +384,9 @@ for (const choice of ['herdr-chiikawa',{light:'herdr-chiikawa',dark:'herdr-chiik
   assert.equal(env.writes.length,writes,'appearance repair runs only once');
   data.dark=true;env.timers.get(50)();
   assert.equal(env.mode.workspaceTheme(),'default','Dark picks the original dark theme');
-  assert.equal(env.instance.skin,'default','Agent presentation follows the native dark theme');
+  assert.equal(env.instance.pack,'chiikawa','Dark preserves the independently migrated pack');
   data.dark=false;env.timers.get(50)();
-  assert.equal(env.instance.skin,'chiikawa','Light restores Chiikawa immediately');
+  assert.equal(env.instance.pack,'chiikawa','Light preserves the same resource pack');
   env.mode.applyModeTheme('default');
   assert.deepEqual(data.layout.theme,{light:'paper',dark:'atom-one-dark'},'Default removes Chiikawa from an old pair backup');
   data.dark=true;env.mode.applyModeTheme('chiikawa');
@@ -595,18 +595,19 @@ console.log('agent cards: session identity, current work, active focus and disti
   delete data.state['ag.acked'].t1;
   data.state['ag.info']={t1:{said:'수정 완료: 결과를 확인해주세요.',at:now},t3:{doing:'이 명령을 실행하도록 승인해주세요.',at:now}};
   const env=await environment(data,null);
+  const initialWrites=env.writes.length;
   let output=JSON.stringify(env.render());
   assert.ok(output.includes('village-status-t0') && output.includes('Working'));
   assert.ok(output.includes('village-status-t2') && output.includes('Idle'));
   assert.ok(!output.includes('village-notice-t0') && !output.includes('village-notice-t2'));
   for(const text of ['village-notice-t1','village-notice-t3','수정 완료: 결과를 확인해주세요.','이 명령을 실행하도록 승인해주세요.']) assert.ok(output.includes(text),text);
-  assert.equal(env.writes.length,0,'showing unread messages never marks them read');
+  assert.equal(env.writes.length,initialWrites,'showing unread messages never marks them read');
   const waiting=env.instance.villageActors.get('t3'), position=[waiting.x,waiting.y];
   for(let i=0;i<100;i++) {env.instance.themeClock+=50;env.render();}
   assert.ok(Math.hypot(waiting.x-position[0],waiting.y-position[1])>4,'residents with unread work keep roaming with their bubbles');
   env.click('village-notice-t1');
   assert.equal(env.instance.villageSelected,'t1');
-  assert.equal(env.writes.length,0,'previewing a bubble does not acknowledge the host session');
+  assert.equal(env.writes.length,initialWrites,'previewing a bubble does not acknowledge the host session');
   data.state['ag.acked'].t1=now;
   data.agents[3].status='working';
   data.state['ag.info'].t3.doing='Running unit checks';
@@ -762,7 +763,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','theme-chiikawa','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','pack-chiikawa','resource-packs','resource-pack-state','themes','legacy-theme','agent-mode','theme-contrast','village','village-chat','session-controls','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
@@ -790,7 +791,7 @@ import { InputState } from 'gpui-base';
 ${!revision ? "import { selectVillageResident } from './village-chat.js';\nimport { agentViewRows } from './overview.js';" : ''}
 export default class Probe extends Agents {
  init(_props,cx) { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={};
-   if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.skin='${mode.startsWith('chiikawa')?'chiikawa':'default'}';this.presentation='${mode.startsWith('chiikawa-cards')?'cards':'village'}';this.themeClock=0;this.width=${mode.endsWith('-narrow')?360:1100};}
+   if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.pack='${mode.startsWith('chiikawa')?'chiikawa':'default'}';this.presentation='${mode.startsWith('chiikawa-cards')?'cards':'village'}';this.themeClock=0;this.width=${mode.endsWith('-narrow')?360:1100};}
    ${!revision ? `if ('${mode}'==='chiikawa' && ${count}===40) {selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t0'),cx);this.villageFilters=true;}
    if ('${mode}'==='chiikawa-approval') { selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t3'),cx); const chat=this.villageChats.get('t3');chat.request={address:'t3',text:'Run unit tests?\\n› 1. Yes\\n  2. No',fingerprint:'fixture',choices:[{number:1,label:'Yes',selected:true},{number:2,label:'No'}]}; }` : ''} }
  render(cx) { const start=Date.now();const result=super.render(cx);console.error('BENCH_RENDER_MS='+String(Date.now()-start));return result; }
