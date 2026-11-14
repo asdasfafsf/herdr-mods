@@ -2,6 +2,8 @@
 
 import importlib.util
 import pathlib
+import json
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -12,6 +14,54 @@ spec.loader.exec_module(usage)
 
 
 class UsageTests(unittest.TestCase):
+    def test_codex_protocol_keeps_reset_credit_details(self):
+        credits = {"availableCount": 2, "credits": [{"id": "credit-one", "status": "available",
+                   "title": "Bonus reset", "description": "Plan reset", "grantedAt": 100, "expiresAt": 300}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = pathlib.Path(tmp) / "codex"
+            fake.write_text(f"#!{sys.executable}\n" + '''import sys, json
+for line in sys.stdin:
+    request = json.loads(line)
+    if request.get('id') == 2:
+        assert request['method'] == 'account/rateLimits/read'
+        assert request['params']['excludeResetCreditDetails'] is False
+        print(json.dumps({'id': 2, 'result': RESULT}), flush=True)
+'''.replace("RESULT", repr({"rateLimits": {"primary": {"usedPercent": 10}}, "rateLimitResetCredits": credits})))
+            fake.chmod(0o755)
+            with patch.object(usage, "codex_bin", return_value=str(fake)):
+                got, error = usage.ask_codex()
+            self.assertIsNone(error)
+            self.assertEqual(got["resetCredits"], credits)
+
+    def test_reset_credit_unknown_zero_count_only_and_partial_details(self):
+        for value in [None, {}, {"availableCount": -1}, {"availableCount": True}]:
+            self.assertIsNone(usage.reset_credits(value))
+        self.assertEqual(usage.reset_credits({"availableCount": 0, "credits": []}), {"availableCount": 0, "credits": []})
+        self.assertEqual(usage.reset_credits({"availableCount": 3}), {"availableCount": 3, "credits": None})
+        self.assertEqual(len(usage.reset_credits({"availableCount": 3, "credits": [{"id": "one"}, None]})["credits"]), 1)
+
+    def test_codex_credit_cache_failure_recovery_and_newer_rollout(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(usage, "LIVE", str(pathlib.Path(tmp) / "codex.json")):
+            result = {"primary": {"usedPercent": 10, "windowDurationMins": 300},
+                      "resetCredits": {"availableCount": 2, "credits": None}}
+            with patch.object(usage, "ask_codex", return_value=(result, None)), patch.object(usage.time, "time", return_value=1000):
+                initial = usage.codex_live(True)
+            with patch.object(usage, "ask_codex", return_value=(None, "offline")):
+                failed = usage.codex_live(True)
+            self.assertEqual(failed["resetCredits"], initial["resetCredits"])
+            self.assertEqual(failed["resetCredits"]["updated"], 1000)
+            logged = {"updated": 2000, "windows": [{"name": "5h", "used": 30}]}
+            with patch.object(usage, "codex_live", return_value=failed), patch.object(usage, "codex", return_value=logged):
+                combined = usage.codex_now()
+            self.assertEqual(combined["windows"], logged["windows"])
+            self.assertEqual(combined["resetCredits"]["updated"], 1000)
+            result["resetCredits"] = {"availableCount": 0, "credits": []}
+            with patch.object(usage, "ask_codex", return_value=(result, None)):
+                self.assertEqual(usage.codex_live(True)["resetCredits"]["availableCount"], 0)
+            result.pop("resetCredits")
+            with patch.object(usage, "ask_codex", return_value=(result, None)):
+                self.assertIsNone(usage.codex_live(True)["resetCredits"])
+
     def test_fable_zero_and_malformed_windows(self):
         wins = usage.claude_windows({
             "five_hour": {"utilization": 11, "resets_at": 1794202200},

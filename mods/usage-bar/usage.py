@@ -2,10 +2,13 @@
 """How much of their plan's limits Claude Code and Codex have used, for the usage-bar mod.
 
     usage.py [--now] [claude-snapshot.json]      (--now: ask both agents now)
+    usage.py --use-reset-credit CREDIT_ID IDEMPOTENCY_KEY  (explicit user action only)
 
 Prints one JSON object:
     { "claude": { "updated": unix s, "windows": [ { "name", "used" 0-100, "resets" unix s | null } ] } | null,
-      "codex":  { "updated": unix s, "plan": str | null, "windows": [...] } | null }
+      "codex":  { "updated": unix s, "plan": str | null, "windows": [...],
+                  "resetCredits": { "availableCount": int, "credits": list | null,
+                                    "updated": unix s } | null } | null }
 
 Where it comes from (nothing here reads a login or talks to a server itself):
 - Claude Code hands its status line the plan's rate limits on every refresh. hm-statusline, put
@@ -17,13 +20,15 @@ Where it comes from (nothing here reads a login or talks to a server itself):
   an experimental Claude interface; older clients fall back to the snapshots.
 - Codex: asked of Codex itself, at most every LIVE_EVERY seconds: `codex app-server` (its
   JSON-RPC over stdio) answers account/rateLimits/read with its own login, as its /status
-  does; only that read, nothing that spends or changes anything. The answer is kept in
+  does; polling only reads, nothing that spends or changes anything. The answer is kept in
   ~/.herdr/usage/codex.json between asks. Without it (no codex, offline, logged out), its
   session rollouts (~/.codex/sessions/YYYY/MM/DD/*.jsonl, event_msg token_count .rate_limits):
   the last one of the newest rollout that has one, which only moves while a turn runs (a
   limit reached stops turns, so a rollout can show an old, lower number).
 With --now, `refresh` reports each direct query outcome even when stale fallback data
 is returned (including transient Codex failures normally hidden in the bar).
+Only --use-reset-credit invokes account/rateLimitResetCredit/consume, with an explicit
+credit ID and a retry-stable idempotency key, then reads updated limits.
 "updated" says when the oldest displayed window was read; cached windows keep their age.
 Claude's snapshot is written by every Claude Code session's statusline, so an idle one can
 overwrite it with what it last heard. Within one window (the same reset time) a session's
@@ -35,6 +40,7 @@ direct answers also pass through unchanged.
 """
 
 import json
+import hashlib
 import fcntl
 import math
 import os
@@ -174,43 +180,142 @@ def codex_bin():
     return None
 
 
-def ask_codex():
-    """Codex's own rate limits now (account/rateLimits/read): (limits, None), or (None, why not)."""
+def reset_credits(value):
+    """Keep unknown distinct from zero, and count-only distinct from empty details."""
+    if not isinstance(value, dict):
+        return None
+    count = value.get("availableCount")
+    if type(count) is not int or count < 0:
+        return None
+    rows = value.get("credits")
+    details = None
+    if isinstance(rows, list):
+        details = []
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+                continue
+            details.append({"id": row["id"], "status": row.get("status", "unknown"),
+                            "grantedAt": epoch(row.get("grantedAt")), "expiresAt": epoch(row.get("expiresAt")),
+                            "title": row.get("title") if isinstance(row.get("title"), str) else None,
+                            "description": row.get("description") if isinstance(row.get("description"), str) else None})
+    return {"availableCount": count, "credits": details}
+
+
+def codex_rpc(method, params):
+    """One bounded CLI request. Only the explicit use-credit command can consume."""
     exe = codex_bin()
     if not exe:
         return None, "codex isn't installed"
     try:
-        p = subprocess.Popen([exe, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        p = subprocess.Popen([exe, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except OSError as e:
         return None, f"couldn't start codex app-server ({e.strerror or e})"
     try:
-        for o in ({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"clientInfo": {"name": "herdr-usage-bar", "version": "1"}}},
+        for o in ({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"clientInfo": {"name": "herdr-usage-bar", "version": "1"}, "capabilities": {"experimentalApi": True}}},
                   {"jsonrpc": "2.0", "method": "initialized"},
-                  {"jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read", "params": {"excludeResetCreditDetails": True}}):
-            p.stdin.write(json.dumps(o) + "\n")
+                  {"jsonrpc": "2.0", "id": 2, "method": method, "params": params}):
+            p.stdin.write((json.dumps(o) + "\n").encode())
         p.stdin.flush()
-        end = time.time() + LIVE_WAIT
-        while time.time() < end:
+        end, buf = time.monotonic() + LIVE_WAIT, b""
+        while time.monotonic() < end:
             ready, _, _ = select.select([p.stdout], [], [], 0.5)
             if not ready:
                 continue
-            line = p.stdout.readline()
-            if not line:
+            chunk = os.read(p.stdout.fileno(), 65536)
+            if not chunk:
                 return None, "codex app-server stopped before answering"
-            try:
-                o = json.loads(line)
-            except ValueError:
-                continue
-            if o.get("id") == 2:
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    o = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(o, dict) or o.get("id") != 2:
+                    continue
                 if o.get("error"):
-                    return None, f"Codex said: {(o['error'].get('message') or 'error')[:120]}"  # e.g. logged out, offline
-                got = (o.get("result") or {}).get("rateLimits")
-                return (got, None) if got else (None, "Codex answered without limits")
+                    return None, f"Codex said: {(o['error'].get('message') or 'error')[:120]}"
+                result = o.get("result")
+                return (result, None) if isinstance(result, dict) else (None, "Codex returned an invalid response")
         return None, f"no answer in {LIVE_WAIT}s (offline?)"
     except OSError as e:
         return None, f"talking to codex failed ({e.strerror or e})"
     finally:
         p.kill()
+        p.wait()
+        p.stdin.close()
+        p.stdout.close()
+
+
+def ask_codex():
+    """Read current limits and reset-credit details; never consume anything."""
+    result, error = codex_rpc("account/rateLimits/read", {"excludeResetCreditDetails": False})
+    if error:
+        return None, error
+    got = result.get("rateLimits")
+    if isinstance(got, dict):
+        return {**got, "resetCredits": reset_credits(result.get("rateLimitResetCredits"))}, None
+    return None, "Codex answered without limits"
+
+
+def reset_log(event, credit_id, attempt, **details):
+    """Local audit trail only: no credentials, prompts or raw credit identifiers."""
+    path = os.path.join(os.path.dirname(LIVE), "reset-credits.jsonl")
+    if os.path.exists(path) and os.path.getsize(path) >= 1024 * 1024:
+        os.replace(path, path + ".1")
+    entry = {"at": datetime.now().astimezone().isoformat(timespec="seconds"), "event": event,
+             "credit": hashlib.sha256(credit_id.encode()).hexdigest()[:12], "attempt": attempt, **details}
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as stream:
+        stream.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    return path
+
+
+def use_reset_credit(credit_id, attempt):
+    """Redeem one explicitly selected credit. Retry uses the same idempotency key.
+
+    Always send creditId, so an ambiguous response can never spend a different
+    credit on retry. The lock prevents overlapping requests from multiple views.
+    """
+    if not credit_id or not attempt or len(credit_id) > 512 or len(attempt) > 128:
+        return {"reset": {"ok": False, "error": "Choose a reset credit and try again."}}
+    os.makedirs(os.path.dirname(LIVE), exist_ok=True)
+    with open(LIVE + ".reset.lock", "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {"reset": {"ok": False, "error": "Another reset is in progress."}}
+        try:
+            log_path = reset_log("requested", credit_id, attempt)
+        except OSError:
+            return {"reset": {"ok": False, "error": "Couldn't write the reset log. No reset request was sent."}}
+        started = time.monotonic()
+        result, error = codex_rpc("account/rateLimitResetCredit/consume", {"creditId": credit_id, "idempotencyKey": attempt})
+        log_error = None
+        try:
+            reset_log("response" if not error else "request_failed", credit_id, attempt,
+                      durationMs=round((time.monotonic() - started) * 1000),
+                      outcome=(result or {}).get("outcome"), error=error)
+        except OSError:
+            log_error = "The response couldn't be saved to the reset log."
+        audit = {"logPath": log_path, **({"logError": log_error} if log_error else {})}
+        if error:
+            return {"reset": {"ok": False, "error": error + ". Retry the same credit to check the result."}, **audit}
+        outcome = result.get("outcome")
+        if outcome not in ("reset", "nothingToReset", "noCredit", "alreadyRedeemed"):
+            return {"reset": {"ok": False, "error": "Unknown reset result. Retry the same credit to check."}, **audit}
+        status = {}
+        try:
+            current = codex_now(True, status)
+        except (OSError, ValueError):
+            current = None
+            status.update(ok=False, error="Couldn't refresh usage after the reset")
+        try:
+            reset_log("usage_refresh", credit_id, attempt, ok=status.get("ok", False), error=status.get("error"))
+        except OSError:
+            audit["logError"] = "The usage refresh couldn't be saved to the reset log."
+        return {"reset": {"ok": True, "outcome": outcome}, "codex": current, "refresh": status, **audit}
 
 
 def codex_live(now=False, status=None):
@@ -236,9 +341,12 @@ def codex_live(now=False, status=None):
             mins = w.get("windowDurationMins") or 0
             name = "5h" if mins <= 300 else "7d" if mins >= 10000 else f"{round(mins / 60)}h"
             wins.append({"name": name, "used": float(w["usedPercent"]), "resets": epoch(w.get("resetsAt"))})
-    if not wins:
+    credits = lim.get("resetCredits")
+    if not wins and credits is None:
         return None
-    return {"updated": kept.get("updated"), "plan": lim.get("planType"), "windows": wins, "reached": bool(lim.get("rateLimitReachedType")), **({"error": kept["error"]} if kept.get("error") else {})}
+    return {"updated": kept.get("updated"), "plan": lim.get("planType"), "windows": wins,
+            "resetCredits": {**credits, "updated": kept.get("updated")} if credits is not None else None,
+            "reached": bool(lim.get("rateLimitReachedType")), **({"error": kept["error"]} if kept.get("error") else {})}
 
 
 def codex_now(now=False, status=None):
@@ -246,7 +354,9 @@ def codex_now(now=False, status=None):
     live, logged = codex_live(now, status), codex()
     if live and (not logged or live["updated"] >= logged["updated"]):
         return live
-    return logged or live
+    # Rollouts can have newer usage but do not carry reset credits. Preserve their
+    # independently dated direct reading instead of hiding it whenever a turn runs.
+    return {**logged, "resetCredits": live.get("resetCredits")} if logged and live else logged or live
 
 
 def ask_claude():
@@ -373,6 +483,11 @@ def claude_now(snapshot, now=False, status=None):
 
 
 def main(argv):
+    if argv and argv[0] == "--use-reset-credit":
+        if len(argv) != 3:
+            raise SystemExit("usage.py --use-reset-credit CREDIT_ID IDEMPOTENCY_KEY")
+        print(json.dumps(use_reset_credit(argv[1], argv[2])))
+        return
     now = "--now" in argv
     rest = [a for a in argv if a != "--now"]
     snapshot = rest[0] if rest else os.path.join(HERDR_STATE, "usage", "claude.json")
