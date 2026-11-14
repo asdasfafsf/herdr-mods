@@ -1,12 +1,13 @@
+import { overviewHeader } from "./overview-header.js";
 // A full-width, searchable view of all live agents. The sidebar remains the owner
 // of ordering/seen state; viewing this screen never rewrites those settings.
 import { div, image, svg } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
+import { v_flex, h_flex, InputState, Scrollbar } from "gpui-base";
 import { agents, terminals, panes, spaces, focused, shared, theme, props, run, window } from "herdr";
 import { AGENT_INFO, ACKED, OPTIONS, TREES, LIVE } from "./state.js";
 import { shownStatus, seenFor, statusMark, statusColor, button, footer, agoText } from "./ui.js";
 import { inside } from "./places.js";
-import { initAgentTheme, agentTheme, themeControls, agentSprite } from "./agent-theme.js";
+import { initAgentTheme, agentTheme, agentSprite } from "./agent-theme.js";
 import { renderVillage, villageDetails } from "./village.js";
 import { openAgentMode, leaveAgentMode, inAgentMode, applyModeTheme, agentViewVisible } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
@@ -180,32 +181,10 @@ export function renderAgentView(view) {
     cardRows.push(h_flex().gap(14).flex_none().children(chunk.map((row) => agentCard(view, row, t)))
       .children(Array.from({ length: columns - chunk.length }, () => div().flex_1().min_w(0))));
   }
-  return v_flex().id("agent-view").track_focus(view.handle).relative().size_full().p(24).gap(18).bg(t.background).text_size(12.5)
+  return v_flex().id("agent-view").track_focus(view.handle).relative().size_full().bg(t.background).text_size(12.5)
     .on_size_change((size, cx) => { if (view.width !== size.width) { view.width = size.width; cx.notify(); } })
-    .child(h_flex().items_center().gap(12).flex_wrap()
-      .child(v_flex().flex_1().gap(5)
-        .child(div().text_size(24).font_semibold().text_color(t.foreground).child("Agents"))
-        .child(div().text_size(12).text_color(t.muted).child(inAgentMode() ? "Sessions and activity in this workspace" : "Every agent. Every project. Live activity in one place.")))
-      .child(themeControls(view, t))
-      .when(canGoBack, (el) => el.child(button("overview-back", "Back to work", () => run("pane.focus", { pane: back }), t)))
-      .child(button("overview-refresh", view.readingOutside ? "Refreshing…" : "Refresh", (cx) => view.readOutside(cx), t, { disabled: view.readingOutside })))
-    .child(Input.new(view.input).h(36).px(12).items_center().rounded(7).border(1).border_color(t.border).bg(t.background).text_color(t.foreground))
-    .child(h_flex().gap(8).children(STATES.map(([key, label]) => {
-      const count = key === "all" ? scope.length : scope.filter((row) => row.status === key).length;
-      return v_flex().id(`overview-status-${key}`).flex_1().p(10).gap(5).rounded(7).border(1).border_color(view.statusFilter === key ? t.accent : t.border)
-        .bg(view.statusFilter === key ? t.selected : t.background).cursor_pointer().hover((style) => style.bg(t.hover))
-        .on_click((_e, cx) => { view.statusFilter = key; view.page = 0; cx.notify(); })
-        .child(div().text_size(11).text_color(t.muted).child(label))
-        .child(div().text_size(20).font_semibold().text_color(statusColor(t, key) ?? t.foreground).child(String(count)));
-    })))
-    .child(h_flex().gap(5).items_center()
-      .children(SOURCES.map(([key, label]) => div().id(`overview-source-${key}`).px(10).py(5).rounded(5).cursor_pointer()
-        .text_color(view.sourceFilter === key ? t.foreground : t.muted).when(view.sourceFilter === key, (el) => el.bg(t.selected))
-        .hover((style) => style.bg(t.hover)).on_click((_e, cx) => { view.sourceFilter = key; view.page = 0; cx.notify(); }).child(label)))
-      .child(div().flex_1())
-      .child(div().text_size(11).text_color(t.dim).child(`${rows.length} of ${all.length} agents`)))
-    .when(Boolean(view.outsideError), (el) => el.child(div().text_size(11).text_color(t.working).child("Couldn't refresh outside agents. Showing the last available list.")))
-    .child(div().relative().flex_1().min_h(0)
+    .child(overviewHeader(view, { t, rows, scope, states: STATES, sources: SOURCES }))
+    .child(div().relative().flex_1().min_h(0).p(16)
       .child(v_flex().id(`overview-list-${view.page}`).size_full().overflow_y_scroll().gap(14)
         .children(cardRows)
         .when(rows.length === 0, (el) => el.child(v_flex().p(28).gap(8).items_center()

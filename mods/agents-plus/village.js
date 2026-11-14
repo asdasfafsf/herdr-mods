@@ -1,9 +1,10 @@
+import { overviewHeader } from "./overview-header.js";
 // A quiet village: small status labels, speech bubbles only for unread work.
 import { div, image, svg } from "gpui-kit";
-import { h_flex, v_flex, Input, Scrollbar } from "gpui-base";
+import { h_flex, v_flex, Scrollbar } from "gpui-base";
 import { run } from "herdr";
 import { button, statusColor, statusMark } from "./ui.js";
-import { themeControls, agentSprite } from "./agent-theme.js";
+import { agentSprite } from "./agent-theme.js";
 import { selectVillageResident, renderVillageChat } from "./village-chat.js";
 
 const ART = "mods/agents-plus/assets/chiikawa";
@@ -174,8 +175,8 @@ export function villageDetails(view, row, t, states, width, openRow) {
 }
 
 export function renderVillage(view, state) {
-  const { t, all, scope, rows, visible, start, pages, back, canGoBack, states, sources, openRow } = state;
-  const width = view.villageWidth || view.width || 1100, small = width < 840, narrow = width < 660;
+  const { t, all, rows, visible, start, pages, states, openRow } = state;
+  const width = view.villageWidth || view.width || 1100;
   const layout = villageLayout(width, view.villageHeight || 660, visible.length, visible.filter(villageNotice).length);
   const selected = visible.find((row) => row.id === view.villageSelected);
   if (!selected) view.villageSelected = null;
@@ -183,34 +184,11 @@ export function renderVillage(view, state) {
   // Discard departed sessions, but keep off-page/filtered residents in place.
   if (view.villageActors) for (const id of view.villageActors.keys()) if (!all.some((row) => row.id === id)) view.villageActors.delete(id);
   const residents = advanceVillage(view, visible, layout);
-  const filtering = Boolean(view.input.value().trim() || view.statusFilter !== "all" || view.sourceFilter !== "all");
   const scrollId = `overview-list-${view.page}`;
   return v_flex().id("agent-view").track_focus(view.handle).size_full().min_h(0).bg(t.background).text_size(12)
     .on_key_down((e, cx) => { if (e.key === "escape") { view.villageSelected = null; view.villageFilters = false; cx.notify(); } })
     .on_size_change((size, cx) => { if (view.width !== size.width) { view.width = size.width; cx.notify(); } })
-    .child(v_flex().px(narrow ? 16 : 24).py(12).gap(10).flex_none().border_b(1).border_color(t.border)
-      .child(h_flex().items_center().gap(12)
-        .child(div().text_size(18).font_semibold().text_color(t.foreground).child("치이카와 마을"))
-        .child(div().flex_1().text_size(11).text_color(t.muted).child(`${rows.length}명`))
-        .child(button("village-filters", filtering ? "검색·필터 적용 중" : "검색·필터", (cx) => { view.villageFilters = !view.villageFilters; cx.notify(); }, t)))
-      .child(themeControls(view, t))
-      .when(view.villageFilters, (el) => el.child(v_flex().id("village-filter-panel").gap(10).pt(4)
-        .child(Input.new(view.input).h(34).px(10).items_center().rounded(7).border(1).border_color(t.border).bg(t.raised).text_color(t.foreground))
-        .child(h_flex().gap(5).flex_wrap().children(states.map(([key, label]) => {
-          const count = key === "all" ? scope.length : scope.filter((row) => row.status === key).length;
-          return div().id(`overview-status-${key}`).px(9).py(6).rounded(5).text_size(11).cursor_pointer()
-            .bg(view.statusFilter === key ? t.selected : t.background).text_color(t.foreground).hover((el) => el.bg(t.hover))
-            .on_click((_e, cx) => { view.statusFilter = key; view.page = 0; cx.notify(); }).child(`${label} ${count}`);
-        })))
-        .child(h_flex().gap(5).items_center().flex_wrap()
-          .children(sources.map(([key, label]) => div().id(`overview-source-${key}`).px(9).py(5).rounded(5).cursor_pointer()
-            .text_size(11).text_color(view.sourceFilter === key ? t.foreground : t.muted)
-            .when(view.sourceFilter === key, (el) => el.bg(t.selected)).hover((el) => el.bg(t.hover))
-            .on_click((_e, cx) => { view.sourceFilter = key; view.page = 0; cx.notify(); }).child(label)))
-          .child(div().flex_1())
-          .child(button("overview-refresh", view.readingOutside ? "Refreshing…" : "Refresh", (cx) => view.readOutside(cx), t, { disabled: view.readingOutside }))
-          .when(canGoBack && !small, (el) => el.child(button("overview-back", "Back to work", () => run("pane.focus", { pane: back }), t))))))
-      .when(Boolean(view.outsideError), (el) => el.child(div().text_size(11).text_color(t.blocked).child("Couldn't refresh outside agents. Showing the last available list."))))
+    .child(overviewHeader(view, state))
     .child(div().relative().flex_1().min_h(0).overflow_hidden()
       .on_size_change((size, cx) => { if (view.villageWidth !== size.width || view.villageHeight !== size.height) { view.villageWidth = size.width; view.villageHeight = size.height; cx.notify(); } })
       .child(div().id(scrollId).size_full().overflow_y_scroll()

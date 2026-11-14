@@ -3,7 +3,7 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { layout, shared, setShared, run, props, theme, focused, panes } from "herdr";
-import { THEMES } from "./themes.js";
+import { THEMES, VIEW_LAYOUTS } from "./themes.js";
 
 export const VIEW_STACK = "workspace-views";
 export const AGENT_VIEW = "agent-world";
@@ -71,6 +71,10 @@ export function renderViewSwitch() {
         .id(value ? "workspace-view-agent" : "workspace-view-terminal").px(12).py(4).rounded(5).text_size(11)
         .text_color(agent === value ? t.foreground : t.muted).when(agent === value, (el) => el.bg(t.selected))
         .cursor_pointer().hover((el) => el.bg(t.hover)).on_click(() => setWorkspaceView(value)).child(label))))
+    .when(agent && workspaceTheme() === "chiikawa", (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
+      .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(10).py(4).rounded(5).text_size(11)
+        .text_color(t.foreground).when((shared("ag.presentation") || "village") === key, (el) => el.bg(t.selected))
+        .cursor_pointer().hover((el) => el.bg(t.hover)).on_click(() => setShared("ag.presentation", key)).child(label)))))
     .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted)
       .child(pane?.title || "Select a session"))
     .child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)

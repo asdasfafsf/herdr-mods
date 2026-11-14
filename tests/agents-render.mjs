@@ -72,7 +72,7 @@ async function environment(data, revision) {
     shared: key => cloneRead(`shared:${key}`, data.state[key]), setShared: (key, value) => { data.state[key] = structuredClone(value); writes.push([key,value]); },
     setAgentOrder: value => writes.push(['setAgentOrder',value]),
     focused: () => data.focused ?? ({agent:'t0',terminal:'t0',pane:'p0',tab:'b0'}), layout: () => data.layout ?? ({id:'root',type:'row',children:[{id:'sidebar',size:{px:data.collapsed ? 76 : 268}},{id:'main',type:'block',content:{tab:'active'}}]}), layouts:()=>data.layouts ?? ['main'], props: () => data.props ?? {}, theme: () => theme, window: () => ({active:data.windowActive ?? true}),
-    run: (...args) => {writes.push(['run',args]);if(args[0]==='layout.set') data.layout=structuredClone(args[1].layout); if(args[0]==='layout.clone') {data.state.layout=args[1].as;data.layouts=['main',args[1].as];}if(args[0]==='layout.switch') data.state.layout=args[1].name; if(args[0]==='layout.select') findNode(data.layout,args[1].stack).active=args[1].child;}, openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => '',
+    run: (...args) => {writes.push(['run',args]);if(args[0]==='layout.set') data.layout=structuredClone(args[1].layout); if(args[0]==='layout.clone') {data.state.layout=args[1].as;data.layouts=['main',args[1].as];}if(args[0]==='layout.switch') data.state.layout=args[1].name; if(args[0]==='layout.select') findNode(data.layout,args[1].stack).active=args[1].child;}, openOverlay: value => writes.push(['openOverlay',value]), closeOverlay: value => writes.push(['closeOverlay',value]), exec: async (...args) => { commands.push(args); return data.execHook ? data.execHook(...args) : ({code:0,stdout:'[]'}); }, appHome: () => '/example/app', home: () => '/example', readTextFile: async () => data.settingsRaw ?? '{}', writeTextFile: async (_path, text, expected) => { assert.equal(expected, data.settingsRaw ?? '{}'); data.settingsRaw=text; },
   };
   const store = new Map();
   const context = vm.createContext({ console, Date: class extends Date { static now() { return now + (data.elapsed ?? 0); } }, localStorage: { getItem:k => store.get(k), setItem:(k,v) => store.set(k,v), removeItem:k => store.delete(k) } });
@@ -203,7 +203,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   env.instance.input.text='no match';
   assert.match(JSON.stringify(env.render()),/No matching agents/);
   env.instance.input.text='';
-  env.click('overview-status-blocked');
+  env.click('village-filters');env.render();env.click('overview-status-blocked');
   const filtered=JSON.stringify(env.render());
   assert.ok(filtered.includes('overview-t3'));
   assert.ok(!filtered.includes('overview-t0"'));
@@ -227,7 +227,7 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   const pageTwo=JSON.stringify(paged.render());
   assert.notEqual(pageOne,pageTwo);
   assert.equal(paged.instance.page,1);
-  paged.click('overview-status-idle');paged.render();
+  paged.click('village-filters');paged.render();paged.click('overview-status-idle');paged.render();
   assert.equal(paged.instance.page,0,'filter changes return to the first page');
 }
 
@@ -326,10 +326,10 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.ok(output.includes('overview-t1') && !output.includes('overview-t2"'),'previous quiet selection disappears');
   env.click('overview-t0');
   assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
-  env.render();env.click('overview-layout-cards');
+  env.mode.renderViewSwitch();env.click('overview-layout-cards');env.timers.get(50)();
   output=JSON.stringify(env.render());
   assert.ok(!output.includes('chiikawa-village') && output.includes('chiikawa/'),'cards keep the theme characters');
-  env.click('overview-layout-village');env.mode.renderViewSwitch();env.click('workspace-theme-default');env.timers.get(50)();
+  env.mode.renderViewSwitch();env.click('overview-layout-village');env.timers.get(50)();env.mode.renderViewSwitch();env.click('workspace-theme-default');env.timers.get(50)();
   assert.equal(data.layout.colors,undefined,'default restores the original layout palette');
   env.mode.renderViewSwitch();env.click('workspace-theme-chiikawa');env.timers.get(50)();
   env.mode.leaveAgentMode();
@@ -337,11 +337,11 @@ for (const [name,count,grouped,collapsed,depth] of [['normal',40,false,false,1],
   assert.equal(data.state.layout,'herdr-worktrees','switching presentation keeps the same workspace');
   assert.equal(findNode(data.layout,'workspace-views').active,'main','terminal presentation restores the original tab tree');
   assert.equal(data.focused.terminal,'t1','presentation does not choose another session');
-  assert.equal(env.writes.some(([,args])=>['layout.clone','layout.switch','tab.new'].includes(args[0])),false);
+  assert.equal(env.writes.some(([,args])=>['layout.clone','layout.switch','tab.new'].includes(args?.[0])),false);
   env.mode.openAgentMode();
   assert.equal(findNode(data.layout,'workspace-views').active,'agent-world');
   env.render();env.click('overview-child-0-0');
-  assert.equal(env.writes.some(([,args])=>args[0]==='terminal.peek'),false,'child selection must not expose a terminal');
+  assert.equal(env.writes.some(([,args])=>args?.[0]==='terminal.peek'),false,'child selection must not expose a terminal');
   console.log('Agent mode: shared palette, cards/village, quiet visibility, bidirectional focus and exit passed');
 }
 
@@ -499,7 +499,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       for (const name of ['state','ui','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','agent-theme','theme-assets','themes','agent-mode','village','village-chat']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','themes','agent-mode','village','village-chat']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
@@ -510,7 +510,7 @@ export const agents=()=>copy(data.agents), terminals=()=>copy(data.terminals), s
 export const shared=k=>copy(data.state[k]), setShared=(k,v)=>{data.state[k]=v}, setAgentOrder=()=>{};
 export const focused=()=>({agent:'t0',terminal:'t0',tab:'b0'}), layout=()=>({id:'sidebar',size:{px:268}}), layouts=()=>['main'], props=()=>({mode:'${mode.startsWith('chiikawa')?'overview':mode}'}), window=()=>({active:true});
 export const theme=()=>Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5','popover','background'].map(k=>[k,'#123456']));
-export const run=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'';
+export const run=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'{}',writeTextFile=async()=>{};
 export const outside=data.outside;
 `);
       writeFileSync(resolve(directory,'main.js'),`

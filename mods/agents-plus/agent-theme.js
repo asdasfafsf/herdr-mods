@@ -1,7 +1,7 @@
 // Both themes share the overview's sessions, filters, pagination and actions.
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { props, panes, focused } from "herdr";
+import { props, panes, focused, shared } from "herdr";
 import { SPRITES } from "./theme-assets.js";
 import { THEMES, VIEW_LAYOUTS, themeTokens } from "./themes.js";
 import { inAgentMode, agentViewVisible, applyModeTheme, workspaceTheme } from "./agent-mode.js";
@@ -13,7 +13,7 @@ export const RESIDENTS = THEMES.chiikawa.residents;
 export function initAgentTheme(view, cx) {
   const saved = inAgentMode() ? workspaceTheme() : props()?.skin || localStorage.getItem("overview.theme");
   view.skin = SKINS.some(([key]) => key === saved) ? saved : "default";
-  view.presentation = localStorage.getItem("overview.chiikawaLayout") === "cards" ? "cards" : "village";
+  view.presentation = (inAgentMode() ? shared("ag.presentation") : localStorage.getItem("overview.chiikawaLayout")) === "cards" ? "cards" : "village";
   view.themeClock = 0;
   view.motionPaused = localStorage.getItem("overview.motionPaused") === "true";
   view.overviewTab = panes().find((pane) => pane.mod === "agents-plus")?.tab;
@@ -23,6 +23,8 @@ export function initAgentTheme(view, cx) {
     previous = now;
     const saved = inAgentMode() ? workspaceTheme() : localStorage.getItem("overview.theme");
     if (inAgentMode() && THEMES[saved] && saved !== view.skin) { view.skin = saved; cx.notify(); }
+    const presentation = shared("ag.presentation") || "village";
+    if (inAgentMode() && view.presentation !== presentation) { view.presentation = presentation; cx.notify(); }
     if (view.skin !== "chiikawa" || view.motionPaused) return;
     // A slow render is not a hidden pane. In particular, typing or another
     // busy mod may leave a gap longer than 300ms while this tab is still shown.
@@ -47,7 +49,7 @@ export function themeControls(view, t) {
         .text_size(11).text_color(view.skin === key ? t.foreground : t.muted)
         .when(view.skin === key, (el) => el.bg(t.selected)).cursor_pointer().hover((el) => el.bg(t.hover))
         .on_click((_e, cx) => { view.skin = key; localStorage.setItem("overview.theme", key); applyModeTheme(key); cx.notify(); }).child(label)))))
-    .when(view.skin === "chiikawa", (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
+    .when(view.skin === "chiikawa" && !inAgentMode(), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
       .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(8).py(5).rounded(5).text_size(11)
         .text_color(t.foreground).when(view.presentation === key, (el) => el.bg(t.selected)).cursor_pointer()
         .on_click((_e, cx) => { view.presentation = key; localStorage.setItem("overview.chiikawaLayout", key); cx.notify(); }).child(label)))))

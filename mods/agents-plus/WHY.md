@@ -34,3 +34,5 @@ Herdr 가 띄운 에이전트를 상태별·우선순위로 보여준다. 본 do
 
 ## 옮길 때 가져갈 것
 없다(매번 프로세스에서 다시 찾는다).
+
+- 카드/마을은 `overview-header.js`의 동일한 헤더를 사용한다. `Cards / Village`는 공통 작업공간 상단 바에서 고정된 위치로 제공하고 `ag.presentation`을 공유한다. 전체 테마는 mod copy마다 다른 localStorage 대신 `ag.workspaceTheme`을 사용한다.
