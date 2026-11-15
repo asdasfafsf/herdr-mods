@@ -71,6 +71,13 @@ Split → Terminal → Scene → Split 순환, 동일 세션/탭/cwd 유지, div
 PASS가 아니다. synthetic/native Cards/Village 결과와 실제 관측을 구분한다.
 대상·좌표·한계는 [Cmd+E CUA 기록](../agent-workspace-testing.md#통합-설치-후-부모-cua-관측-2026-11-15)에 있다.
 
+같은 날 부모 t28은 `4c331f5` 설치본에서 Saved sessions 5의 최초 접힘,
+헤더 클릭 후 5개 행과 Recent history 표시, Saved 전용 Refresh의
+Reading… → Refresh 완료 후 펼침 유지, 다시 접고 Refresh한 뒤 접힘 유지까지
+직접 관측했다. 마지막 상태는 접힘이며 행 클릭/resume는 하지 않았다.
+CUA 재연결과 기존 창 Raise만 했고 앱 실행/재시작은 없었다.
+범위와 설치 해시는 [Saved CUA 기록](../saved-sessions.md#설치-후-부모-cua-관측-2026-11-15)에 있다.
+
 다른 앱 이식 시에는 위 가상 데이터를 표시한 별도 테스트 공간을 사용해 다음 캡처를 남긴다. 실제 계정의 대화/키/식별자는 넣지 않는다.
 
 | 산출 파일 예 | 조건 | 확인할 사례 |

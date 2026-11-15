@@ -103,5 +103,26 @@ Saved 기본 접힘·명시적 선택 유지 합성 검사, `test_saved_sessions
 모두 통과했다. 최초 실패를 전체 suite 통과로 바꿔 기록하지 않는다.
 
 Native 검사는 임시 합성 mod의 초기 렌더 검사이며 실제 화면·입력·localStorage의
-지속성을 검증하지 않는다. Saved의 실제 CUA 검증은 조정자 t28에게 남겨 두며,
-그 승인 전에는 이 단위를 main에 push하지 않는다.
+지속성을 검증하지 않는다. 아래 부모 CUA 관측은 이 검사와 별도 증거다.
+
+## 설치 후 부모 CUA 관측 (2026-11-15)
+
+조정자 t28은 `4c331f5` 설치본의 실행 중인 Herdr에서 다음을 직접 관측하고
+Saved 단위의 main push를 승인했다. 통합 worker는 부모의 보고를 기록했으며
+GUI를 조작하지 않았다.
+
+- 최초 `Saved sessions 5`와 우측 chevron이 접힌 상태였다.
+- 헤더 클릭 뒤 5개 행과 `Recent history`가 표시됐다.
+- Saved 전용 Refresh를 누른 뒤 `Reading…`에서 `Refresh`로 완료됐고 펼침을 유지했다.
+- 다시 접고 Refresh를 완료한 뒤에도 count 5, chevron, 행 숨김 상태를 유지했다.
+  마지막 상태는 접힘이었다.
+
+CUA 연결의 일시적 `noWindowsAvailable`은 실행 중인 동일 앱 경로에 재연결하고
+기존 창을 Raise하여 해결했다. 앱 실행이나 재시작은 하지 않았다. 행 클릭·resume·
+메시지·승인·앱/core 재시작·reset 실행은 없었다. 실제 관측은 이 창의 헤더와
+읽기 전용 Refresh 동작에 한정하며, 앱 재시작 이후 설정 지속성이나 세션 재개를
+검증한 것으로 확대하지 않는다.
+
+설치된 `agents-plus/main.js` SHA-256은
+`580f65547f056be480fc72d7eed70d951ccf36cc77ff06b351d8f106ff99ad6f`이며,
+승인 후 push 준비 시 기존 설치 manifest 790개 항목이 그대로 일치함을 확인했다.
