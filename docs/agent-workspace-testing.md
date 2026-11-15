@@ -279,3 +279,30 @@ native 초기 렌더 목록에 20px `terminal-toolbar`를 포함한다.
 검증 명령은 `python3 scripts/test-agent-workspace.py --native --seed 20261116`이다.
 이 검사는 임시 fixture만 사용한다. 변경본 설치와 CUA 실제 화면 확인은
 조정자의 통합 단계에서 수행하며, 실제 세션 입력·앱/core/session 재시작은 없다.
+
+### 통합 설치 후 부모 CUA 관측 (2026-11-15)
+
+부모 조정자 t28은 `628f077`을 통합한 HEAD
+`58163307a53b29b65f1273d9bb7d3ea6ec027a72` 설치본에서 핵심 CUA PASS를 보고했다.
+검증 대상은 실제 `saved-sessions-collapsed` 워크트리의 t29 세션이다.
+
+- 초기 Split에서 Cmd+E로 전체 실제 터미널인 Terminal, 다시 Cmd+E로 마을과
+  최소 toolbar만 보이는 Scene, 다시 Cmd+E로 Split에 돌아오는 것을 관측했다.
+- 이 순환에서 세션·탭·cwd가 동일하게 유지됐다.
+- divider를 보고된 좌표 y1533에서 y1168로 드래그해 비율을 변경한 뒤,
+  Cmd+E를 세 번 연속 눌러 Split에 돌아왔을 때 변경한 비율이 유지됐다.
+- Chiikawa 팔레트와 리소스 팩이 유지됐다.
+
+추가 Cards 버튼 클릭은 동시 사용자 입력 때문에 CUA가 action을 거절했다.
+따라서 **이번 실제 Cards 클릭은 PASS로 기록하지 않는다**. 기존 Cards/Village
+native 요소 설명 및 synthetic 반복 순환 검사는 별도의 증거이며, 이 거절된
+실제 동작을 대신 확인한 것으로 주장하지 않는다. 다른 provider, 실제 승인
+입력, 확대 배율이나 앱 재시작 후 복원도 이번 관측 범위에 포함하지 않는다.
+
+통합 worker는 GUI를 조작하지 않고 부모의 관측 보고를 기록했다. 설치에서는
+agents-plus와 Cmd+E 키만 갱신했으며 기존 layout 파일을 변경하지 않았다.
+설치 전후 native check와 결합 검사 29개, YOLO argv 81개 사례가 통과했고,
+설치된 790개 파일/키 항목 manifest의 집계 SHA-256은
+`15bb74bab728b3ea7a8a6651bca002ebb7eadb1ec345be7a2b5fad89d8baba3d`다.
+앱/core/세션 재시작, 실제 세션 테스트 메시지·승인 전송, reset/redemption
+실행·mock 검사는 하지 않았다.
