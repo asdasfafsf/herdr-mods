@@ -78,6 +78,23 @@ Reading… → Refresh 완료 후 펼침 유지, 다시 접고 Refresh한 뒤 �
 CUA 재연결과 기존 창 Raise만 했고 앱 실행/재시작은 없었다.
 범위와 설치 해시는 [Saved CUA 기록](../saved-sessions.md#설치-후-부모-cua-관측-2026-11-15)에 있다.
 
+같은 날 부모 t28은 Village 비율 보정 `480b707` 설치 manifest 790개를 직접
+재검사해 mismatch 0을 확인한 뒤, `hm go village-asset-scale`로 이동하여 실제
+Herdr의 8개 세션을 관측했다. Split/Scene 모두 랏코·쿠리만쥬·시사의 과대 차이가
+줄고 일반 Usagi/Momonga 크기는 유지됐으며, 보이는 그림과 라벨을 읽을 수 있었다.
+Cards 버튼 클릭 전환과 Village 복귀가 성공했고 t2b active가 유지됐다.
+Cmd+E의 Scene → Split → Terminal → Scene → Split 왕복에서 같은 탭/cwd를
+유지했으며 마지막은 원래 Split이었다. 선택된 랏코 body를 보고된 x850 → x1230으로
+드래그하자 같은 선택 ring이 함께 이동했고, x850으로 복원했다. 다른 주민의 이동과
+문자 애니메이션도 관측했다. 메시지 입력·승인·앱/core/세션 재시작은 없었다.
+
+이는 부모의 native CUA 관측이며 통합 worker는 GUI를 조작하지 않았다. 보이는
+8개 세션 이외의 15종·추가 모션 범위는 source/synthetic 검사와 별도 HTML 13개
+자세 비교 증거로 구분하며 전체 native 검증으로 확대하지 않는다. 통합 검사는
+30/30, 그 안의 native 초기 렌더는 11/11 통과했다. 이전 Saved 검사 중단의 원인
+미확정 기록은 그대로 유지한다. 재설치 없이 확인한 설치 aggregate SHA-256은
+`c0e739af776b7ae643a133d5a0bf9fe805bdc6e44b93b88146d081ac98e1cff7`이다.
+
 다른 앱 이식 시에는 위 가상 데이터를 표시한 별도 테스트 공간을 사용해 다음 캡처를 남긴다. 실제 계정의 대화/키/식별자는 넣지 않는다.
 
 | 산출 파일 예 | 조건 | 확인할 사례 |
