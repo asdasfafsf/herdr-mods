@@ -1014,16 +1014,20 @@ console.log('saved history: below Idle, bounded pages, dedupe, independent resid
 // Optional native GPUI smoke/limit check with the SAME synthetic data. No live app
 // state is read, and these temporary mods are never installed in the user's layout.
 if (process.argv.includes('--native')) {
+  const failures=[];
+  let checked=0, baselineInterrupted=0;
   for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-cards-narrow'],[4,1,'chiikawa-approval']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
     if (process.argv.includes('--overview-only') && mode === 'sidebar') continue;
     if (revision && mode !== 'sidebar') continue;
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
     try {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
-      for (const name of ['state','ui','agent-status','resume','places',...(!revision ? ['saved-sessions'] : [])]) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      const revisionFiles=revision ? new Set(execFileSync('git',['ls-tree','-r','--name-only',revision,'lib','mods/agents-plus'],{cwd:root,encoding:'utf8'}).trim().split('\n')) : null;
+      const has=file=>revisionFiles ? revisionFiles.has(file) : existsSync(resolve(root,file));
+      for (const name of ['state','ui','agent-status','resume','places','saved-sessions']) if(has(`lib/${name}.js`)) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','pack-chiikawa','resource-packs','resource-pack-state','themes','legacy-theme','agent-mode','theme-contrast','village','village-spacing','village-chat','session-controls','approval-providers','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','sprite-motion','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
-      if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
+      for (const file of ['overview','overview-header','agent-theme','theme-assets','pack-chiikawa','resource-packs','resource-pack-state','themes','legacy-theme','agent-mode','theme-contrast','village','village-spacing','village-chat','session-controls','approval-providers','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','sprite-motion','agent-empty-state']) if(has(`mods/agents-plus/${file}.js`)) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      if (has('mods/agents-plus/render-profile.js'))
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
       data.saved = !revision && mode === 'sidebar' ? Array.from({length:12},(_,i)=>savedRow(i+1)) : [];
@@ -1041,7 +1045,7 @@ export const settings=()=>({theme:'paper',dark:false});
 export const nextCommand=()=>new Promise(()=>{});
 export const themes=()=>[{name:'paper',light:true},{name:'herdr-chiikawa',light:true},{name:'graphite',light:false},{name:'atom-one-dark',light:false}];
 export const theme=()=>Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5','popover','background'].map(k=>[k,'#123456']));
-export const run=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'{}',writeTextFile=async()=>{};
+export const run=()=>{},notify=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'{}',writeTextFile=async()=>{};
 export const outside=data.outside;
 export const saved=data.saved;
 `);
@@ -1060,8 +1064,14 @@ export default class Probe extends Agents {
 `);
       const result=spawnSync('herdr-app',['check',directory],{encoding:'utf8',timeout:10000});
       const output=result.stdout+result.stderr;
+      checked++;
       console.log('native',mode,count,'depth',depth,revision??'working-tree',JSON.stringify({passed:result.status===0,interrupted:output.includes('interrupted'),timing:output.match(/BENCH_RENDER_MS=\d+/g)}));
-      if(result.status!==0 && (!revision || !output.includes('interrupted'))) throw new Error(output);
+      if(result.status!==0 && (!revision || !output.includes('interrupted'))) {
+        failures.push(`${mode}/${count}/depth-${depth}/${revision??'working-tree'}`);
+        console.error(output);
+      } else if(result.status!==0) baselineInterrupted++;
     } finally { rmSync(directory,{recursive:true,force:true}); }
   }
+  console.log(`native scenarios: ${checked} checked, ${failures.length} failed, ${baselineInterrupted} baseline interrupted`);
+  if(failures.length) throw new Error(`Native scenarios failed: ${failures.join(', ')}`);
 }
