@@ -43,6 +43,7 @@
       }
     ],
     "keys": {
+      "cmd-e": "agents-plus.toggle_view",
       "cmd-shift-e": "agents-plus.toggle_view",
       "cmd-shift-j": "agents-plus.toggle_terminal"
     }

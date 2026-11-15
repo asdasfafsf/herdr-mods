@@ -17,7 +17,7 @@ import { renderVillage, villageDetails, dragViewport } from "./village.js";
 import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, standaloneOverviewCovered, findViewStack, AGENT_SELECTION } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
 import { initSessionControls, renderInlinePermission, sessionState } from "./session-controls.js";
-import { hasTerminalDock, openTerminalDock, COMPOSER, noteSceneSize, renderOverviewTerminalPlaceholder } from "./terminal-dock.js";
+import { hasTerminalDock, openTerminalDock, COMPOSER, noteSceneSize, renderOverviewTerminalPlaceholder, syncWorkspaceSceneFocus, currentPresentationRequest } from "./terminal-dock.js";
 
 const STATES = STATUS_FILTERS;
 const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"]];
@@ -53,10 +53,12 @@ export function initAgentView(view, cx) {
     view.selectionSequence = shared(AGENT_SELECTION)?.sequence;
     view.composerSequence = shared(COMPOSER)?.sequence;
     cx.timer.every(250, (cx) => {
+      syncWorkspaceSceneFocus(view);
       if (!agentViewVisible()) return;
       const address = focused()?.terminal;
       const composer = shared(COMPOSER);
       const requested = shared(AGENT_SELECTION);
+      if (composer && !currentPresentationRequest(composer)) view.composerSequence = composer.sequence;
       if (composer?.sequence !== view.composerSequence && composer?.address === address) {
         const row = view.overviewRows?.find((row) => row.address === address);
         if (row) {
@@ -78,7 +80,7 @@ export function initAgentView(view, cx) {
           view.selectionSequence = requested.sequence;
           view.focusedResident = address;
           revealResident(view, row, cx);
-          openTerminalDock(row.address);
+          if (currentPresentationRequest(requested)) openTerminalDock(row.address);
           return;
         }
       }

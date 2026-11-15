@@ -79,8 +79,11 @@ class AgentBundleMatrixTests(unittest.TestCase):
                         self.assertTrue(nodes["workspace-views"]["resizable"])
                         self.assertNotIn("active", nodes["workspace-views"])
                         self.assertNotIn("workspace-view-switch", nodes)
-                        self.assertEqual(nodes["agent-scene"]["size"], {"weight": 0.6})
-                        self.assertEqual(nodes["agent-terminal-dock"]["size"], {"weight": 0.4})
+                        self.assertEqual(nodes["agent-scene"]["size"], {"weight": 0.5})
+                        self.assertEqual(nodes["agent-terminal-dock"]["size"], {"weight": 0.5})
+                        keys = json.loads((home / "keys.json").read_text())["global"]
+                        self.assertEqual(keys["cmd-e"], "agents-plus.toggle_view")
+                        self.assertEqual(keys["cmd-shift-e"], keys["cmd-e"])
                         self.assertEqual(nodes["agent-terminal-surface"]["children"], [nodes["main"]])
                         self.assertEqual(actual["theme"], "ink")
                         if sidebar != "absent":
