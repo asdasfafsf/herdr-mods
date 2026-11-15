@@ -152,6 +152,7 @@ await check('delayed look, settle wait and delayed candidate discovery stay visi
   const started=e.start();assert.equal(e.progress().phase,'checking');assert.equal(e.progress().total,null);
   await e.view.askAgain();assert.match(e.notices.at(-1).title,/check is already running/);
   look.resolve();await started;assert.equal(e.progress().phase,'waiting');assert.equal(sends(e).length,0);
+  assert.equal(e.progressModule.progressText(e.progress()).detail,'Waiting for Herdr to finish starting');
   assert.ok(!e.calls.some(c=>c[0]==='write'));
   e.config.uptime=60000;e.config.discoveryGate=discovery.promise;
   const tick=e.tick();await flush();assert.equal(e.progress().phase,'checking');assert.equal(sends(e).length,0);
@@ -171,6 +172,30 @@ await check('no saved/candidate sessions, already running and busy terminals com
     assert.equal(sends(e).length,0);assert.equal(runs(e).length,0);assert.equal(e.overlays.length,0);
     const n=e.snapshots.length;await e.tick();assert.equal(e.snapshots.length,n,'background checks remain silent');
   }
+});
+
+await check('same-core startup stays neutral even with stopped previous sessions; only candidate scans report none found',async()=>{
+  const last=JSON.stringify({core,sessions:{}});
+  const e=await environment({last});
+  e.disk['/home/.herdr/restore/previous.json']=previous([record(1)]);
+  await e.start();
+  const text=e.progressModule.progressText(e.progress());
+  assert.equal(text.title,'Startup check finished');assert.equal(text.detail,'');
+  assert.equal(e.progress().total,0);assert.ok(!e.progress().candidatesChecked);
+  assert.ok(!e.calls.some(c=>c[0]==='read'&&c[1].endsWith('/previous.json')),'startup did not scan previous candidates');
+  assert.doesNotMatch(JSON.stringify(e.render()),/No (?:stopped )?sessions|all restored|none remaining/i);
+  await e.view.askAgain();
+  assert.equal(e.progress().phase,'ready');assert.equal(e.progress().total,1,'the stopped previous session is still available');
+  assert.equal(sends(e).length,0);
+
+  const empty=await environment({last,elsewhere:true});
+  empty.disk['/home/.herdr/restore/previous.json']=previous([record(1)]);
+  await empty.start();await empty.view.askAgain();
+  assert.equal(empty.progress().candidatesChecked,true);
+  assert.equal(empty.progressModule.progressText(empty.progress()).detail,'No stopped sessions found');
+  const transition=await environment({last:previous([])});await transition.start();
+  assert.equal(transition.progress().candidatesChecked,true,'an empty offer is an actual candidate result');
+  assert.equal(transition.progressModule.progressText(transition.progress()).detail,'No stopped sessions found');
 });
 
 await check('startup read/poll errors end loading and storage retries do not repeat offers',async()=>{

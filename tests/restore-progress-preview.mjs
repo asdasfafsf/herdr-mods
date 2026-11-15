@@ -19,6 +19,8 @@ const states=[
   {label:'Partial result',state:{...base,phase:'partial',processed:5,sent:3,failed:2,unknown:1}},
   {label:'Failed check',state:{...base,phase:'failed',total:null,processed:0,sent:0,detail:'Could not check saved sessions. Retrying on the next check.'}},
   {label:'Requests complete',state:{...base,phase:'complete',processed:5,sent:4,dispatched:1}},
+  {label:'Same-core startup (no candidate scan)',state:{...base,phase:'complete',total:0,processed:0,sent:0}},
+  {label:'Empty candidate scan',state:{...base,phase:'complete',total:0,processed:0,sent:0,candidatesChecked:true}},
 ];
 writeFileSync(join(directory,'main.js'),`
 import { View, div } from "gpui-kit";
@@ -29,13 +31,13 @@ const states = ${JSON.stringify(states)};
 export default class RestorePreview extends View {
   render() {
     const t = theme();
-    const panel = entry => v_flex().id('preview-' + entry.state.phase).gap(2)
+    const panel = entry => v_flex().id('preview-' + entry.label).gap(2)
       .child(div().px(10).text_size(12).text_color(t.muted).child(entry.label))
       .child(renderProgress(entry.state, t));
     return v_flex().id('restore-preview').w(800).p(16).gap(12).bg(t.background)
       .child(div().text_size(18).font_semibold().text_color(t.foreground).child('Preview - no sessions started'))
       .child(div().text_size(12).text_color(t.muted).child('Static test states using the production progress renderer.'))
-      .children([0,2,4].map(i => h_flex().gap(8).items_start().child(panel(states[i])).child(panel(states[i+1]))));
+      .children([0,2,4,6].map(i => h_flex().gap(8).items_start().child(panel(states[i])).child(panel(states[i+1]))));
   }
 }
 `);
@@ -46,5 +48,5 @@ if(process.argv.includes('--native')){
   process.stdout.write(result.stdout||'');process.stderr.write(result.stderr||'');
   if(result.error)console.error(String(result.error));
   assert.equal(result.status,0,'native progress renderer check');
-  console.log('native restore progress preview: 6 production render states passed');
+  console.log(`native restore progress preview: ${states.length} production render states passed`);
 }

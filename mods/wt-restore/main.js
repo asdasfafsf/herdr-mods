@@ -230,7 +230,7 @@ export async function restore(list) {
 // Restores the list at once if "Restore without asking" was ticked, else asks in the dialog.
 async function offer(list) {
   if (!list.length) {
-    const id = progress.begin("checking", { total: 0 });
+    const id = progress.begin("checking", { total: 0, candidatesChecked: true });
     progress.finish(id, "complete");
     return;
   }

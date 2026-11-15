@@ -76,11 +76,11 @@ export function progressText(s) {
   let title, detail;
   switch (s.phase) {
     case "checking": title = "Checking sessions…"; detail = "Looking for sessions to restore"; break;
-    case "waiting": title = "Waiting for startup…"; detail = "Waiting for the core to settle before checking sessions"; break;
+    case "waiting": title = "Waiting for startup…"; detail = "Waiting for Herdr to finish starting"; break;
     case "ready": title = "Session restore ready"; detail = `${s.total} session${s.total === 1 ? "" : "s"} awaiting your choice`; break;
     case "restoring": title = `Restoring sessions · ${count}`; detail = `${s.inFlight} opening now · ${pending} waiting to open`; break;
-    case "complete": title = s.total ? `Restore requests finished · ${count}` : "Session check complete";
-      detail = s.total ? "Requests sent; agents may still be opening" : "No sessions need restoring"; break;
+    case "complete": title = s.total ? `Restore requests finished · ${count}` : s.candidatesChecked ? "Session check complete" : "Startup check finished";
+      detail = s.total ? "Requests sent; agents may still be opening" : s.candidatesChecked ? "No stopped sessions found" : ""; break;
     case "partial": title = `Restore incomplete · ${count}`; break;
     case "failed": title = s.total === null ? "Session check failed" : `Restore failed · ${count}`; break;
     case "interrupted": title = "Session restore interrupted"; break;
