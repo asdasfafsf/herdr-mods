@@ -20,7 +20,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 NODE_TESTS = (
     "theme-adapters.mjs", "agent-empty-states.mjs", "agents-render.mjs",
-    "workspace-split.mjs", "village-motion.mjs", "drag-layout.mjs",
+    "workspace-split.mjs", "workspace-provider-parity.mjs", "village-motion.mjs", "drag-layout.mjs",
     "resident-assignment.mjs", "sprite-layout.mjs", "sprite-directions.mjs",
     "resident-assets.mjs", "theme-contrast.mjs", "village-composer.mjs",
     "session-controls.mjs", "sidebar-labels.mjs", "session-handoff.mjs", "session-parity.mjs", "restore-progress.mjs",

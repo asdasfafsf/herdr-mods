@@ -57,3 +57,20 @@ request changes, late polls, uncertain sends, duplicate clicks and bubble layout
 They do not establish real-provider or native hit-testing coverage. Never send
 test messages or approval decisions to real sessions. Reset-credit execution is
 outside this workflow and must not be tested, including with mocks.
+
+`node --experimental-vm-modules tests/workspace-provider-parity.mjs` combines
+the production Scene/Split/Terminal controller with the shared approval
+controller and adapters in an isolated VM. It checks Codex, Claude (including
+`claude-code` and an absolute executable path), and Gemini (`gemini-cli`) with
+synthetic permission screens. Each case cycles 30 times without choosing a
+permission, preserves the original native tab tree and focus, and verifies an
+explicit decision still targets its displayed session when another provider
+is focused. In-flight duplicate clicks, eight stale-request variants, uncertain
+sends, seven unsupported/lifecycle fallbacks, and a synthetic adapter extension
+are also covered. The VM allows only the four production modules needed for
+this check and in-memory layout/focus/get/read/keys transports.
+
+These cases establish source-level and synthetic controller parity, not current
+CLI screen compatibility, live status-bridge availability, native focus/input
+behavior or end-to-end approval delivery for any provider. The presentation
+controller does not select an adapter or change provider permission policies.
