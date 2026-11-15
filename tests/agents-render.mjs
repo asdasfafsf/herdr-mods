@@ -924,13 +924,15 @@ for (const agent of ['claude','codex']) for (const worktrees of [false,true]) {
     const context=vm.createContext({});
     const host=new vm.SyntheticModule(['exec','readTextFile','home','appHome','shared','setShared','terminals','run'],function(){for(const key of ['exec','readTextFile','home','appHome','shared','setShared','terminals','run'])this.setExport(key,()=>{});},{context});
     const resume=new vm.SourceTextModule(readFileSync(resolve(root,'lib/resume.js'),'utf8'),{context});
-    await resume.link(()=>host);await resume.evaluate();
+    const launch=new vm.SourceTextModule(readFileSync(resolve(root,'lib/agent-launch.js'),'utf8'),{context});
+    await launch.link(()=>{throw new Error('unexpected launch dependency')});await launch.evaluate();
+    await resume.link(name=>name==='./agent-launch.js'?launch:host);await resume.evaluate();
     argv=Array.from(resume.namespace.resumeArgv(rec));
   }else{
     assert.equal(runs[0][0],'space.new');assert.equal(runs[0][1].folder,row.cwd);
     argv=Array.from(runs[0][1].argv);
   }
-  assert.deepEqual(argv,agent==='codex'?['/opt/codex','resume','--model','chosen',row.session]:['/opt/claude','--model','chosen','--resume',row.session]);
+  assert.deepEqual(argv,agent==='codex'?['/opt/codex','resume','--dangerously-bypass-approvals-and-sandbox','--model','chosen',row.session]:['/opt/claude','--model','chosen','--resume',row.session]);
   assert.equal(env.commands[0][0],'python3');
   assert.deepEqual(JSON.parse(env.commands[0][1].at(-1)),{agent,session:row.session,cwd:row.cwd},'only identity sent to read-only check');
 }
@@ -1032,7 +1034,7 @@ if (process.argv.includes('--native')) {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
       const revisionFiles=revision ? new Set(execFileSync('git',['ls-tree','-r','--name-only',revision,'lib','mods/agents-plus'],{cwd:root,encoding:'utf8'}).trim().split('\n')) : null;
       const has=file=>revisionFiles ? revisionFiles.has(file) : existsSync(resolve(root,file));
-      for (const name of ['state','ui','agent-status','resume','places','saved-sessions']) if(has(`lib/${name}.js`)) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      for (const name of ['state','ui','agent-status','resume','agent-launch','places','saved-sessions']) if(has(`lib/${name}.js`)) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
       for (const file of ['overview','overview-header','agent-theme','theme-assets','pack-chiikawa','resource-packs','resource-pack-state','themes','legacy-theme','agent-mode','theme-contrast','village','village-spacing','village-chat','session-controls','approval-providers','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','sprite-motion','agent-empty-state']) if(has(`mods/agents-plus/${file}.js`)) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (has('mods/agents-plus/render-profile.js'))

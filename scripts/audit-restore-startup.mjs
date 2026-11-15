@@ -15,6 +15,8 @@ const root = resolve(import.meta.dirname, '..');
 const execute = promisify(execFile);
 const source = await readFile(resolve(root, 'mods/wt-restore/main.js'), 'utf8');
 const files = { main: 'mods/wt-restore/main.js', './resume.js': 'lib/resume.js',
+  // resume.js imports this pure argv helper; keep the reviewed module allowlist explicit.
+  './agent-launch.js': 'lib/agent-launch.js',
   './state.js': 'lib/state.js', './progress.js': 'mods/wt-restore/progress.js' };
 const denied = () => { throw Error('Audit forbids session launch, input and application mutations'); };
 const digest = text => createHash('sha256').update(text).digest('hex');

@@ -125,7 +125,7 @@ Herdr 원래 기능(space·탭·화면 나누기·레이아웃)은 `herdr-app do
 
 ## 에이전트를 어떤 옵션으로 띄우나
 
-새 워크트리, 행 메뉴의 새 터미널, 세션 목록이 Claude Code·Codex 를 띄울 때는 Herdr 가 아는 실행 명령(`programs.json` 의 `run`, 없으면 `claude` / `codex`)을 쓴다. 셸 alias 는 거치지 않으므로, 늘 쓰는 옵션은 `~/.config/herdr-app/programs.json` 에 둔다.
+새 워크트리, 행 메뉴의 새 터미널, 세션 목록은 Herdr 가 아는 실행 명령(`programs.json` 의 `run`, 없으면 `claude` / `codex`)을 쓴다. herdr-mods의 Codex 실행 경로는 명시적인 권한 선택이 없으면 `--dangerously-bypass-approvals-and-sandbox`를 기본으로 전달한다. 새 실행뿐 아니라 resume/fork, Sleep 깨우기, 재시작 복구에도 같은 기본값을 쓴다. 셸 alias 는 거치지 않으므로, 늘 쓰는 옵션은 `~/.config/herdr-app/programs.json` 에 둔다.
 
 ```json
 { "programs": {
@@ -135,7 +135,9 @@ Herdr 원래 기능(space·탭·화면 나누기·레이아웃)은 `herdr-app do
     "cursor": { "run": ["cursor-agent", "--force"] } } }
 ```
 
-없으면 각 에이전트 자체 설정을 따른다: Claude Code 는 `~/.claude/settings.json` 의 `permissions.defaultMode`, Codex 는 `~/.codex/config.toml` 의 `approval_policy`·`sandbox_mode`(둘이 `"never"`·`"danger-full-access"` 면 옵션 없이도 YOLO). 처음 여는 폴더에서 묻는 "이 폴더를 믿나"는 에이전트마다 다르다: Claude Code·Codex 는 이미 믿은 레포의 워크트리면 묻지 않고, Antigravity 는 새 폴더마다 한 번 묻는다. 세션을 이어 열 때(restore, Sleep 깨우기, 바깥 에이전트)는 그 세션을 처음 띄운 옵션을 그대로 쓴다.
+Codex의 `--sandbox`, `--ask-for-approval`, `--profile`, `--full-auto`, `--approve-for-me`, 권한 관련 `-c`, `--add-dir` 같은 명시 선택이 있으면 YOLO 기본값을 추가하지 않는다. 기존 옵션은 보존하며 `--remote`, 사용자 wrapper, 알 수 없는 옵션에도 강제로 추가하지 않는다. Claude Code와 다른 에이전트의 정책은 바꾸지 않는다. 일반 셸에서 직접 실행한 명령이나 Herdr 본체의 별도 실행 메뉴는 이 기본값의 적용 범위 밖이다.
+
+전역 `~/.codex/config.toml`이 `approval_policy="never"`, `sandbox_mode="danger-full-access"`여도 **기존 세션의 실제 권한을 증명하지 않는다**. Codex는 resume 때 저장된 thread 권한을 복원할 수 있고, 이미 app-server에 열린 thread나 플랫폼/관리 정책은 CLI 기본값만으로 바뀌지 않는다. 실행 중 세션을 종료하거나 설정 파일을 수정하지 않으며, 이 변경은 다음 지원 실행 경로에서 적용된다. 실제 권한·복구 근거와 검사 범위는 [Codex 기본 실행 감사](docs/codex-default-permissions.md)를 참고한다.
 
 ## 업데이트·제거
 
