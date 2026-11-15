@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 let now = 10000, tree, focused = { terminal: 't1' }, paneList = [{ pane: 'pane-1', terminal: 't1', title: 'Project' }];
+let delayed = false;
+const queued = [];
 const shared = new Map([['layout', 'test']]), commands = [], writes = [], after = [], every = [];
 const elements = [];
 function element(kind) {
@@ -11,6 +13,7 @@ function element(kind) {
   const proxy = new Proxy(record, { get(target, name) {
     if (name in target) return target[name];
     return (...args) => {
+      if (name === 'when') return args[0] ? args[1](proxy) : proxy;
       record.calls.set(name, args);
       if (name === 'child') record.children.push(args[0]);
       return proxy;
@@ -31,6 +34,13 @@ const makeTree = () => ({ id: 'workspace-views', type: 'column', children: [
 ] });
 tree = makeTree();
 const nativeBefore = JSON.stringify(find('main'));
+const apply = (name, args) => {
+  if (name === 'layout.resize') find(args.id).size = { weight: args.weight };
+  else if (name === 'layout.show') find(args.id).hidden = false;
+  else if (name === 'pane.focus') focused = { terminal: paneList.find(pane => (pane.pane ?? pane.id) === args.pane).terminal };
+  else assert.equal(name, 'terminal.search', `unexpected native action ${name}`);
+};
+const flush = () => { for (const [name, args] of queued.splice(0)) apply(name, args); };
 const context = vm.createContext({ Date: { now: () => now } });
 const host = {
   layout: () => tree, shared: key => shared.get(key),
@@ -40,9 +50,7 @@ const host = {
   nextCommand: () => new Promise(() => {}),
   run: (name, args) => {
     commands.push([name, args]);
-    if (name === 'layout.resize') find(args.id).size = { weight: args.weight };
-    else if (name === 'layout.show') find(args.id).hidden = false;
-    else assert.ok(['pane.focus', 'agent.focus', 'terminal.search'].includes(name), `unexpected native action ${name}`);
+    if (delayed) queued.push([name, args]); else apply(name, args);
   },
 };
 const imports = {
@@ -75,6 +83,7 @@ const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8,
 const resized = () => commands.filter(([name]) => name === 'layout.resize');
 const settle = () => { dock.syncWorkspaceSplit(); now += 120; dock.syncWorkspaceSplit(); };
 function nativeRelease(share, sceneHeight) {
+  dock.syncWorkspaceSplit(); // acknowledge the previous programmatic resize
   find('agent-scene').size = { weight: share };
   find('agent-terminal-dock').size = { weight: 1 - share };
   if (sceneHeight !== undefined) {
@@ -84,6 +93,8 @@ function nativeRelease(share, sceneHeight) {
   }
   settle();
 }
+const mode = () => dock.workspacePresentation()?.mode;
+dock.restoreWorkspacePresentation();
 
 assert.equal(dock.HANDLE_HEIGHT, 20);
 assert.equal(dock.hasTerminalDock(), true);
@@ -97,12 +108,15 @@ dock.showWorkspaceTerminal(); near(ratio(), 0);
 assert.equal(dock.sceneVisible(), false);
 assert.equal(commands.at(-1)[0], 'pane.focus');
 assert.equal(commands.at(-1)[1].pane, 'pane-1');
-dock.showWorkspaceScene(); near(ratio(), 0.6);
+dock.showWorkspaceScene(); near(ratio(), 1);
 const count = resized().length;
 dock.showWorkspaceScene(); assert.equal(resized().length, count, 'revealing an already visible scene preserves the split');
-dock.openTerminalDock('t1'); assert.equal(resized().length, count, 'selecting a resident preserves a partial split');
+dock.openTerminalDock('t1'); near(ratio(), 0.6);
+const openedCount = resized().length;
+dock.openTerminalDock('t1'); assert.equal(resized().length, openedCount, 'selecting a resident preserves a partial split');
 
 controls.workspaceCommand('toggle_view'); near(ratio(), 0);
+controls.workspaceCommand('toggle_view'); near(ratio(), 1);
 controls.workspaceCommand('toggle_view'); near(ratio(), 0.6);
 controls.workspaceCommand('toggle_terminal'); near(ratio(), 1);
 controls.workspaceCommand('toggle_terminal'); near(ratio(), 0.6);
@@ -124,6 +138,7 @@ nativeRelease(0.88, 176); near(ratio(), 1);
 dock.restoreWorkspaceSplit(); near(ratio(), 0.43);
 
 // A fresh released snapshot waits for the last resize callback to settle.
+dock.syncWorkspaceSplit();
 find('agent-scene').size = { weight: 0.13 };
 find('agent-terminal-dock').size = { weight: 0.87 };
 dock.syncWorkspaceSplit();
@@ -137,15 +152,90 @@ for (let i = 0; i < 10; i++) { now += 120; dock.syncWorkspaceSplit(); }
 assert.equal(commands.length, stableCommands);
 assert.equal(writes.length, stableWrites, 'idle controller produces no repeat writes');
 
+// A stale collapsed measurement must not re-collapse a commanded split.
+dock.closeTerminalDock();
+dock.noteSceneSize(24, cx); now += 80; after.shift().fn(cx);
+dock.restoreWorkspaceSplit(); settle(); near(ratio(), 0.5);
+assert.equal(mode(), 'split');
+
+// Buttons, keyboard and a delayed host all consume the same state, including
+// triple presses whose final ratio equals the host's original snapshot.
+dock.closeTerminalDock(); settle();
+delayed = true;
+for (let index = 0; index < 60; index++) {
+  controls.workspaceCommand('toggle_view');
+  assert.equal(mode(), ['split', 'terminal', 'scene'][index % 3]);
+  dock.syncWorkspaceSplit();
+}
+flush(); delayed = false; settle(); near(ratio(), 1);
+assert.equal(focused.terminal, 't1');
+assert.equal(mode(), 'scene');
+// A snapshot between the two native resize commands is not an absent layout.
+delayed = true;
+dock.showWorkspaceTerminal();
+apply(...queued.shift());
+assert.equal(find('agent-scene').size.weight, 0);
+assert.equal(find('agent-terminal-dock').size.weight, 0);
+dock.syncWorkspaceSplit();
+controls.workspaceCommand('toggle_view'); assert.equal(mode(), 'scene');
+flush(); delayed = false; settle(); near(ratio(), 1);
+controls.workspaceCommand('toggle_view'); near(ratio(), 0.5);
+controls.workspaceCommand('toggle_view'); near(ratio(), 0);
+controls.workspaceCommand('toggle_view'); near(ratio(), 1);
+
+// Focus the visible scene once; never focus its search/composer or send input.
+const view = { handle: { count: 0, focus() { this.count++; } } };
+dock.syncWorkspaceSceneFocus(view); dock.syncWorkspaceSceneFocus(view);
+assert.equal(view.handle.count, 1);
+controls.workspaceCommand('toggle_view'); dock.syncWorkspaceSceneFocus(view);
+assert.equal(view.handle.count, 1);
+assert.equal(commands.at(-1)[0], 'pane.focus');
+
+// Native focus is the sole selected-session owner, including a second pane.
+paneList.push({ id: 'pane-2', terminal: 't2', title: 'Second session' });
+dock.openTerminalDock('t2');
+for (let index = 0; index < 9; index++) controls.workspaceCommand('toggle_view');
+assert.equal(focused.terminal, 't2');
+assert.equal(commands.at(-1)[1].pane, 'pane-2');
+const missing = commands.length;
+assert.equal(dock.openTerminalDock('removed-session'), false);
+assert.equal(commands.length, missing, 'a removed resident cannot focus or open another session');
+
+// Reload restores both the mode and last divider ratio, without a focus jump.
+for (const restoredMode of ['scene', 'split', 'terminal']) {
+  dock.setWorkspacePresentation(restoredMode);
+  const saved = { ...dock.workspacePresentation() }, focusBefore = focused.terminal;
+  tree = makeTree();
+  dock.restoreWorkspacePresentation();
+  assert.equal(mode(), restoredMode);
+  near(ratio(), restoredMode === 'scene' ? 1 : restoredMode === 'terminal' ? 0 : saved.splitShare);
+  assert.equal(focused.terminal, focusBefore);
+}
+// Legacy endpoint/ratio migration and malformed preferences are safe.
+shared.set('layout', 'legacy'); tree = makeTree();
+find('agent-scene').size.weight = 0; find('agent-terminal-dock').size.weight = 1;
+shared.set('ag.workspaceSplit.legacy', 0.37);
+dock.restoreWorkspacePresentation(); assert.equal(mode(), 'terminal');
+dock.restoreWorkspaceSplit(); near(ratio(), 0.37);
+shared.set('ag.workspacePresentation.legacy', { mode: 'unknown', splitShare: -1 });
+dock.restoreWorkspacePresentation(); near(ratio(), 0.37);
+shared.set('layout', 'test'); dock.restoreWorkspacePresentation();
+
 // A shell or empty workspace can be opened without an agent address.
 dock.closeTerminalDock(); focused = {}; paneList = [];
 const noFocus = commands.length;
 assert.equal(dock.openTerminalDock(), true); near(ratio(), 0.5);
 assert.ok(commands.slice(noFocus).every(([name]) => name === 'layout.resize'));
+for (let index = 0; index < 6; index++) controls.workspaceCommand('toggle_view');
+assert.ok(commands.slice(noFocus).every(([name]) => name === 'layout.resize'), 'empty/mod panes never launch or select a fallback session');
 // Each layout retains its own intermediate ratio.
-shared.set('layout', 'other'); dock.closeTerminalDock();
-shared.delete('ag.workspaceSplit.other'); dock.restoreWorkspaceSplit(); near(ratio(), 0.6);
+shared.set('layout', 'other'); tree = makeTree();
+find('agent-scene').size.weight = 1; find('agent-terminal-dock').size.weight = 0;
+dock.restoreWorkspaceSplit(); near(ratio(), 0.5);
+nativeRelease(0.7, 700);
 shared.set('layout', 'test'); dock.restoreWorkspaceSplit(); near(ratio(), 0.5);
+shared.set('layout', 'other'); dock.syncWorkspaceSplit(); near(ratio(), 0.7);
+shared.set('layout', 'test'); dock.restoreWorkspacePresentation(); near(ratio(), 0.5);
 assert.equal(JSON.stringify(find('main')), nativeBefore, 'all operations preserve the original native tab tree');
 assert.ok(commands.every(([name]) => !['layout.hide', 'layout.set', 'layout.select'].includes(name)), 'never replace or hide native views');
 
@@ -157,6 +247,10 @@ const tooltip = toolbar.calls.get('tooltip')[0];
 assert.match(tooltip, /top edge/, 'only the host divider is advertised as draggable');
 dock.showWorkspaceTerminal();
 toolbar.calls.get('on_mouse_down')[1]({ click_count: 2 }, cx); near(ratio(), 0.5);
+for (const [id, expected] of [['terminal-dock-toggle', 'scene'], ['terminal-dock-restore', 'split'], ['terminal-dock-expand', 'terminal']]) {
+  elements.find(item => item.calls.get('id')?.[0] === id).calls.get('on_click')[0]({}, cx);
+  assert.equal(mode(), expected);
+}
 controls.initWorkspaceControls(cx);
 assert.equal(every.length, 1); assert.equal(every[0].ms, 120);
 
@@ -166,4 +260,4 @@ const absent = commands.length;
 assert.equal(dock.openTerminalDock(), false); assert.equal(dock.showWorkspaceTerminal(), false);
 controls.workspaceCommand('toggle_view'); controls.workspaceCommand('toggle_terminal');
 assert.equal(commands.length, absent);
-console.log('workspace split: native-tree preservation, exact endpoints, restore, drag-release snapping, debounce, keyboard commands and minimal handle passed');
+console.log('workspace presentation: Scene → Split → Terminal, 60 delayed rapid commands, focus/selection continuity, reload, safe fallback, native drag snapping and minimal handle passed');

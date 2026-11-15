@@ -138,7 +138,7 @@ async function environment(data, revision) {
   await main.evaluate();
   const instance = new main.namespace.default();
   let runTasks=false;
-  const cx = {spawn(fn){if(runTasks) tasks.push(fn(cx));},timer:{every(ms,handler){timers.set(ms,()=>handler(cx));return {cancel(){timers.delete(ms);}};}},notify(){},stop_propagation(){},focus_handle(){return {};}};
+  const cx = {spawn(fn){if(runTasks) tasks.push(fn(cx));},timer:{every(ms,handler){timers.set(ms,()=>handler(cx));return {cancel(){timers.delete(ms);}};}},notify(){},stop_propagation(){},focus_handle(){return {focusCount:0,focus(){this.focusCount++;}};}};
   instance.init({},cx); instance.outside=data.outside;
   runTasks=true;
   instance.activity=Object.fromEntries(data.agents.map(a=>[a.address,{doing:'Editing example',said:'Example result'}]));
@@ -541,8 +541,9 @@ console.log('agent ordering: sidebar pins, Active, external sessions, grouped so
   env.click('overview-open-t0');
   assert.ok(env.dock.sceneVisible(),'opening terminal retains the scene');
   assert.ok(env.dock.terminalDockOpen());
-  assert.equal(env.dock.workspaceSplit().sceneShare,0.6);
+  assert.equal(env.dock.workspaceSplit().sceneShare,0.5);
   assert.deepEqual(JSON.parse(JSON.stringify(env.writes.at(-1))),['run',['pane.focus',{pane:'p0'}]]);
+  env.dock.syncWorkspaceSplit();
   findNode(data.layout,'agent-scene').size={weight:0.3};findNode(data.layout,'agent-terminal-dock').size={weight:0.7};
   env.workspace.workspaceCommand('toggle_terminal');
   assert.equal(env.dock.terminalDockOpen(),false);
@@ -550,6 +551,7 @@ console.log('agent ordering: sidebar pins, Active, external sessions, grouped so
   assert.equal(env.dock.workspaceSplit().sceneShare,0.3,'reopening retains resized ratio');
   const original=JSON.stringify(terminalTree);
   env.workspace.workspaceCommand('toggle_view');assert.equal(env.dock.workspaceSplit().sceneShare,0);
+  env.workspace.workspaceCommand('toggle_view');assert.equal(env.dock.workspaceSplit().sceneShare,1);
   env.workspace.workspaceCommand('toggle_view');assert.equal(env.dock.workspaceSplit().sceneShare,0.3);
   assert.equal(JSON.stringify(findNode(data.layout,'agent-terminal-surface').children[0]),original,'terminal tree and pane options remain unchanged');
   const toolbar=JSON.stringify(env.dock.renderTerminalToolbar());
@@ -567,6 +569,43 @@ console.log('agent ordering: sidebar pins, Active, external sessions, grouped so
   assert.equal(env.instance.input.focusCount,0,'opening Options does not steal focus into Search');
 }
 console.log('native terminal dock: shared session, collapse, resize memory, shortcuts, clipboard routing and composer passed');
+
+// Presentation changes retain the selected resident, editor draft, native tab
+// tree and independent pack/palette choices. Scene receives a neutral focus
+// handle; returning to a terminal never replays a Compose request.
+for (const presentation of ['cards','village']) {
+  const data=fixture(4); data.outside=[]; data.props={mode:'overview',integrated:true};
+  data.layout={...splitWorkspaceLayout(0.5),theme:'moss'};
+  data.state['ag.presentation']=presentation; data.state['ag.resourcePack']='chiikawa';
+  const env=await environment(data,null); env.render(); env.timers.get(250)();
+  const chat=env.instance.villageChats.get('t0'); chat.input.set_value('Retained local draft');
+  const native=JSON.stringify(findNode(data.layout,'agent-terminal-surface'));
+  env.instance.input.set_value('Retained search');
+  for(let index=0;index<30;index++) {
+    env.workspace.workspaceCommand('toggle_view'); env.timers.get(250)();
+    assert.equal(env.instance.villageSelected,'t0');
+    assert.equal(chat.input.value(),'Retained local draft');
+    assert.equal(chat.input.focusCount,0,'presentation changes never focus a composer');
+    assert.equal(env.instance.input.focusCount,0,'presentation changes never focus Search');
+    assert.equal(env.instance.input.value(),'Retained search');
+    assert.equal(data.state['ag.presentation'],presentation);
+    assert.equal(data.state['ag.resourcePack'],'chiikawa');
+    assert.equal(data.layout.theme,'moss');
+  }
+  assert.equal(env.instance.handle.focusCount,10,'each Scene transition focuses the visible neutral scene handle once');
+  // A delayed sidebar/composer request cannot undo a newer keyboard cycle.
+  env.mode.requestAgentSelection('t0','t0'); env.dock.showComposer('t0');
+  env.workspace.workspaceCommand('toggle_view');
+  env.workspace.workspaceCommand('toggle_view'); env.timers.get(250)();
+  assert.equal(env.dock.workspacePresentation().mode,'scene');
+  assert.equal(env.dock.workspaceSplit().sceneShare,1);
+  assert.equal(chat.input.focusCount,0,'superseded Compose never steals Scene focus');
+  env.mode.requestAgentSelection('t0','t0'); env.timers.get(250)();
+  assert.equal(env.dock.workspacePresentation().mode,'split','a fresh sidebar click still opens the selected session');
+  assert.equal(JSON.stringify(findNode(data.layout,'agent-terminal-surface')),native);
+  assert.equal(env.commands.length,0,'cycling never sends terminal input');
+}
+console.log('presentation focus: Cards/Village retain selection, drafts, search, palette, pack and native terminal tree across 30 cycles');
 
 // Cards keep the same session focus while offering distinct details/terminal actions.
 for (const skin of ['default','chiikawa']) {
@@ -1024,7 +1063,7 @@ console.log('saved history: below Idle, bounded pages, dedupe, independent resid
 if (process.argv.includes('--native')) {
   const failures=[];
   let checked=0, baselineInterrupted=0;
-  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-cards-narrow'],[4,1,'chiikawa-approval'],[0,1,'dock-placeholder'],[4,1,'chiikawa-dock-placeholder'],[4,1,'dock-terminal-only']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
+  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-cards-narrow'],[4,1,'chiikawa-approval'],[0,1,'dock-placeholder'],[4,1,'chiikawa-dock-placeholder'],[4,1,'dock-terminal-only'],[4,1,'terminal-toolbar']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
     if (process.argv.includes('--overview-only') && mode === 'sidebar') continue;
     if (revision && mode !== 'sidebar') continue;
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
@@ -1038,6 +1077,7 @@ if (process.argv.includes('--native')) {
       if (has('mods/agents-plus/render-profile.js'))
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
+      if (mode==='terminal-toolbar') data.layout=splitWorkspaceLayout(0.5);
       if (mode.includes('dock-')) {
         data.layout=splitWorkspaceLayout(mode==='dock-terminal-only'?0:0.6);
         data.focused={pane:'legacy',tab:'legacy-tab'};

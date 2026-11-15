@@ -260,3 +260,22 @@ Terminal only의 native builder도 검사하지만 실제 앱 화면 검증을 �
 `session-handoff.mjs`는 실제 Saved/Outside handler와 공통 resume guard에 합성
 transport를 연결해, 중복 클릭 및 두 spaces-plus 수신자에서도 최대 한 번만
 launch하는지 확인한다. active/unknown ownership은 두 provider 모두 거부해야 한다.
+
+## Scene / Split / Terminal 순환
+
+`workspace-split.mjs`는 실제 공통 presentation controller에 합성 layout과
+pane transport를 연결한다. Scene → Split → Terminal 순환, host 응답을 미룬
+60회 연타, 두 resize 사이의 일시적 0:0 snapshot, 세 버튼·더블클릭,
+선택 세션 유지, 세 단계 재로드, 레이아웃별 복원, 기존 비율 이전,
+잘못된 저장값, 대상 없는 pane의 fallback을 검사한다. 24px 끝점 snap,
+짧은 창, 지연 측정값, idle 상태의 반복 쓰기 방지도 포함한다.
+
+`agents-render.mjs`는 Cards/Village 각각 30회 전환 동안 선택·초안·검색·팩·
+팔레트·native tab tree를 보존하고, Scene에서 중립 focus handle만 받는지
+확인한다. 늦게 처리되는 사이드바/Compose 요청은 최신 전환을 되돌리거나
+입력 포커스를 빼앗지 않아야 한다. 기존 resident drag 회귀도 계속 실행한다.
+native 초기 렌더 목록에 20px `terminal-toolbar`를 포함한다.
+
+검증 명령은 `python3 scripts/test-agent-workspace.py --native --seed 20261116`이다.
+이 검사는 임시 fixture만 사용한다. 변경본 설치와 CUA 실제 화면 확인은
+조정자의 통합 단계에서 수행하며, 실제 세션 입력·앱/core/session 재시작은 없다.

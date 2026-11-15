@@ -1,5 +1,5 @@
-// Two presentations of one workspace. Native session focus remains the owner;
-// a stack shows either the original terminal tree or the agent presentation.
+// One workspace with Scene, Split and Terminal presentations. Keep the old
+// stack adapter for custom layouts; native session focus remains the owner.
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { layout, shared, setShared, run, props, theme, themes, focused, panes, settings } from "herdr";
@@ -8,7 +8,7 @@ import { VIEW_LAYOUTS, hasVillage, packDefinition } from "./resource-packs.js";
 import { initResourcePack, selectedResourcePack } from "./resource-pack-state.js";
 import { LEGACY_CHIIKAWA_COLORS } from "./legacy-theme.js";
 import { setThemeContrast } from "./theme-contrast.js";
-import { workspaceSplit, sceneVisible, showWorkspaceScene, showWorkspaceTerminal } from "./terminal-dock.js";
+import { workspaceSplit, workspacePresentation, PRESENTATIONS, setWorkspacePresentation, sceneVisible, showWorkspaceScene, showWorkspaceTerminal } from "./terminal-dock.js";
 
 export const VIEW_STACK = "workspace-views";
 export const AGENT_VIEW = "agent-world";
@@ -36,7 +36,7 @@ export const AGENT_SELECTION = "ag.selection";
 export function requestAgentSelection(id, address) {
   if (!agentViewVisible()) return;
   const sequence = (shared(AGENT_SELECTION)?.sequence || 0) + 1;
-  setShared(AGENT_SELECTION, { id, address, sequence, at: Date.now() });
+  setShared(AGENT_SELECTION, { id, address, sequence, at: Date.now(), presentationSequence: workspacePresentation()?.sequence });
   return sequence;
 }
 const baseKey = () => `overview.baseLook.${shared("layout") || "main"}`;
@@ -163,14 +163,17 @@ export const leaveAgentMode = () => setWorkspaceView(false);
 
 export function renderViewSwitch() {
   const t = theme(), agent = agentViewVisible();
+  const state = workspacePresentation();
+  const choices = state ? PRESENTATIONS : [[false, "Terminal"], [true, "Agent"]];
+  const selected = state ? state.mode : agent;
   const focus = focused(), pane = panes().find((item) => item.terminal === focus?.terminal);
   return h_flex().size_full().px(8).gap(12).items_center().bg(t.chrome)
     .child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
-      .children([[false, "Terminal"], [true, "Agent"]].map(([value, label]) => div()
-        .id(value ? "workspace-view-agent" : "workspace-view-terminal").px(12).py(4).rounded(5).text_size(11)
-        .text_color(agent === value ? t.foreground : t.muted).when(agent === value, (el) => el.bg(t.selected))
-        .cursor_pointer().hover((el) => el.bg(t.hover)).tooltip("Switch Terminal / Agent · ⌘⇧E")
-        .on_click(() => setWorkspaceView(value)).child(label))))
+      .children(choices.map(([value, label]) => div()
+        .id(`workspace-view-${state ? value : value ? "agent" : "terminal"}`).px(12).py(4).rounded(5).text_size(11)
+        .text_color(selected === value ? t.foreground : t.muted).when(selected === value, (el) => el.bg(t.selected))
+        .cursor_pointer().hover((el) => el.bg(t.hover)).tooltip("Scene → Split → Terminal · ⌘E")
+        .on_click(() => state ? setWorkspacePresentation(value) : setWorkspaceView(value)).child(label))))
     .when(agent && hasVillage(selectedResourcePack()), (el) => el.child(h_flex().gap(2).p(2).rounded(7).border(1).border_color(t.border)
       .children(VIEW_LAYOUTS.map(([key, label]) => div().id(`overview-layout-${key}`).px(10).py(4).rounded(5).text_size(11)
         .text_color(t.foreground).when((shared("ag.presentation") || packDefinition(selectedResourcePack()).layout) === key, (el) => el.bg(t.selected))

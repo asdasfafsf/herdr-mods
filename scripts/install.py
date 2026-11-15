@@ -347,9 +347,9 @@ def agent_workspace(terminal):
     """
     return {"id": "workspace-views", "type": "column", "resizable": True,
             "gap": 3, "divider": {"width": 1, "color": "border"}, "children": [
-        {"id": "agent-scene", "type": "block", "size": {"weight": 0.6}, "min": 0,
+        {"id": "agent-scene", "type": "block", "size": {"weight": 0.5}, "min": 0,
          "content": {"mod": "agents-plus", "props": {"mode": "overview", "integrated": True}}},
-        {"id": "agent-terminal-dock", "type": "column", "size": {"weight": 0.4}, "min": 20,
+        {"id": "agent-terminal-dock", "type": "column", "size": {"weight": 0.5}, "min": 20,
          "resizable": False, "children": [
              {"id": "agent-terminal-toolbar", "type": "block", "size": {"px": 20},
               "content": {"mod": "agents-plus", "props": {"mode": "terminal-toolbar"}}},
