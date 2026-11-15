@@ -5,7 +5,12 @@ Saved는 priority/grouped 정렬 모두에서 Idle을 포함한 live 그룹 아�
 만들거나 Cards/Village 주민을 추가하지 않는다. Herdr에 붙은 세션과 Outside에 이미
 표시된 세션은 중복하지 않는다.
 
-처음에는 8개, Show more로 최근 60개까지 표시한다. 활성 창의 펼친 sidebar에서
+기본은 접힘이며 헤더에서 명시적으로 선택한 펼침/접힘을 로컬 설정에 저장한다.
+Refresh, 주기적 갱신, 정렬 변경, sidebar 축소/복귀와 view 재생성 뒤에도 선택을 유지한다.
+Claude와 Codex는 같은 Saved 영역과 설정을 사용한다. 다른 provider의 기록은 현재
+지원하지 않는다.
+
+펼치면 처음에는 8개, Show more로 최근 60개까지 표시한다. 활성 창의 펼친 sidebar에서
 45초마다 읽고 Refresh로 갱신한다. active·unknown 기록도 다른 위치에 표시되지 않았다면
 Saved에 남기고 이유를 보여 준다. 목록의 소유권 스냅샷은 실행 허가가 아니다.
 
@@ -82,3 +87,21 @@ Idle, 응답 완료, 다른 대화 화면 선택은 writer 해제 증거가 아�
 exited LIVE·attachment race·비동기 실패의 회귀 검사가 있다. workspace runner에 포함한다.
 모든 검사는 합성 transport 또는 격리 임시 세션을 사용하며 실제 대화에 테스트 입력을
 보내지 않는다. reset/redemption 실행 경로는 mock으로도 검사하지 않는다.
+
+## 기본 접힘 통합 검증 (2026-11-15)
+
+`40bc294`를 YOLO, usage, Cmd+E, perf 감사, provider 검증이 통합된 `f5f3029`
+위에 병합했다. 충돌 없이 Saved 변경과 기존 YOLO argv/terminal-toolbar 검사를 보존했다.
+Saved 기본 접힘·명시적 선택 유지 합성 검사, `test_saved_sessions.py` 12개,
+`agent-launch.mjs` 81개가 통과했다.
+
+첫 `test-agent-workspace.py --native --seed 20261116` 실행은 29개 통과,
+`agents-render.mjs` 1개 실패였다. 그 안의 native 11개 중 `chiikawa/200`만
+`village.js`의 `advanceVillage`에서 `interrupted`로 중단됐고 나머지 10개는 통과했다.
+원인은 미확정이며 Saved 수정에는 Village 코드 변경이 없다. 별도 임시 app home에서
+`agents-render.mjs --native --overview-only`만 다시 실행해 합성 검사와 native 11개
+모두 통과했다. 최초 실패를 전체 suite 통과로 바꿔 기록하지 않는다.
+
+Native 검사는 임시 합성 mod의 초기 렌더 검사이며 실제 화면·입력·localStorage의
+지속성을 검증하지 않는다. Saved의 실제 CUA 검증은 조정자 t28에게 남겨 두며,
+그 승인 전에는 이 단위를 main에 push하지 않는다.

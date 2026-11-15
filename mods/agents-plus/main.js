@@ -122,7 +122,8 @@ export default class Agents extends View {
     this.renderProfile = new RenderProfile();
     // Persist aggregates outside render; never set shared state or notify for telemetry.
     cx.timer.every(60000, (cx) => this.flushRenderProfile(cx));
-    this.folded = new Set();
+    // History starts collapsed; only an explicit header click changes this preference.
+    this.folded = new Set(localStorage.getItem("saved.expanded") === "true" ? [] : ["saved"]);
     this.outside = []; // see readOutside
     this.readOutside(cx);
     cx.timer.every(OUTSIDE_EVERY, (cx) => { if (window().active) this.readOutside(cx); });
@@ -431,7 +432,11 @@ export default class Agents extends View {
     const open = !this.folded.has("saved");
     const result = [h_flex().id("saved-header").mt(8).pt(8).px(8).h(32).flex_none().gap(6).items_center()
       .border_t(1).border_color(t.border).text_size(11).text_color(t[SAVED_SESSIONS.color])
-      .cursor_pointer().on_click((_e, cx) => { open ? this.folded.add("saved") : this.folded.delete("saved"); cx.notify(); })
+      .cursor_pointer().on_click((_e, cx) => {
+        open ? this.folded.add("saved") : this.folded.delete("saved");
+        localStorage.setItem("saved.expanded", String(!open));
+        cx.notify();
+      })
       .child(div().font_medium().child(SAVED_SESSIONS.label))
       .child(div().child(String(rows.length))).child(div().flex_1())
       .child(div().id("saved-refresh").px(4).cursor_pointer().hover((el) => el.text_color(t.foreground))
