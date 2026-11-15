@@ -11,16 +11,17 @@ const translate = (box, point) => ({ ...box, left: box.left + point.x, top: box.
 
 // Reserve all visible content, not the body used to scale it. Both facings and
 // every motion resource share an envelope so atlas frames/turns cannot resize it.
-export function residentGeometry(sprites, size) {
+export function residentGeometry(sprites, size, visualScale = 1) {
   const art = union(sprites.flatMap((sprite) => [false, true].map((mirrored) => {
-    const fitted = spriteLayout({ ...sprite, mirrored }, size + 16, size, true);
+    const fitted = spriteLayout({ ...sprite, mirrored }, size + 16, size, true, visualScale);
     const [sourceX, y, width, height] = sprite.content || [0, 0, sprite.width, sprite.height];
     const x = mirrored ? sprite.width - sourceX - width : sourceX, scale = fitted.width / sprite.width;
     return { left: fitted.left + x * scale, top: fitted.top + y * scale, width: width * scale, height: height * scale };
   })));
   const name = { left: -6, top: Math.max(size + 12, art.top + art.height + 8), width: size + 28, height: 36 };
   const status = { left: (size + 16 - 84) / 2, top: Math.min(-26, art.top - 28), width: 84, height: 22 };
-  return { art, name, status, body: union([art, name, { left: 8, top: size, width: size, height: 14 }]) };
+  const selection = { left: (size + 16 - size * visualScale) / 2, top: size, width: size * visualScale, height: 14 };
+  return { art, name, status, selection, visualScale, body: union([art, name, selection]) };
 }
 
 export function noticeBounds(actor, layout, options = {}) {
@@ -54,11 +55,7 @@ export function residentBounds(layout, geometry, notice) {
 // rows into the old fixed area and then make the collision radius larger.
 const nominalGeometry = new Map();
 export function villageLayout(width, viewportHeight, count, noticeCount = 0, noticeSize = {}, residents) {
-  // Body-fit also scales the surrounding artwork. Lower the old 108/82px caps
-  // by about 24%, then fit narrow/short panes using the visible viewport, never
-  // the scroll field height. Round to reuse cached geometry during divider drags.
-  const size = Math.round(Math.min(count > 12 ? 62 : 82,
-    Math.max(48, Math.min(width * 0.18, viewportHeight * 0.2))));
+  const size = count > 12 ? 82 : 108;
   let specs = residents;
   if (!specs?.length) {
     if (!nominalGeometry.has(size)) nominalGeometry.set(size, residentGeometry([{ width: size + 16, height: size }], size));

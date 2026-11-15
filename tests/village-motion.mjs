@@ -199,6 +199,7 @@ console.log('village motion: fixed scenery crop, directional poses, selected res
 const { renderVillage, residentSpacing } = villageModule.namespace;
 const { residentFootprint, residentBounds, footprintOverlap } = load('./village-spacing.js').namespace;
 const { RESOURCE_PACKS } = load('./resource-packs.js').namespace;
+const proportions = JSON.parse(readFileSync(new URL('./fixtures/village-proportions.json', import.meta.url), 'utf8'));
 const palette = new Proxy({}, { get: () => '#123456' });
 const intersects = (a, b) => Math.min(a.left + a.width, b.left + b.width) > Math.max(a.left, b.left) + 0.001
   && Math.min(a.top + a.height, b.top + b.height) > Math.max(a.top, b.top) + 0.001;
@@ -239,10 +240,13 @@ function painted(f) {
     const actor = f.view.villageActors.get(row.id), spec = residentSpacing(f.view, row, f.layout.size);
     const envelope = residentFootprint(actor, f.layout, spec.geometry, spec.reservedNotice);
     const hitbox = byId(`overview-${row.id}`), ring = byId(`village-selection-ring-${row.id}`);
+    assert.equal(hitbox.styles.left, actor.x, 'resident hitbox retains the existing actor origin');
+    assert.equal(hitbox.styles.top, actor.y, 'resident hitbox retains the existing actor origin');
     assert.equal(hitbox.styles.w, f.layout.size + 16, 'interactive resident width follows layout size');
     assert.equal(hitbox.styles.h, spec.geometry.name.top + spec.geometry.name.height, 'interactive resident height follows reserved name geometry');
     if (ring) {
-      assert.equal(ring.styles.w, f.layout.size, 'selection ring follows the scaled body');
+      assert.equal(ring.styles.w, spec.geometry.selection.width, 'selection ring uses the reserved scaled geometry');
+      assert.equal(ring.styles.left, spec.geometry.selection.left, 'selection ring stays centered on the body');
       assert.equal(ring.styles.top, f.layout.size, 'selection ring follows the scaled baseline');
       assert.ok(contains(spec.geometry.body, { left: ring.styles.left, top: ring.styles.top, width: ring.styles.w, height: ring.styles.h }),
         'collision geometry reserves the selection ring');
@@ -275,6 +279,13 @@ function painted(f) {
     const image = byId(`village-art-${row.id}-${sprite.name}`);
     const crop = drawn.find(node => node.children.includes(image));
     assert.ok(crop, 'inspect the production spriteArt clipping wrapper');
+    const before = proportions.layouts[`village${f.layout.size}`].sprites[sprite.resource][Number(Boolean(sprite.mirrored))];
+    const factor = RESOURCE_PACKS[f.view.pack].villageScale?.[sprite.name] ?? 1;
+    assert.equal(spec.geometry.visualScale, factor, 'one resident factor feeds movement and rendering across motion resources');
+    assert.ok(Math.abs(crop.styles.w - before.width * factor) < 0.001);
+    assert.ok(Math.abs(crop.styles.h - before.height * factor) < 0.001);
+    if (factor === 1) assert.deepEqual({ left: crop.styles.left, top: crop.styles.top, width: crop.styles.w, height: crop.styles.h }, before,
+      `${sprite.resource}: the production renderer exactly retains 65b5c80 normal artwork`);
     const [sourceX, y, w, h] = sprite.content || [0, 0, sprite.width, sprite.height];
     const x = sprite.mirrored ? sprite.width - sourceX - w : sourceX, scale = crop.styles.w / sprite.width;
     assert.ok(Math.abs(scale - crop.styles.h / sprite.height) < 0.001, 'rendered artwork preserves source aspect ratio');
@@ -309,6 +320,19 @@ for (const pack of ['chiikawa', 'spacing-fixture']) {
 }
 delete RESOURCE_PACKS['spacing-fixture'];
 
+// All shipped residents keep one optical scale across idle/travel/facing/frame
+// changes. The renderer checks above compare normal art to frozen 65b5c80 values.
+for (const name of RESOURCE_PACKS.chiikawa.residents) for (const count of [1, 13]) {
+  const f = fixture(Array(count).fill(name));
+  f.view.villageSelected = f.rows[0].id;
+  for (const direction of ['idle', 'left', 'right']) for (const clock of [0, 125, 500, 937.5]) {
+    for (const actor of f.view.villageActors.values()) Object.assign(actor, { direction, moving: direction !== 'idle', facing: direction === 'left' ? -1 : 1 });
+    // Inspect travel on unlocked residents; selection intentionally rests.
+    f.view.themeClock = clock; f.view.villageClock = clock;
+    painted(f);
+  }
+}
+
 // Quiet labels, large art and speech/approval regions all stay clear over time,
 // including a narrow one-column field and dense pages. Every free resident moves.
 for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) for (const height of [300, 660]) {
@@ -332,8 +356,8 @@ for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) for (con
   assert.ok(travelled.slice(1).every(distance => distance > 8), `${width}×${height}/${count}: free residents keep roaming: ${travelled}`);
 }
 
-// Height-only Scene/Split changes must reach both renderer and motion geometry.
-// The generated scroll field can stay tall without undoing the viewport cap.
+// Height-only Scene/Split changes must never shrink normal residents again.
+// The same per-resident geometry is reused in either presentation.
 {
   const f = fixture(['rakko', 'shisa', 'yoroi', 'momonga'], ['working', 'done', 'seen', 'working'], 1400, 900);
   const selected = f.rows[0].id, actor = f.view.villageActors.get(selected);
@@ -343,10 +367,10 @@ for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) for (con
     f.view.villageHeight = height;
     painted(f);
     const geometry = residentSpacing(f.view, f.rows[0], f.layout.size).geometry;
-    assert.equal(f.layout.size, height === 300 ? 60 : 82, 'render path sizes artwork from the measured viewport');
+    assert.equal(f.layout.size, 108, 'Scene/Split retain the original nominal body size');
     assert.equal(f.layout.viewportHeight, height, 'scroll extent never replaces the viewport height');
     assert.equal(f.view.villageSpacingKey.rows.get(selected).geometry, geometry, 'movement uses the exact rendered geometry');
-    assert.equal(geometry === sceneGeometry, height === 900, 'returning to Scene reuses its bounded geometry');
+    assert.equal(geometry, sceneGeometry, 'height changes reuse identical resident geometry');
     assert.equal(f.view.villageActors.get(selected), actor, 'resizing retains resident identity');
     assert.equal(f.view.villageSelected, selected, 'resizing retains selection');
     advance(f, 80, () => assert.equal(collisionCount(f), 0, 'resized artwork retains collision clearance'));
@@ -401,8 +425,8 @@ for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) for (con
 
 // Production drag handlers retain pointer ownership. Neighbours recover while
 // it is held, a trailing drop does not select anyone, and release resumes motion.
-{
-  const f = fixture(['hachiware', 'momonga', 'idle'], [], 1000);
+for (const name of ['hachiware', 'rakko', 'kurimanju', 'shisa']) {
+  const f = fixture([name, 'momonga', 'idle'], [], 1000);
   painted(f);
   const actor = f.view.villageActors.get(f.rows[0].id), neighbour = f.view.villageActors.get(f.rows[1].id);
   const dx = neighbour.x - actor.x, dy = neighbour.y - actor.y;

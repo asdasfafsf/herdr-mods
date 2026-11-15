@@ -776,9 +776,10 @@ console.log('Options popover: cards/village dismissal preserves filters and sess
 
 // A child click can consume mouse-up before the viewport sees it. It must
 // still end the pending grab; later unpressed motion never carries a character.
-{
+for (const name of ['hachiware', 'rakko', 'kurimanju', 'shisa']) {
   const data=fixture(4);data.props={mode:'overview',skin:'chiikawa'};data.outside=[];
   const env=await environment(data,null);env.render();
+  env.instance.residentAssignments.set('t0',name);env.render();
   env.pointer('overview-t0','on_mouse_down',{position:{x:100,y:200}});
   assert.ok(env.instance.pointerDrag);
   env.click('overview-t0');
@@ -792,8 +793,8 @@ console.log('Options popover: cards/village dismissal preserves filters and sess
   env.click('overview-t1');
   assert.equal(env.instance.pointerDrag,null);
   assert.equal(env.instance.villageSelected,'t0','dropping onto another resident does not select it');
-  console.log('native click propagation: click cleanup, unpressed motion and cross-resident drops passed');
 }
+console.log('native click propagation: normal/scaled residents retain click cleanup, unpressed motion and cross-resident drops');
 
 // Chat uses a synthetic transport only: never send a test message to a live agent.
 {

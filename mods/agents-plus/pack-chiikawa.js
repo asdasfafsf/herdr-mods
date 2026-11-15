@@ -6,6 +6,10 @@ export const CHIIKAWA_PACK = {
   frameAtlas: "atlases",
   residents: ["rakko", "hachiware", "idle", "done", "momonga", "kurimanju", "shisa", "yoroi", "anoko", "chiikabu", "momonga-heart", "chiikawa-fairy", "usagi-dance", "hachiware-dance", "chiikawa-bounce"],
   sprites: SPRITES,
+  // Village-only optical balance against the unchanged Hachiware/Usagi poses:
+  // Rakko/Shisa body-fit enlarges their faces and lettering; Kurimanju is a close-up.
+  // A resident's scale applies to every motion resource, never individual frames.
+  villageScale: { rakko: 0.8, kurimanju: 0.85, shisa: 0.75 },
   // 0 is a frontal pose; never mirror source lettering. Kurimanju only turns
   // during the four text-free drinking frames, keeping caption frames intact.
   facing: { idle: 1, momonga: -1, hachiware: -1, done: -1,
