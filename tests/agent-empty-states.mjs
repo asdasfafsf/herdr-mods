@@ -44,6 +44,7 @@ async function hostFixture({ skin = 'default', presentation = 'cards', agents = 
   const shared = { 'ag.resourcePack': skin, ...state };
   if (skin === 'chiikawa') shared['ag.presentation'] = presentation;
   const host = {
+    notify() {},
     agents: () => structuredClone(agents), terminals: () => structuredClone(terminals),
     panes: () => agents.map(a => ({ id: a.pane, terminal: a.address, tab: a.tab, title: a.title, program: a.program })),
     spaces: () => [], focused: () => focus, props: () => ({ mode, integrated: true }),

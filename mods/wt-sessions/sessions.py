@@ -65,6 +65,7 @@ import time
 
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)),  # agentfiles.py, installed beside it
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib")]  # in the repo
+from agentfiles import codex_session_kind
 from agentfiles import (  # noqa: E402
     CLAUDE_PROJECTS,
     CODEX_SESSIONS,
@@ -172,6 +173,9 @@ def codex(folders, query):
                 break
         sid = (meta or {}).get("id") or (meta or {}).get("session_id")
         current = index.get(sid, {})
+        origin = codex_session_kind(current, meta)
+        if origin in ("subagent", "exec") or current.get("archived"):
+            continue
         if meta and current.get("cwd"):
             meta["cwd"] = current["cwd"]
         if not meta or not meta.get("cwd") or not inside(meta["cwd"], folders):
@@ -189,7 +193,7 @@ def codex(folders, query):
         title = names.get(sid) or current.get("name") or first or current.get("title")
         if not title or not sid:
             continue
-        out.append({"agent": "codex", "id": sid, "cwd": meta["cwd"], "title": title, "updated": current.get("updated_at") or int(os.path.getmtime(path)), **({"snippet": found} if found else {})})
+        out.append({"agent": "codex", "id": sid, "cwd": meta["cwd"], "title": title, "origin": origin, "updated": current.get("updated_at") or int(os.path.getmtime(path)), **({"snippet": found} if found else {})})
     return out
 
 

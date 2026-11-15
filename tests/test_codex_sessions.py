@@ -56,6 +56,19 @@ class CodexSessionsTests(unittest.TestCase):
         rows[1]['cwd'] = '/work/a'
         self.assertIsNone(codex_live.named_session('/work/a', '설계 확인 | a', rows, names))
 
+    def test_desktop_discovery_does_not_promote_internal_subagents(self):
+        desktop = '00000000-0000-4000-8000-000000000001'
+        child = '00000000-0000-4000-8000-000000000002'
+        records = {sid: {'id':sid,'cwd':'/work','source':'vscode','originator':'codex_work_desktop',
+                         'rollout_path':'/rollout','updated_at':1,'title':'Task','archived':0}
+                   for sid in [desktop, child]}
+        records[child]['source'] = json.dumps({'subagent': {'thread_spawn': {'parent_thread_id': desktop}}})
+        opened = '\n'.join('n/home/thread-writer-locks/'+sid+'.lock' for sid in records)
+        with patch.object(outside, 'codex_names', return_value={}), patch.object(outside, 'codex_metadata', return_value=records), patch.object(outside, 'load', return_value={}), patch.object(outside, 'out', side_effect=lambda *a: 'codex app-server --stdio' if a[0]=='ps' else opened), patch.object(outside.os.path, 'isfile', return_value=True), patch.object(outside, 'json_lines', return_value=[]):
+            rows = outside.codex_sessions({123:(1,'codex')},{})
+            self.assertEqual([(r['session'],r['origin']) for r in rows],[(desktop,'desktop')])
+            self.assertEqual(rows[0]['app'], 'Codex server')  # origin is not current owner UI
+
     def test_multiple_open_rollouts_are_not_one_session(self):
         result = subprocess.CompletedProcess([], 0, 'n/a space/rollout-one.jsonl\nn/a/rollout-two.jsonl\n', '')
         with patch.object(agentfiles.subprocess, 'run', return_value=result):

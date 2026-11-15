@@ -8,9 +8,9 @@ Prints JSON: [{ agent: "claude" | "codex", pid, session, cwd, title, status: "wo
 
 - Claude Code: every running claude keeps ~/.claude/sessions/<pid>.json (its session id, folder,
   name, status: busy / shell / idle). Those whose process is alive count.
-- Codex: a TUI's open rollout or each CLI session held by a shared server, excluding
-  sessions already recorded in Herdr. The server's sessions are labelled "Codex server";
-  this does not claim which external terminal app is displaying them.
+- Codex: a TUI's open rollout or interactive parent sessions held by a server, excluding
+  internal subagents and sessions already recorded in Herdr. Recorded desktop/editor/CLI
+  origin is separate from ownership: "Codex server" does not identify the displaying UI.
 Left out: agents under herdr-core (Herdr shows those itself) and Claude's desktop app's own.
 `app` is the terminal the agent runs in (TERM_PROGRAM, else the app bundle), `bundle` its
 bundle id, to bring that app forward. Reads files and `ps`/`lsof` only; which rollout a Codex
@@ -27,6 +27,7 @@ import sys
 # beside this file by install.sh; from the repo, ../../lib).
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib")]
 from agentfiles import HERDR_STATE, load, save, json_lines, claude_registry, codex_rollout_of, codex_session_id, codex_names, codex_metadata  # noqa: E402
+from agentfiles import codex_session_meta, codex_session_kind
 
 
 def out(*args):
@@ -127,10 +128,13 @@ def codex_sessions(table, cache):
             ids = set(re.findall(r"/thread-writer-locks/([0-9a-f-]{36})\.lock$", opened, re.M))
             for sid in ids - represented:
                 rec = index.get(sid)
-                if not rec or rec.get("source") != "cli" or rec.get("archived"):
+                if not rec or rec.get("archived"):
                     continue
                 path = rec.get("rollout_path")
                 if not path or not os.path.isfile(path):
+                    continue
+                origin = codex_session_kind(rec, codex_session_meta(path))
+                if origin not in ("cli", "desktop", "editor"):
                     continue
                 state = "idle"
                 for item in json_lines(path, tail=512 * 1024):
@@ -141,7 +145,7 @@ def codex_sessions(table, cache):
                 found.append({"agent": "codex", "pid": pid, "session": sid, "cwd": rec["cwd"],
                               "title": names.get(sid) or rec.get("name") or rec["title"],
                               "status": state, "updated": rec["updated_at"], "_daemon": True,
-                              "argv": ["codex"], "app": "Codex server", "bundle": None})
+                              "argv": ["codex"], "app": "Codex server", "bundle": None, "origin": origin})
             continue
         cache[pid] = codex_rollout_of(pid)
         path = cache[pid]
@@ -149,6 +153,9 @@ def codex_sessions(table, cache):
             continue
         sid = codex_session_id(path)
         if not sid:
+            continue
+        origin = codex_session_kind(index.get(sid), codex_session_meta(path))
+        if origin not in ("cli", "desktop", "editor"):
             continue
         cwd, state = None, "idle"
         for o in json_lines(path, tail=512 * 1024):
@@ -161,7 +168,7 @@ def codex_sessions(table, cache):
                 state = "idle"
         cwd = cwd or out("lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn").splitlines()[-1][1:]
         found.append({"agent": "codex", "pid": pid, "session": sid, "cwd": cwd, "title": names.get(sid) or os.path.basename(cwd),
-                      "status": state, "updated": int(os.path.getmtime(path))})
+                      "status": state, "updated": int(os.path.getmtime(path)), "origin": origin})
     return found
 
 

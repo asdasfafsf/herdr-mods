@@ -4,7 +4,8 @@ import vm from 'node:vm';
 
 const context=vm.createContext({console});
 let calls=[];
-const host={exec:async (...args)=>{calls.push(args);return {code:0,stdout:JSON.stringify({session:'sid'})}},readTextFile:async()=>JSON.stringify({sessionId:'claude-id'}),home:()=>'/home/test',appHome:()=>'/app'};
+const sharedState={};
+const host={exec:async (...args)=>{calls.push(args);return {code:0,stdout:JSON.stringify({session:'sid'})}},readTextFile:async()=>JSON.stringify({sessionId:'claude-id'}),home:()=>'/home/test',appHome:()=>'/app',shared:k=>sharedState[k],setShared:(k,v)=>{sharedState[k]=v}};
 const herdr=new vm.SyntheticModule(Object.keys(host),function(){for(const [k,v] of Object.entries(host))this.setExport(k,v)},{context});
 const module=new vm.SourceTextModule(readFileSync('lib/resume.js','utf8'),{context});
 await module.link(()=>herdr);await module.evaluate();
@@ -18,11 +19,11 @@ assert.equal(calls[0][1][1],'/app/mods/spaces-plus/codex_live.py');
 
 // Execute the actual UI handler with host commands stubbed: both agents, both actions.
 const text=readFileSync('mods/wt-sessions/main.js','utf8');
-const handler=text.slice(text.indexOf('  resume(s, fork) {'),text.indexOf('  key(e, cx) {'));
+const handler=text.slice(text.indexOf('  async resume(s, fork) {'),text.indexOf('  key(e, cx) {'));
 for(const agent of ['claude','codex'])for(const fork of [false,true]){
  const commands=[];
- const Type=new Function('AGENTS','shared','KNOWN','P','spaces','run',`return class { ${handler} close() {} }`)(AGENTS,()=>null,'known',()=>({space:'space1'}),()=>[{id:'space1'}],(...args)=>commands.push(args));
- new Type().resume({agent,id:'sid',cwd:'/work',title:'Task'},fork);
+ const Type=new Function('AGENTS','shared','KNOWN','P','spaces','run','resumeSession','notify','LIVE',`return class { ${handler} close() {} }`)(AGENTS,()=>null,'known',()=>({space:'space1'}),()=>[{id:'space1'}],(...args)=>commands.push(args),async(rec,open)=>open(resumeArgv(rec)),()=>assert.fail('unexpected rejection'),'live');
+ await new Type().resume({agent,id:'sid',cwd:'/work',title:'Task'},fork);
  assert.equal(commands[0][0],'tab.new');
  assert.ok(commands[0][1].argv.includes('sid'));
  assert.ok(commands[0][1].argv.includes(agent==='codex'?(fork?'fork':'resume'):(fork?'--fork-session':'--resume')));

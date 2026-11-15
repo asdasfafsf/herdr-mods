@@ -13,10 +13,10 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar } from "gpui-base";
-import { run, props, closeOverlay, theme, spaces, exec, appHome, shared } from "herdr";
+import { run, props, closeOverlay, theme, spaces, exec, appHome, shared, notify } from "herdr";
 import { button, footer, ago } from "./ui.js";
-import { KNOWN } from "./state.js";
-import { AGENTS } from "./resume.js";
+import { KNOWN, LIVE } from "./state.js";
+import { AGENTS, resumeSession } from "./resume.js";
 
 const SCRIPT = () => `${appHome()}/mods/wt-sessions/sessions.py`;
 // How each agent picks a session up again, after its own command (programs.json `run`).
@@ -91,18 +91,26 @@ export default class WtSessions extends View {
 
   // Back in its agent: a new tab in the worktree's space when it's open, else a new space
   // on the worktree. In the session's own folder: Claude Code finds sessions by folder.
-  resume(s, fork) {
+  async resume(s, fork) {
     const how = AGENTS[s.agent];
     if (!how) return;
+    const live = !fork && (shared(LIVE) ?? {})[s.id];
+    if (live) { this.close(); return run("pane.focus", { terminal: live }); }
     const known = (shared(KNOWN)?.[""] ?? []).find((a) => a.key === s.agent && a.installed);
     // As the agent menu starts it (programs.json's run, its flags), then resumed or forked.
     const launch = known?.run ?? [s.agent];
     const argv = (fork ? how.fork : how.resume)(launch[0], launch.slice(1), s.id);
     const p = P();
     const space = p.space && spaces().find((x) => x.id === p.space);
-    this.close();
-    if (space) run("tab.new", { space: space.id, folder: s.cwd, argv, name: s.title.slice(0, 28) });
-    else run("space.new", { ...(p.name ? { name: p.name } : {}), folder: s.cwd, argv });
+    const open = (argv) => {
+      this.close();
+      if (space) return run("tab.new", { space: space.id, folder: s.cwd, argv, name: s.title.slice(0, 28) });
+      return run("space.new", { ...(p.name ? { name: p.name } : {}), folder: s.cwd, argv });
+    };
+    try {
+      if (fork) open(argv);
+      else await resumeSession({ agent: s.agent, session: s.id, argv: launch, cwd: s.cwd }, open, "wt-sessions");
+    } catch (error) { notify({ title: "Cannot resume session", body: String(error.message ?? error), level: "warning" }); }
   }
 
   key(e, cx) {

@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import sqlite3
+from contextlib import closing
 
 HOME = os.path.expanduser("~")
 CLAUDE_HOME = os.path.join(HOME, ".claude")
@@ -120,16 +121,60 @@ def codex_rollout(session):
     return hits[0] if hits else None
 
 
-def codex_metadata():
+def codex_metadata(session=None):
     """Current names/cwd from Codex's index, read-only; old installs fall back to JSONL."""
     try:
         database = os.path.join(CODEX_HOME, "state_5.sqlite")
-        with sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=1) as connection:
+        with closing(sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=1)) as connection:
             connection.row_factory = sqlite3.Row
-            return {r["id"]: dict(r) for r in connection.execute(
-                "SELECT id,cwd,title,name,rollout_path,source,updated_at,archived FROM threads")}
+            columns = {r[1] for r in connection.execute("PRAGMA table_info(threads)")}
+            wanted = ("id", "cwd", "title", "name", "rollout_path", "source", "updated_at", "archived",
+                      "originator", "thread_source", "history_mode", "attached_thread_parent_id")
+            selected = [name for name in wanted if name in columns]
+            if "id" not in selected:
+                return {}
+            query = "SELECT " + ",".join(selected) + " FROM threads"
+            if session is not None:
+                query += " WHERE id=?"
+            return {r["id"]: dict(r) for r in connection.execute(query, (session,) if session is not None else ())}
     except (OSError, sqlite3.Error):
         return {}
+
+
+def codex_session_meta(path):
+    """Read only the first header, never mistake a fork's copied header for its identity."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            item = json.loads(f.readline(2 * 1024 * 1024))
+        payload = item.get("payload")
+        return payload if item.get("type") == "session_meta" and isinstance(payload, dict) else {}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def codex_session_kind(record, meta=None):
+    """Recorded client origin, NOT the current writer. vscode alone is not desktop proof.
+
+    Resume can update originator; this describes available metadata, not immutable
+    creation provenance. Internal children take precedence over every client label.
+    """
+    records = [record or {}, meta or {}]
+    sources = []
+    for rec in records:
+        source = rec.get("source")
+        if isinstance(source, str) and source.lstrip().startswith("{"):
+            try:
+                source = json.loads(source)
+            except ValueError:
+                pass
+        if ((isinstance(source, dict) and "subagent" in source)
+                or rec.get("attached_thread_parent_id")):
+            return "subagent"
+        sources.append(source)
+    source = next((s for s in sources if s is not None), None)
+    if source in (None, "cli", "vscode") and any(r.get("originator") in ("codex_work_desktop", "Codex Desktop") for r in records):
+        return "desktop"
+    return {"cli": "cli", "vscode": "editor", "exec": "exec"}.get(source, "unknown") if isinstance(source, str) else "unknown"
 
 
 def codex_running(session):

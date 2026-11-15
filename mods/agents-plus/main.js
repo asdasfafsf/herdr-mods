@@ -9,14 +9,13 @@
 // with news gets a second line: what a working agent is doing, what a waiting one asks to
 // run, the first line of a finished one's answer (activity.py); hovering says its repo and
 // branch (on the row too when two read the same). Clicking one opens that session in Herdr (spaces-plus's resume: a Herdr
-// terminal already running it, else resumed as it was started; the other app's copy keeps
-// running, as Claude Code and Codex allow).
+// terminal already running it, else resumed after the current client releases it).
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, appHome } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, appHome, notify } from "herdr";
 // How sessions are resumed: lib/resume.js in the repo, copied here by install.sh.
-import { resumeArgv, AGENTS, runs } from "./resume.js";
+import { resumeSession, AGENTS, runs } from "./resume.js";
 import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
 import { statusMark, statusPill, statusColor, statusActivity, statusNotice, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
@@ -386,8 +385,8 @@ export default class Agents extends View {
   // Continue an outside agent's session in Herdr. With the worktrees bundle shown
   // (spaces-plus in the layout), it decides where: a Herdr terminal already on it, else a
   // tab in that worktree's space. Without it, here: a tab in the space whose folder holds
-  // the session's, else a new space there. Either way the other app's copy keeps running.
-  resume(x) {
+  // the session's, else a new space there, after a shared ownership preflight.
+  async resume(x) {
     const rec = { agent: x.agent, session: x.session, argv: x.argv, cwd: x.cwd, title: x.title };
     if (runs(layout(), "spaces-plus")) return run(`spaces-plus.resume@${JSON.stringify(rec)}`);
     if (!AGENTS[rec.agent]) return;
@@ -397,8 +396,12 @@ export default class Agents extends View {
     const at = (s) => placeOf(s, ps) ?? "";
     const s = spaces().filter((s) => !s.machine && inside(rec.cwd, at(s))).sort((a, b) => at(b).length - at(a).length)[0];
     const name = rec.title ? rec.title.slice(0, 28) : undefined;
-    if (s) { run("space.select", { id: s.id }); run("tab.new", { space: s.id, folder: rec.cwd, argv: resumeArgv(rec), ...(name ? { name } : {}) }); }
-    else run("space.new", { folder: rec.cwd, argv: resumeArgv(rec) });
+    try {
+      await resumeSession(rec, (argv) => {
+        if (s) { run("space.select", { id: s.id }); return run("tab.new", { space: s.id, folder: rec.cwd, argv, ...(name ? { name } : {}) }); }
+        return run("space.new", { folder: rec.cwd, argv });
+      }, "agents-plus");
+    } catch (error) { notify({ title: "Cannot resume session", body: String(error.message ?? error), level: "warning" }); }
   }
 
   // A section's outside agents, after Herdr's own, the most recently changed first.
