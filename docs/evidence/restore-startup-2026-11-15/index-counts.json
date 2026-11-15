@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-15T09:40:26.391534+00:00",
+  "access": "SQLite mode=ro; aggregate counts only",
+  "counts": {
+    "total": 80745,
+    "unarchived": 80743,
+    "distinct_unarchived_cwd": 30,
+    "unarchived_subagent_source": 305,
+    "unarchived_with_parent": 0
+  }
+}

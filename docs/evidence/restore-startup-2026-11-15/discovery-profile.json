@@ -1,0 +1,1146 @@
+{
+  "measurement": "cProfile overhead included; current read-only discovery, not restart",
+  "at_unix": 1794735657.176009,
+  "index_counts": {
+    "total": 80745,
+    "unarchived": 80743,
+    "distinct_unarchived_cwd": 30
+  },
+  "sessions": 9,
+  "profiles": [
+    {
+      "source": "unique-title-cwd",
+      "elapsed_ms": 1525.045,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 72.391,
+          "cumulative_ms": 1518.893
+        },
+        {
+          "file": "codex_live.py",
+          "line": 18,
+          "function": "named_session",
+          "calls": 1,
+          "self_ms": 25.004,
+          "cumulative_ms": 1323.514
+        },
+        {
+          "file": "<frozen posixpath>",
+          "line": 391,
+          "function": "realpath",
+          "calls": 161486,
+          "self_ms": 331.685,
+          "cumulative_ms": 1298.428
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.lstat>",
+          "calls": 486345,
+          "self_ms": 833.778,
+          "cumulative_ms": 833.778
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 3,
+          "self_ms": 0.067,
+          "cumulative_ms": 121.75
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 3,
+          "self_ms": 0.055,
+          "cumulative_ms": 115.693
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 3,
+          "self_ms": 0.168,
+          "cumulative_ms": 115.633
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 6,
+          "self_ms": 0.05,
+          "cumulative_ms": 115.139
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 6,
+          "self_ms": 115.081,
+          "cumulative_ms": 115.081
+        },
+        {
+          "file": "codex_live.py",
+          "line": 28,
+          "function": "writer_open",
+          "calls": 1,
+          "self_ms": 0.026,
+          "cumulative_ms": 102.029
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'pop' of 'list' objects>",
+          "calls": 728221,
+          "self_ms": 49.004,
+          "cumulative_ms": 49.004
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _stat.S_ISLNK>",
+          "calls": 486334,
+          "self_ms": 22.561,
+          "cumulative_ms": 22.561
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'split' of 'str' objects>",
+          "calls": 161490,
+          "self_ms": 20.818,
+          "cumulative_ms": 20.818
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.041,
+          "cumulative_ms": 16.034
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'startswith' of 'str' objects>",
+          "calls": 161493,
+          "self_ms": 12.987,
+          "cumulative_ms": 12.987
+        }
+      ]
+    },
+    {
+      "source": "unique-title-cwd",
+      "elapsed_ms": 855.99,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 71.731,
+          "cumulative_ms": 849.243
+        },
+        {
+          "file": "codex_live.py",
+          "line": 18,
+          "function": "named_session",
+          "calls": 1,
+          "self_ms": 25.123,
+          "cumulative_ms": 658.278
+        },
+        {
+          "file": "<frozen posixpath>",
+          "line": 391,
+          "function": "realpath",
+          "calls": 161486,
+          "self_ms": 196.388,
+          "cumulative_ms": 633.144
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.lstat>",
+          "calls": 163373,
+          "self_ms": 343.674,
+          "cumulative_ms": 343.674
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 3,
+          "self_ms": 0.054,
+          "cumulative_ms": 118.261
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 3,
+          "self_ms": 0.046,
+          "cumulative_ms": 111.834
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 3,
+          "self_ms": 0.205,
+          "cumulative_ms": 111.784
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 6,
+          "self_ms": 0.072,
+          "cumulative_ms": 111.29
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 6,
+          "self_ms": 111.21,
+          "cumulative_ms": 111.21
+        },
+        {
+          "file": "codex_live.py",
+          "line": 28,
+          "function": "writer_open",
+          "calls": 1,
+          "self_ms": 0.021,
+          "cumulative_ms": 101.809
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'pop' of 'list' objects>",
+          "calls": 405249,
+          "self_ms": 26.338,
+          "cumulative_ms": 26.338
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'split' of 'str' objects>",
+          "calls": 161490,
+          "self_ms": 16.774,
+          "cumulative_ms": 16.774
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'startswith' of 'str' objects>",
+          "calls": 161491,
+          "self_ms": 13.559,
+          "cumulative_ms": 13.559
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.028,
+          "cumulative_ms": 13.05
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "calls": 161985,
+          "self_ms": 11.278,
+          "cumulative_ms": 11.288
+        }
+      ]
+    },
+    {
+      "source": "open-file",
+      "elapsed_ms": 23.384,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 0.025,
+          "cumulative_ms": 23.324
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 2,
+          "self_ms": 0.034,
+          "cumulative_ms": 23.215
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 2,
+          "self_ms": 0.027,
+          "cumulative_ms": 19.815
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.025,
+          "cumulative_ms": 19.794
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 2,
+          "self_ms": 0.122,
+          "cumulative_ms": 19.785
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 4,
+          "self_ms": 0.035,
+          "cumulative_ms": 19.44
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 4,
+          "self_ms": 19.401,
+          "cumulative_ms": 19.401
+        },
+        {
+          "file": "subprocess.py",
+          "line": 817,
+          "function": "__init__",
+          "calls": 2,
+          "self_ms": 0.145,
+          "cumulative_ms": 3.358
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1808,
+          "function": "_execute_child",
+          "calls": 2,
+          "self_ms": 0.128,
+          "cumulative_ms": 3.113
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.read>",
+          "calls": 8,
+          "self_ms": 1.558,
+          "cumulative_ms": 1.558
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _posixsubprocess.fork_exec>",
+          "calls": 2,
+          "self_ms": 0.972,
+          "cumulative_ms": 0.972
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1298,
+          "function": "_close_pipe_fds",
+          "calls": 2,
+          "self_ms": 0.066,
+          "cumulative_ms": 0.196
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1897,
+          "function": "<genexpr>",
+          "calls": 84,
+          "self_ms": 0.022,
+          "cumulative_ms": 0.134
+        },
+        {
+          "file": "contextlib.py",
+          "line": 534,
+          "function": "callback",
+          "calls": 4,
+          "self_ms": 0.041,
+          "cumulative_ms": 0.089
+        },
+        {
+          "file": "<frozen posixpath>",
+          "line": 72,
+          "function": "join",
+          "calls": 82,
+          "self_ms": 0.046,
+          "cumulative_ms": 0.076
+        }
+      ]
+    },
+    {
+      "source": "open-file",
+      "elapsed_ms": 22.122,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 0.025,
+          "cumulative_ms": 22.055
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 2,
+          "self_ms": 0.032,
+          "cumulative_ms": 21.933
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.033,
+          "cumulative_ms": 18.411
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 2,
+          "self_ms": 0.045,
+          "cumulative_ms": 18.347
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 2,
+          "self_ms": 0.104,
+          "cumulative_ms": 18.3
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 4,
+          "self_ms": 0.034,
+          "cumulative_ms": 17.972
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 4,
+          "self_ms": 17.933,
+          "cumulative_ms": 17.933
+        },
+        {
+          "file": "subprocess.py",
+          "line": 817,
+          "function": "__init__",
+          "calls": 2,
+          "self_ms": 0.134,
+          "cumulative_ms": 3.547
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1808,
+          "function": "_execute_child",
+          "calls": 2,
+          "self_ms": 0.117,
+          "cumulative_ms": 3.31
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.read>",
+          "calls": 8,
+          "self_ms": 1.577,
+          "cumulative_ms": 1.577
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _posixsubprocess.fork_exec>",
+          "calls": 2,
+          "self_ms": 1.196,
+          "cumulative_ms": 1.196
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1298,
+          "function": "_close_pipe_fds",
+          "calls": 2,
+          "self_ms": 0.06,
+          "cumulative_ms": 0.181
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1897,
+          "function": "<genexpr>",
+          "calls": 84,
+          "self_ms": 0.024,
+          "cumulative_ms": 0.146
+        },
+        {
+          "file": "<frozen posixpath>",
+          "line": 72,
+          "function": "join",
+          "calls": 82,
+          "self_ms": 0.05,
+          "cumulative_ms": 0.083
+        },
+        {
+          "file": "<frozen os>",
+          "line": 657,
+          "function": "get_exec_path",
+          "calls": 2,
+          "self_ms": 0.03,
+          "cumulative_ms": 0.081
+        }
+      ]
+    },
+    {
+      "source": "open-file",
+      "elapsed_ms": 25.808,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 0.041,
+          "cumulative_ms": 25.76
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 2,
+          "self_ms": 0.033,
+          "cumulative_ms": 25.596
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.049,
+          "cumulative_ms": 21.762
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 2,
+          "self_ms": 0.044,
+          "cumulative_ms": 21.682
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 2,
+          "self_ms": 0.118,
+          "cumulative_ms": 21.636
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 4,
+          "self_ms": 0.03,
+          "cumulative_ms": 21.319
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 4,
+          "self_ms": 21.285,
+          "cumulative_ms": 21.285
+        },
+        {
+          "file": "subprocess.py",
+          "line": 817,
+          "function": "__init__",
+          "calls": 2,
+          "self_ms": 0.121,
+          "cumulative_ms": 3.873
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1808,
+          "function": "_execute_child",
+          "calls": 2,
+          "self_ms": 0.163,
+          "cumulative_ms": 3.642
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.read>",
+          "calls": 8,
+          "self_ms": 1.64,
+          "cumulative_ms": 1.64
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _posixsubprocess.fork_exec>",
+          "calls": 2,
+          "self_ms": 1.349,
+          "cumulative_ms": 1.349
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1298,
+          "function": "_close_pipe_fds",
+          "calls": 2,
+          "self_ms": 0.109,
+          "cumulative_ms": 0.257
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1897,
+          "function": "<genexpr>",
+          "calls": 84,
+          "self_ms": 0.023,
+          "cumulative_ms": 0.139
+        },
+        {
+          "file": "contextlib.py",
+          "line": 534,
+          "function": "callback",
+          "calls": 4,
+          "self_ms": 0.046,
+          "cumulative_ms": 0.087
+        },
+        {
+          "file": "<frozen posixpath>",
+          "line": 72,
+          "function": "join",
+          "calls": 82,
+          "self_ms": 0.047,
+          "cumulative_ms": 0.078
+        }
+      ]
+    },
+    {
+      "source": "open-file",
+      "elapsed_ms": 23.821,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 0.03,
+          "cumulative_ms": 23.765
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 2,
+          "self_ms": 0.053,
+          "cumulative_ms": 23.636
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.026,
+          "cumulative_ms": 20.134
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 2,
+          "self_ms": 0.044,
+          "cumulative_ms": 19.654
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 2,
+          "self_ms": 0.117,
+          "cumulative_ms": 19.607
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 4,
+          "self_ms": 0.034,
+          "cumulative_ms": 19.269
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 4,
+          "self_ms": 19.231,
+          "cumulative_ms": 19.231
+        },
+        {
+          "file": "subprocess.py",
+          "line": 817,
+          "function": "__init__",
+          "calls": 2,
+          "self_ms": 0.163,
+          "cumulative_ms": 3.921
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1808,
+          "function": "_execute_child",
+          "calls": 2,
+          "self_ms": 0.142,
+          "cumulative_ms": 3.652
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.read>",
+          "calls": 8,
+          "self_ms": 1.841,
+          "cumulative_ms": 1.841
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _posixsubprocess.fork_exec>",
+          "calls": 2,
+          "self_ms": 1.188,
+          "cumulative_ms": 1.188
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1298,
+          "function": "_close_pipe_fds",
+          "calls": 2,
+          "self_ms": 0.083,
+          "cumulative_ms": 0.238
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1897,
+          "function": "<genexpr>",
+          "calls": 84,
+          "self_ms": 0.024,
+          "cumulative_ms": 0.144
+        },
+        {
+          "file": "contextlib.py",
+          "line": 534,
+          "function": "callback",
+          "calls": 4,
+          "self_ms": 0.048,
+          "cumulative_ms": 0.098
+        },
+        {
+          "file": "<frozen os>",
+          "line": 657,
+          "function": "get_exec_path",
+          "calls": 2,
+          "self_ms": 0.034,
+          "cumulative_ms": 0.082
+        }
+      ]
+    },
+    {
+      "source": "open-file",
+      "elapsed_ms": 20.774,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 0.024,
+          "cumulative_ms": 20.728
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 2,
+          "self_ms": 0.033,
+          "cumulative_ms": 20.617
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.027,
+          "cumulative_ms": 17.275
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 2,
+          "self_ms": 0.037,
+          "cumulative_ms": 17.045
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 2,
+          "self_ms": 0.114,
+          "cumulative_ms": 17.006
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 4,
+          "self_ms": 0.03,
+          "cumulative_ms": 16.708
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 4,
+          "self_ms": 16.675,
+          "cumulative_ms": 16.675
+        },
+        {
+          "file": "subprocess.py",
+          "line": 817,
+          "function": "__init__",
+          "calls": 2,
+          "self_ms": 0.122,
+          "cumulative_ms": 3.531
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1808,
+          "function": "_execute_child",
+          "calls": 2,
+          "self_ms": 0.127,
+          "cumulative_ms": 3.32
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.read>",
+          "calls": 8,
+          "self_ms": 1.603,
+          "cumulative_ms": 1.603
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _posixsubprocess.fork_exec>",
+          "calls": 2,
+          "self_ms": 1.174,
+          "cumulative_ms": 1.174
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1298,
+          "function": "_close_pipe_fds",
+          "calls": 2,
+          "self_ms": 0.069,
+          "cumulative_ms": 0.191
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1897,
+          "function": "<genexpr>",
+          "calls": 84,
+          "self_ms": 0.024,
+          "cumulative_ms": 0.146
+        },
+        {
+          "file": "<frozen posixpath>",
+          "line": 72,
+          "function": "join",
+          "calls": 82,
+          "self_ms": 0.048,
+          "cumulative_ms": 0.082
+        },
+        {
+          "file": "contextlib.py",
+          "line": 534,
+          "function": "callback",
+          "calls": 4,
+          "self_ms": 0.03,
+          "cumulative_ms": 0.073
+        }
+      ]
+    },
+    {
+      "source": "open-file",
+      "elapsed_ms": 25.38,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 0.028,
+          "cumulative_ms": 25.321
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 2,
+          "self_ms": 0.032,
+          "cumulative_ms": 25.199
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.026,
+          "cumulative_ms": 22.117
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 2,
+          "self_ms": 0.036,
+          "cumulative_ms": 21.827
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 2,
+          "self_ms": 0.107,
+          "cumulative_ms": 21.79
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 4,
+          "self_ms": 0.032,
+          "cumulative_ms": 21.505
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 4,
+          "self_ms": 21.47,
+          "cumulative_ms": 21.47
+        },
+        {
+          "file": "subprocess.py",
+          "line": 817,
+          "function": "__init__",
+          "calls": 2,
+          "self_ms": 0.113,
+          "cumulative_ms": 3.332
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1808,
+          "function": "_execute_child",
+          "calls": 2,
+          "self_ms": 0.131,
+          "cumulative_ms": 3.129
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.read>",
+          "calls": 8,
+          "self_ms": 1.51,
+          "cumulative_ms": 1.51
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _posixsubprocess.fork_exec>",
+          "calls": 2,
+          "self_ms": 1.072,
+          "cumulative_ms": 1.072
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1298,
+          "function": "_close_pipe_fds",
+          "calls": 2,
+          "self_ms": 0.059,
+          "cumulative_ms": 0.189
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1897,
+          "function": "<genexpr>",
+          "calls": 84,
+          "self_ms": 0.023,
+          "cumulative_ms": 0.145
+        },
+        {
+          "file": "<frozen posixpath>",
+          "line": 72,
+          "function": "join",
+          "calls": 82,
+          "self_ms": 0.051,
+          "cumulative_ms": 0.083
+        },
+        {
+          "file": "contextlib.py",
+          "line": 534,
+          "function": "callback",
+          "calls": 4,
+          "self_ms": 0.039,
+          "cumulative_ms": 0.08
+        }
+      ]
+    },
+    {
+      "source": "open-file",
+      "elapsed_ms": 24.618,
+      "top_functions": [
+        {
+          "file": "codex_live.py",
+          "line": 42,
+          "function": "resolve",
+          "calls": 1,
+          "self_ms": 0.03,
+          "cumulative_ms": 24.554
+        },
+        {
+          "file": "subprocess.py",
+          "line": 512,
+          "function": "run",
+          "calls": 2,
+          "self_ms": 0.031,
+          "cumulative_ms": 24.377
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1178,
+          "function": "communicate",
+          "calls": 2,
+          "self_ms": 0.039,
+          "cumulative_ms": 20.77
+        },
+        {
+          "file": "subprocess.py",
+          "line": 2075,
+          "function": "_communicate",
+          "calls": 2,
+          "self_ms": 0.109,
+          "cumulative_ms": 20.729
+        },
+        {
+          "file": "agentfiles.py",
+          "line": 124,
+          "function": "codex_rollout_of",
+          "calls": 1,
+          "self_ms": 0.063,
+          "cumulative_ms": 20.593
+        },
+        {
+          "file": "selectors.py",
+          "line": 385,
+          "function": "select",
+          "calls": 4,
+          "self_ms": 0.044,
+          "cumulative_ms": 20.437
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'poll' of 'select.poll' objects>",
+          "calls": 4,
+          "self_ms": 20.389,
+          "cumulative_ms": 20.389
+        },
+        {
+          "file": "subprocess.py",
+          "line": 817,
+          "function": "__init__",
+          "calls": 2,
+          "self_ms": 0.117,
+          "cumulative_ms": 3.568
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1808,
+          "function": "_execute_child",
+          "calls": 2,
+          "self_ms": 0.138,
+          "cumulative_ms": 3.354
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method posix.read>",
+          "calls": 8,
+          "self_ms": 1.485,
+          "cumulative_ms": 1.485
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method _posixsubprocess.fork_exec>",
+          "calls": 2,
+          "self_ms": 1.279,
+          "cumulative_ms": 1.279
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1298,
+          "function": "_close_pipe_fds",
+          "calls": 2,
+          "self_ms": 0.055,
+          "cumulative_ms": 0.192
+        },
+        {
+          "file": "subprocess.py",
+          "line": 1897,
+          "function": "<genexpr>",
+          "calls": 84,
+          "self_ms": 0.026,
+          "cumulative_ms": 0.166
+        },
+        {
+          "file": "<frozen posixpath>",
+          "line": 72,
+          "function": "join",
+          "calls": 82,
+          "self_ms": 0.054,
+          "cumulative_ms": 0.091
+        },
+        {
+          "file": "contextlib.py",
+          "line": 534,
+          "function": "callback",
+          "calls": 4,
+          "self_ms": 0.039,
+          "cumulative_ms": 0.081
+        }
+      ]
+    }
+  ]
+}
