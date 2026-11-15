@@ -54,7 +54,11 @@ export function residentBounds(layout, geometry, notice) {
 // rows into the old fixed area and then make the collision radius larger.
 const nominalGeometry = new Map();
 export function villageLayout(width, viewportHeight, count, noticeCount = 0, noticeSize = {}, residents) {
-  const size = count > 12 ? 82 : 108;
+  // Body-fit also scales the surrounding artwork. Lower the old 108/82px caps
+  // by about 24%, then fit narrow/short panes using the visible viewport, never
+  // the scroll field height. Round to reuse cached geometry during divider drags.
+  const size = Math.round(Math.min(count > 12 ? 62 : 82,
+    Math.max(48, Math.min(width * 0.18, viewportHeight * 0.2))));
   let specs = residents;
   if (!specs?.length) {
     if (!nominalGeometry.has(size)) nominalGeometry.set(size, residentGeometry([{ width: size + 16, height: size }], size));

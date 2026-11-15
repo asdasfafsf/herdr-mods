@@ -197,19 +197,19 @@ console.log('village motion: fixed scenery crop, directional poses, selected res
 // Assertions below inspect the recorded paint geometry, not a screenshot or a
 // second toy movement algorithm. No native app or session transport is used.
 const { renderVillage, residentSpacing } = villageModule.namespace;
-const { residentFootprint, footprintOverlap } = load('./village-spacing.js').namespace;
+const { residentFootprint, residentBounds, footprintOverlap } = load('./village-spacing.js').namespace;
 const { RESOURCE_PACKS } = load('./resource-packs.js').namespace;
 const palette = new Proxy({}, { get: () => '#123456' });
 const intersects = (a, b) => Math.min(a.left + a.width, b.left + b.width) > Math.max(a.left, b.left) + 0.001
   && Math.min(a.top + a.height, b.top + b.height) > Math.max(a.top, b.top) + 0.001;
 const contains = (a, b) => b.left >= a.left - 0.001 && b.top >= a.top - 0.001
   && b.left + b.width <= a.left + a.width + 0.001 && b.top + b.height <= a.top + a.height + 0.001;
-function fixture(names, statuses = [], width = 1100) {
+function fixture(names, statuses = [], width = 1100, height = 660) {
   const rows = names.map((name, i) => ({ id: `spacing-${i}`, status: statuses[i] || 'working',
     title: `A long resident title ${i}`, project: `Project ${i}`, agent: 'Codex' }));
-  const view = { pack: 'chiikawa', themeClock: 0, villageWidth: width, villageHeight: 660,
+  const view = { pack: 'chiikawa', themeClock: 0, villageWidth: width, villageHeight: height,
     residentAssignments: new Map(rows.map((row, i) => [row.id, names[i]])) };
-  const layout = villageLayout(width, 660, rows.length);
+  const layout = villageLayout(width, height, rows.length);
   advanceVillage(view, rows, layout);
   return { view, rows, layout };
 }
@@ -238,6 +238,15 @@ function painted(f) {
   return f.rows.map(row => {
     const actor = f.view.villageActors.get(row.id), spec = residentSpacing(f.view, row, f.layout.size);
     const envelope = residentFootprint(actor, f.layout, spec.geometry, spec.reservedNotice);
+    const hitbox = byId(`overview-${row.id}`), ring = byId(`village-selection-ring-${row.id}`);
+    assert.equal(hitbox.styles.w, f.layout.size + 16, 'interactive resident width follows layout size');
+    assert.equal(hitbox.styles.h, spec.geometry.name.top + spec.geometry.name.height, 'interactive resident height follows reserved name geometry');
+    if (ring) {
+      assert.equal(ring.styles.w, f.layout.size, 'selection ring follows the scaled body');
+      assert.equal(ring.styles.top, f.layout.size, 'selection ring follows the scaled baseline');
+      assert.ok(contains(spec.geometry.body, { left: ring.styles.left, top: ring.styles.top, width: ring.styles.w, height: ring.styles.h }),
+        'collision geometry reserves the selection ring');
+    }
     const result = [];
     for (const id of [`village-name-${row.id}`, `village-status-${row.id}`, `village-notice-${row.id}`]) {
       const node = byId(id); if (!node) continue;
@@ -246,9 +255,19 @@ function painted(f) {
       assert.ok(contains(envelope, box), `${id}: actual rendered label/bubble must fit its reservation`);
       if (id.includes('name')) {
         const lines = node.children;
+        assert.deepEqual(lines.map(line => line.styles.text_size), [11, 9], 'name text is never scaled with artwork');
         const usedHeight = lines.reduce((sum, line) => sum + line.styles.h, 0) + node.styles.gap + 2 * (node.styles.py + node.styles.border);
         assert.equal(usedHeight, height, 'explicit text lines, gap, padding and borders exactly fill the nameplate');
         for (const line of lines) assert.ok(Math.abs(line.styles.text_size * line.styles.line_height - line.styles.h) < 0.001);
+      }
+      if (id.includes('status')) {
+        assert.equal(node.styles.w, 84); assert.equal(node.styles.h, 22);
+        assert.equal(node.children[1].styles.text_size, 10, 'status text remains readable');
+      }
+      if (id.includes('notice')) {
+        const text = node.children[0].children;
+        assert.equal(text[0].children[1].styles.text_size, 10, 'notice label is never scaled with artwork');
+        assert.equal(text[1].styles.text_size, 11, 'notice body is never scaled with artwork');
       }
       result.push(box);
     }
@@ -258,6 +277,7 @@ function painted(f) {
     assert.ok(crop, 'inspect the production spriteArt clipping wrapper');
     const [sourceX, y, w, h] = sprite.content || [0, 0, sprite.width, sprite.height];
     const x = sprite.mirrored ? sprite.width - sourceX - w : sourceX, scale = crop.styles.w / sprite.width;
+    assert.ok(Math.abs(scale - crop.styles.h / sprite.height) < 0.001, 'rendered artwork preserves source aspect ratio');
     const art = { left: actor.x + crop.styles.left + x * scale, top: actor.y + crop.styles.top + y * scale, width: w * scale, height: h * scale };
     assert.ok(contains(envelope, art), `${sprite.name}: full painted content, including body-fit overflow, is reserved`);
     assert.ok(result.every(box => !intersects(art, box)), `${sprite.name}: own art does not cover its name, status or bubble`);
@@ -291,16 +311,16 @@ delete RESOURCE_PACKS['spacing-fixture'];
 
 // Quiet labels, large art and speech/approval regions all stay clear over time,
 // including a narrow one-column field and dense pages. Every free resident moves.
-for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) {
+for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) for (const height of [300, 660]) {
   const names = Array.from({ length: count }, (_, i) => ['rakko', 'hachiware', 'momonga', 'idle'][i % 4]);
-  const f = fixture(names, names.map((_name, i) => ['working', 'done', 'blocked', 'seen'][i % 4]), width);
+  const f = fixture(names, names.map((_name, i) => ['working', 'done', 'blocked', 'seen'][i % 4]), width, height);
   const before = f.rows.map(row => ({ ...f.view.villageActors.get(row.id) }));
   f.view.villageSelected = f.rows[0].id;
   const travelled = Array(count).fill(0);
   assert.equal(collisionCount(f), 0, 'initial grid fits the actual envelopes');
   assertPaintClear(f);
   advance(f, 400, frame => {
-    assert.equal(collisionCount(f), 0, `${width}px/${count}: clean placements must never acquire overlap`);
+    assert.equal(collisionCount(f), 0, `${width}×${height}/${count}: clean placements must never acquire overlap`);
     f.rows.forEach((row, i) => {
       const actor = f.view.villageActors.get(row.id);
       assert.ok(actor.y >= Math.min(260, Math.max(120, width * 0.19)), 'normal roaming preserves the original scenic floor');
@@ -309,7 +329,29 @@ for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) {
     if (frame % 100 === 0) assertPaintClear(f);
   });
   assert.equal(travelled[0], 0, 'reachable selection remains exactly still');
-  assert.ok(travelled.slice(1).every(distance => distance > 8), `${width}px/${count}: free residents keep roaming: ${travelled}`);
+  assert.ok(travelled.slice(1).every(distance => distance > 8), `${width}×${height}/${count}: free residents keep roaming: ${travelled}`);
+}
+
+// Height-only Scene/Split changes must reach both renderer and motion geometry.
+// The generated scroll field can stay tall without undoing the viewport cap.
+{
+  const f = fixture(['rakko', 'shisa', 'yoroi', 'momonga'], ['working', 'done', 'seen', 'working'], 1400, 900);
+  const selected = f.rows[0].id, actor = f.view.villageActors.get(selected);
+  f.view.villageSelected = selected;
+  const sceneGeometry = residentSpacing(f.view, f.rows[0], f.layout.size).geometry;
+  for (const height of [300, 900, 300, 900]) {
+    f.view.villageHeight = height;
+    painted(f);
+    const geometry = residentSpacing(f.view, f.rows[0], f.layout.size).geometry;
+    assert.equal(f.layout.size, height === 300 ? 60 : 82, 'render path sizes artwork from the measured viewport');
+    assert.equal(f.layout.viewportHeight, height, 'scroll extent never replaces the viewport height');
+    assert.equal(f.view.villageSpacingKey.rows.get(selected).geometry, geometry, 'movement uses the exact rendered geometry');
+    assert.equal(geometry === sceneGeometry, height === 900, 'returning to Scene reuses its bounded geometry');
+    assert.equal(f.view.villageActors.get(selected), actor, 'resizing retains resident identity');
+    assert.equal(f.view.villageSelected, selected, 'resizing retains selection');
+    advance(f, 80, () => assert.equal(collisionCount(f), 0, 'resized artwork retains collision clearance'));
+    assertPaintClear(f);
+  }
 }
 
 // An adversarial saved/dragged placement starts completely coincident. The old
@@ -339,7 +381,9 @@ for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) {
   const f = fixture(['rakko', 'hachiware'], ['blocked', 'working'], 360);
   f.view.villageChats = new Map([[f.rows[0].id, { request: {} }]]);
   const first = f.view.villageActors.get(f.rows[0].id), second = f.view.villageActors.get(f.rows[1].id);
-  first.x = f.layout.left; first.y = f.layout.top + 250; f.view.villageSelected = f.rows[0].id;
+  // Keep the bubble close enough to the ground boundary that even the smaller
+  // resident cannot walk through a newly opened gap above it.
+  first.x = f.layout.left; first.y = f.layout.top + f.layout.groundTop; f.view.villageSelected = f.rows[0].id;
   Object.assign(second, { x: first.x + 30, y: first.y - 210, tx: first.x + 30, ty: first.y - 210, wait: 0 });
   assert.ok(collisionCount(f) > 0, 'a quiet resident starts inside another resident speech area');
   const fixed = { x: first.x, y: first.y };
@@ -391,15 +435,18 @@ for (const width of [240, 360, 700, 1400]) for (const count of [4, 24]) {
   advance(f, 50);
   assert.equal(selected.x, fitted.x); assert.equal(selected.y, fitted.y, 'reachable selection stops after the resize correction');
   f.rows = [...all].reverse(); f.layout = villageLayout(360, 660, all.length);
+  advanceVillage(f.view, f.rows, f.layout); // resolve the resized field with a frozen clock
   const isolated = identities.get(all[5].id);
-  isolated.x = 80; isolated.y = isolated.ty = 1800; isolated.tx = 80;
+  const spec = residentSpacing(f.view, all[5], f.layout.size);
+  const isolatedY = residentBounds(f.layout, spec.geometry, spec.reservedNotice).bottom - 32;
+  isolated.x = 80; isolated.y = isolated.ty = isolatedY; isolated.tx = 80;
   advanceVillage(f.view, f.rows, f.layout); // frozen clock after filter reentry
   assert.ok(f.view.villageNeedsReflow, 'layout repair stays pending while paused');
   const paused = [...f.view.villageActors.values()].map(actor => [actor.x, actor.y]);
   advanceVillage(f.view, f.rows, f.layout);
   assert.deepEqual([...f.view.villageActors.values()].map(actor => [actor.x, actor.y]), paused, 'paused repair cannot move any resident');
   advance(f);
-  assert.equal(isolated.x, 80); assert.equal(isolated.y, 1800, 'an unaffected unlocked resident is not relocated');
+  assert.equal(isolated.x, 80); assert.equal(isolated.y, isolatedY, 'an unaffected unlocked resident is not relocated');
   assert.equal(selected.x, fitted.x); assert.equal(selected.y, fitted.y, 'reflow preserves the reachable selected resident');
   assert.equal(collisionCount(f), 0, 'one structural repair resolves the compressed placement');
   const normal = [...f.view.villageActors.values()].map(actor => ({ ...actor }));
