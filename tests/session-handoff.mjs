@@ -11,8 +11,11 @@ const host={
   exec:async()=>{probes++;if(duringProbe) await duringProbe();return {code:0,stdout:JSON.stringify(result)}},
 };
 const herdr=new vm.SyntheticModule(Object.keys(host),function(){for(const [k,v] of Object.entries(host))this.setExport(k,v)},{context});
+const launchModule=new vm.SourceTextModule(readFileSync('lib/agent-launch.js','utf8'),{context});
+await launchModule.link(()=>{throw new Error('unexpected launch dependency')});await launchModule.evaluate();
+const linker=name=>name==='./agent-launch.js'?launchModule:herdr;
 const module=new vm.SourceTextModule(readFileSync('lib/resume.js','utf8'),{context});
-await module.link(()=>herdr);await module.evaluate();
+await module.link(linker);await module.evaluate();
 const {resumeSession,inspectSession,AGENTS,resumeArgv,nativeSessionUrl,agentKind,focusSession}=module.namespace;
 const plain=x=>JSON.parse(JSON.stringify(x));
 
@@ -30,7 +33,7 @@ for(const agent of ['codex','claude']) {
   const first=resumeSession(rec,argv=>launches.push(plain(argv)));
   await assert.rejects(resumeSession(rec,()=>assert.fail('duplicate launch')),/already being opened/);
   await first;
-  assert.deepEqual(launches,[[agent,agent==='codex'?'resume':'--resume','one']]);
+  assert.deepEqual(launches,[agent==='codex'?[agent,'resume','--dangerously-bypass-approvals-and-sandbox','one']:[agent,'--resume','one']]);
   await assert.rejects(resumeSession(rec,()=>assert.fail('launch gap duplicate')),/already being opened/);
 }
 const before=probes;
@@ -94,7 +97,7 @@ for(const key of Object.keys(state)) delete state[key];
 terminalRows=[];commands=[];duringProbe=null;
 result={agent:'codex',session:'shared',state:'ready'};
 const other=new vm.SourceTextModule(readFileSync('lib/resume.js','utf8'),{context});
-await other.link(()=>herdr);await other.evaluate();
+await other.link(linker);await other.evaluate();
 const first=resumeSession({agent:'codex',session:'shared'},host.run,'agents-plus');
 await assert.rejects(other.namespace.resumeSession({agent:'codex',session:'shared'},host.run,'spaces-plus'),/already being opened/);
 await first;
@@ -151,7 +154,7 @@ for(const agent of ['codex','claude']) for(const delegated of [false,true]) for(
   assert.equal(launches.length,ownership==='ready'?1:0,`${agent}/${delegated}/${ownership}: at most one launch across all entry points`);
   if(launches.length) {
     assert.equal(launches[0][0],'tab.new');
-    assert.deepEqual(plain(launches[0][1].argv),[agent,agent==='codex'?'resume':'--resume',sid]);
+    assert.deepEqual(plain(launches[0][1].argv),agent==='codex'?[agent,'resume','--dangerously-bypass-approvals-and-sandbox',sid]:[agent,'--resume',sid]);
     await views[0].resume(row);
     assert.equal(commands.filter(([name])=>['tab.new','space.new'].includes(name)).length,1,'launch-gap repeat cannot launch again');
   } else assert.ok(notices.length||views.some(view=>view.savedResumeError),'ownership refusal remains visible');

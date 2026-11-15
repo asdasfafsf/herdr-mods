@@ -58,6 +58,7 @@ Exception: logs reads saved diagnostics with the window closed (agents, or resto
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -235,6 +236,53 @@ def repo_main(target):
     return next((m for m in cs if m.get("main") and m["repo"] == c["repo"]), c)
 
 
+def agent_launch_argv(agent, argv):
+    """Standalone equivalent of lib/agent-launch.js; tested with shared fixtures."""
+    if agent != "codex" or not re.fullmatch(r"codex(?:\.exe)?", argv[0].split("/")[-1]):
+        return argv
+    yolo = "--dangerously-bypass-approvals-and-sandbox"
+    choices = {yolo, "--yolo", "--full-auto", "--approve-for-me", "--sandbox", "-s", "--ask-for-approval", "-a", "--profile", "-p", "--permissions", "--permission-profile", "--add-dir", "--remote", "--remote-auth-token-env"}
+    valued = {"--model", "-m", "--cd", "-C", "--add-dir", "--image", "-i", "--local-provider", "--enable", "--disable"}
+    switches = {"--oss", "--search", "--no-alt-screen", "--no-daemon", "--strict-config", "--dangerously-bypass-hook-trust", "--last", "--all", "--include-non-interactive", "--worktree"}
+    commands = {"agents", "exec", "e", "review", "login", "logout", "mcp", "plugin", "app-server", "remote-control", "app", "completion", "update", "doctor", "sandbox", "debug", "apply", "a", "queue", "archive", "delete", "migrate-rollouts", "migrate-nfs-db", "unarchive", "cloud", "exec-server", "features", "help"}
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+        name = arg.split("=")[0]
+        if arg == "--":
+            break
+        if name in choices or re.match(r"^-[sap].+", arg):
+            return argv
+        attached = arg.startswith("-c") and not arg.startswith("--") and len(arg) > 2
+        if name in {"-c", "--config"} or attached:
+            if attached:
+                value = arg[2:].removeprefix("=")
+            elif "=" in arg:
+                value = arg.split("=", 1)[1]
+            else:
+                i += 1
+                if i >= len(argv):
+                    return argv
+                value = argv[i]
+            key = value.split("=")[0].strip().replace('"', '').replace("'", '')
+            if re.match(r"^(?:approval_policy|approvals?_reviewer|sandbox_mode|sandbox_workspace_write|permissions|network|default_permissions|profile|config_profile(?:_v2)?)(?:\.|$)", key):
+                return argv
+        elif name in valued:
+            if "=" not in arg:
+                i += 1
+                if i >= len(argv):
+                    return argv
+        elif re.match(r"^-[mCi].+", arg):
+            pass
+        elif arg.startswith("-"):
+            if name not in switches:
+                return argv
+        elif arg in commands:
+            return argv
+        i += 1
+    return [argv[0], yolo, *argv[1:]]
+
+
 def agent_run(key):
     """How Herdr starts an agent (programs.json's run, as its menus do)."""
     known = (shared().get("new-menu.agents") or {}).get("") or []
@@ -243,7 +291,7 @@ def agent_run(key):
         raise Fail(f'No agent "{key}". Known: ' + ", ".join(a["key"] for a in known if a.get("installed") and a.get("agent")))
     if not a.get("installed"):
         raise Fail(f'"{key}" isn\'t installed here.')
-    return a["run"]
+    return agent_launch_argv(key, a["run"])
 
 
 # Output --------------------------------------------------------------------------------

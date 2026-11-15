@@ -7,11 +7,25 @@ let calls=[];
 const sharedState={};
 const host={terminals:()=>[],run:()=>{},exec:async (...args)=>{calls.push(args);return {code:0,stdout:JSON.stringify({session:'sid'})}},readTextFile:async()=>JSON.stringify({sessionId:'claude-id'}),home:()=>'/home/test',appHome:()=>'/app',shared:k=>sharedState[k],setShared:(k,v)=>{sharedState[k]=v}};
 const herdr=new vm.SyntheticModule(Object.keys(host),function(){for(const [k,v] of Object.entries(host))this.setExport(k,v)},{context});
+const launchModule=new vm.SourceTextModule(readFileSync('lib/agent-launch.js','utf8'),{context});
+await launchModule.link(()=>{throw new Error('unexpected launch dependency')});await launchModule.evaluate();
+const linker=name=>name==='./agent-launch.js'?launchModule:herdr;
 const module=new vm.SourceTextModule(readFileSync('lib/resume.js','utf8'),{context});
-await module.link(()=>herdr);await module.evaluate();
+await module.link(linker);await module.evaluate();
 const {resumeArgv,sessionOf,AGENTS}=module.namespace;
 const plain=x=>JSON.parse(JSON.stringify(x));
-assert.deepEqual(plain(resumeArgv({agent:'codex',session:'sid',argv:['codex','resume','--last','--enable','feature','--disable=other','--oss','--model','local','--cd','/new path','old-id','old prompt']})),['codex','resume','--enable','feature','--disable=other','--oss','--model','local','--cd','/new path','sid']);
+const yolo='--dangerously-bypass-approvals-and-sandbox';
+// Old argv must acquire the default; explicit policy/profile choices survive restore.
+for(const flags of [[],['--no-daemon'],['--model','chosen'],['--sandbox','read-only'],['-sworkspace-write'],
+  ['--ask-for-approval=on-request'],['--profile','personal'],['-ppersonal'],['--permissions',':workspace'],
+  ['-c','sandbox_mode="read-only"'],['-capproval_policy="on-request"'],['--remote','unix://fixture']]){
+  const expected=flags.length===0||['--no-daemon','--model'].includes(flags[0])?[yolo,...flags]:flags;
+  const rec={agent:'codex',session:'sid',argv:['codex','resume',...flags,'old-id','old prompt']};
+  assert.deepEqual(plain(resumeArgv(rec)),['codex','resume',...expected,'sid']);
+  assert.deepEqual(plain(AGENTS.codex.fork('codex',flags,'sid')),['codex','fork',...expected,'sid']);
+}
+assert.deepEqual(plain(resumeArgv({agent:'codex',session:'sid',argv:['codex','--','--sandbox=read-only']})),['codex','resume',yolo,'sid']);
+assert.deepEqual(plain(resumeArgv({agent:'codex',session:'sid',argv:['codex','resume','--last','--enable','feature','--disable=other','--oss','--model','local','--cd','/new path','old-id','old prompt']})),['codex','resume','--dangerously-bypass-approvals-and-sandbox','--enable','feature','--disable=other','--oss','--model','local','--cd','/new path','sid']);
 assert.deepEqual(plain(resumeArgv({agent:'claude',session:'sid',argv:['claude','--resume','old','--model','model','prompt']},'continue')),['claude','--model','model','--resume','sid','continue']);
 assert.equal(await sessionOf('claude',123),'claude-id');
 assert.equal(await sessionOf('codex',123,{cwd:'/work',title:'Task | work'},'spaces-plus'),'sid');
@@ -27,6 +41,7 @@ for(const agent of ['claude','codex'])for(const fork of [false,true]){
  assert.equal(commands[0][0],'tab.new');
  assert.ok(commands[0][1].argv.includes('sid'));
  assert.ok(commands[0][1].argv.includes(agent==='codex'?(fork?'fork':'resume'):(fork?'--fork-session':'--resume')));
+ if(agent==='codex')assert.ok(commands[0][1].argv.includes(yolo));
 }
 console.log('session parity: options, discovery and Claude/Codex resume/fork handlers passed');
 

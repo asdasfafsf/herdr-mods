@@ -19,6 +19,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, spaces, exec, shared, setShared, knownAgents, agents } from "herdr";
+import { agentLaunchArgv } from "./agent-launch.js";
 import { button, footer } from "./ui.js";
 import { META, SLEEP, SORT, KNOWN, setMeta } from "./state.js";
 
@@ -117,7 +118,7 @@ export default class WtMenu extends View {
     };
     return [
       ["Terminal", start(null), { svgIcon: "icons/shell.svg" }],
-      ...(this.agents ?? []).map((a, i) => [a.name, start(a.run, a.name), { program: a, line: i === 0 }]),
+      ...(this.agents ?? []).map((a, i) => [a.name, start(agentLaunchArgv(a.key, a.run), a.name), { program: a, line: i === 0 }]),
     ];
   }
 

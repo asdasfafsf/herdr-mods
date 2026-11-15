@@ -69,7 +69,7 @@ async function environment(options={}) {
     ['gpui-kit',synthetic('gpui-kit',{View:class{},div:()=>builder('div'),svg:s=>builder('svg',s),image:s=>builder('image',s)})],
     ['gpui-base',synthetic('gpui-base',{v_flex:()=>builder('column'),h_flex:()=>builder('row')})],
   ]);
-  const files={'main':'mods/wt-restore/main.js','./progress.js':'mods/wt-restore/progress.js','./state.js':'lib/state.js','./resume.js':'lib/resume.js'};
+  const files={'main':'mods/wt-restore/main.js','./progress.js':'mods/wt-restore/progress.js','./state.js':'lib/state.js','./resume.js':'lib/resume.js','./agent-launch.js':'lib/agent-launch.js'};
   const module=name=>{
     if(modules.has(name))return modules.get(name);
     assert.ok(files[name],`unexpected module ${name}`);
@@ -141,8 +141,8 @@ await check('thrown requests are unconfirmed, never retried, and remaining entri
   let attempt=0;const choices=await environment({send:async()=>{if(++attempt===1)throw Error('transport closed');return {code:0};}});
   await choices.restore([record(1,{go:false}),record(2,{go:true}),record(3,{go:false,agent:'claude',argv:['claude']})]);
   const commands=sends(choices).map(c=>c[3]);
-  assert.match(commands[0],/codex resume session-1$/);
-  assert.match(commands[1],/codex resume session-2 'Herdr/,'continue choice survives the previous rejection');
+  assert.match(commands[0],/codex resume --dangerously-bypass-approvals-and-sandbox session-1$/);
+  assert.match(commands[1],/codex resume --dangerously-bypass-approvals-and-sandbox session-2 'Herdr/,'continue choice survives the previous rejection');
   assert.match(commands[2],/claude --resume session-3$/,'reopen-only choice is unchanged');
 });
 
