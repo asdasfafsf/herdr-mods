@@ -182,6 +182,46 @@ Python 13개와 정확한 전환 native 회귀를 직접 다시 통과했다.
 실행 파일 SHA256은
 `953b605b0b2d83d5ac6200269e07d228376d00d3492d7cf5335ca667f52950ef`이며
 두 surface capability가 supported다. 공식 서명된 배포 앱 번들이 아니며
-이 실행 파일의 실제 GUI 검증은 아직 하지 않았다. 기존 앱을 교체하거나
-재시작하지 않았고, 활성화는 별도 확인을 기다린다. 활성화 후에는 해당
+이 단계에서는 해당 실행 파일의 실제 GUI 검증을 하지 않았다. 기존 앱을
+교체하거나 재시작하지 않았고 별도 확인을 기다렸다. 활성화 후에는 해당
 Codex PID가 Chiikawa opt-in을 관찰한 뒤 Moss로 전환하는 경로를 확인해야 한다.
+
+### 승인 후 native 적용 및 실제 화면 검증 (2026-11-15 오전)
+
+사용자가 적용과 직접 테스트를 요청한 뒤 공식 앱 전체를 복구용으로 보관했다.
+검증한 실행 파일을 기존 앱의 리소스·Info.plist·entitlements와 함께 로컬
+ad-hoc 서명하고 `codesign --verify --strict`를 통과했다. Herdr 앱만 정상
+종료한 뒤 번들을 교체하고 CUA로 다시 열었다. 코드 서명을 추가한 설치
+실행 파일의 SHA256은
+`d8484d1326bc6905d66cf87520da1d6a0a1fb915905dc59be425271cacfd5694`다.
+실행 PID `34061`의 경로와 설치본 해시를 확인했고 checker는 두 surface
+계약을 모두 `supported`, 설치 상태를 `capabilities_verified`로 보고했다.
+
+core PID `69831`, holder PID `69886`와 기존 live 터미널 8개의 ID, 생성 시각,
+root PID, foreground PID가 교체 전후 모두 같았다. 기존 세션을 재시작하지
+않았다. 앱의 원래 main 탭, Village/Chiikawa 팩과 터미널 분할도 유지됐다.
+설치된 agents-plus 비문서 파일 778개는 저장소와 계속 일치했다.
+
+CUA로 실행 중인 세션과 출력이 멈춘 기존 세션에서 Chiikawa → Moss →
+Chiikawa를 확인했다. 입력창과 기존 사용자 메시지는 각 테마의 배경으로
+바뀌고 글자가 읽혔다. 과거 출력으로 스크롤한 뒤에도 배경이 바뀌었으며
+보이는 빨강·파랑·초록 ANSI 글자색은 구분을 유지했다. 정지 세션의 테마
+전환 전후 `hc read` 텍스트 해시는 동일했다. 이 비교는 출력 텍스트 보존
+확인이며 PTY 전체 바이트를 계측한 것은 아니다. Edit의 추가·삭제 배경은
+이번 CUA에서 따로 찾지 않았고 기존 native 셀 회귀 검사 범위로 남긴다.
+테스트 메시지·승인 입력·reset-credit 실행은 하지 않았다. 검증 후 원래
+Light/Chiikawa와 main의 Active 세션으로 복원했고 앱 오류 목록은 비어 있었다.
+
+복구용 공식 앱과 적용 기록은 로컬
+`~/.local/share/herdr-mods/artifacts/native-surfaces-212e90d/activation-20261115/`에
+있다. `official.noindex/Herdr.app`이 원본이며 `activation.json`에 설치 해시,
+프로세스 보존 및 CUA 결과를 기록했다. 이 소스 빌드는 upstream 정책상
+앱·core 자동 릴리스 확인을 실행하지 않는다. 공식 배포 서명이나 자동
+업데이트까지 제공하는 설치로 해석하지 않으며 이후 갱신은 별도로 관리한다.
+
+추가 개선 후보는 다음과 같다. 현재 `resident-assignment.js`의 배정은 view
+메모리에만 있어 재시작 후 같은 세션의 캐릭터가 달라질 수 있다. 세션별
+배정 저장이 식별 일관성을 높인다. `pack-chiikawa.js`에서 방향별 motion
+정의가 있는 주민은 Kurimanju뿐이고 다른 주민은 기본 동작을 사용하므로,
+실제 이동용 artwork 보강이 다음 시각 개선이다. 로컬 native 빌드의 갱신·복구
+절차와 적용 여부 진단을 묶으면 다음 앱 업데이트에서도 유지하기 쉬워진다.
