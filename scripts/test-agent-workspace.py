@@ -29,6 +29,7 @@ PYTHON_TESTS = (
     "test_agent_bundle_matrix.py", "test_agent_themes.py",
     "test_workspace_views.py", "test_install_recovery.py",
     "test_agent_workspace_runner.py",
+    "test_saved_sessions.py",
 )
 GENERATORS = ("build-agent-themes.mjs", "build-sprite-directions.mjs", "build-sprite-atlases.mjs")
 

@@ -77,6 +77,8 @@ from agentfiles import (  # noqa: E402
     codex_running,
     json_lines,
     project_dir_name,
+    text_of,
+    prompt_title,
 )
 
 HEAD = 256 * 1024  # bytes read from the start for the cwd and first prompt
@@ -85,24 +87,6 @@ TAIL = 512 * 1024  # bytes read from the end for the latest ai-title
 
 def inside(cwd, folders):
     return any(cwd == f or cwd.startswith(f.rstrip("/") + "/") for f in folders)
-
-
-def text_of(content):
-    """A message's text: a string, or the text parts of a list of blocks."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") in ("text", "input_text", "output_text"))
-    return ""
-
-
-def prompt_title(text):
-    """A typed prompt as a title, or None for wrappers (<command-name>, <environment_context>, ...)."""
-    text = (text or "").strip()
-    if not text or text.startswith("<") or text.startswith("# AGENTS.md"):
-        return None
-    line = text.splitlines()[0].strip()
-    return line[:100]
 
 
 def snippet(text, query):

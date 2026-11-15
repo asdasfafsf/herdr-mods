@@ -13,6 +13,7 @@ sent anywhere.
 """
 
 import glob
+from contextlib import closing
 import json
 import os
 import re
@@ -76,6 +77,25 @@ def project_dir_name(folder):
     return re.sub(r"[^A-Za-z0-9]", "-", folder or "")
 
 
+def text_of(content):
+    """Plain text blocks shared by history search and the saved-session sidebar."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b.get("text", "") for b in content if isinstance(b, dict)
+                         and b.get("type") in ("text", "input_text", "output_text")
+                         and isinstance(b.get("text", ""), str))
+    return ""
+
+
+def prompt_title(text):
+    """A prompt's first line, excluding machine context and command wrappers."""
+    text = text.strip() if isinstance(text, str) else ""
+    if not text or text.startswith("<") or text.startswith("# AGENTS.md"):
+        return None
+    return text.splitlines()[0].strip()[:100]
+
+
 def claude_transcript(session, cwd=None):
     """A Claude Code session's transcript (.jsonl), by the folder it ran in, else anywhere."""
     if cwd:
@@ -120,14 +140,23 @@ def codex_rollout(session):
     return hits[0] if hits else None
 
 
-def codex_metadata():
+def codex_metadata(limit=None, sessions=None):
     """Current names/cwd from Codex's index, read-only; old installs fall back to JSONL."""
     try:
         database = os.path.join(CODEX_HOME, "state_5.sqlite")
-        with sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=1) as connection:
+        with closing(sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=1)) as connection:
             connection.row_factory = sqlite3.Row
-            return {r["id"]: dict(r) for r in connection.execute(
-                "SELECT id,cwd,title,name,rollout_path,source,updated_at,archived FROM threads")}
+            query = "SELECT id,cwd,title,name,rollout_path,source,updated_at,archived FROM threads"
+            params = ()
+            if sessions is not None:
+                if not sessions:
+                    return {}
+                query += " WHERE id IN (" + ",".join("?" for _ in sessions) + ")"
+                params = tuple(sessions)
+            elif limit is not None:
+                query += " WHERE archived = 0 ORDER BY updated_at DESC LIMIT ?"
+                params = (max(0, int(limit)),)
+            return {r["id"]: dict(r) for r in connection.execute(query, params)}
     except (OSError, sqlite3.Error):
         return {}
 
@@ -176,11 +205,11 @@ def codex_session_id(path):
     return m.group(1) if m else None
 
 
-def codex_names():
+def codex_names(tail=None):
     """Codex's thread names, { session id: name }."""
     names = {}
     if os.path.exists(CODEX_INDEX):
-        for o in json_lines(CODEX_INDEX):
-            if o.get("id") and o.get("thread_name"):
+        for o in json_lines(CODEX_INDEX, tail=tail):
+            if isinstance(o, dict) and isinstance(o.get("id"), str) and isinstance(o.get("thread_name"), str):
                 names[o["id"]] = o["thread_name"]
     return names

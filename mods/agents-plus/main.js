@@ -17,9 +17,10 @@ import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, appHome } from "herdr";
 // How sessions are resumed: lib/resume.js in the repo, copied here by install.sh.
 import { resumeArgv, AGENTS, runs } from "./resume.js";
-import { TREES, META, LIVE, AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
+import { TREES, META, LIVE, KNOWN, AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
-import { statusMark, statusPill, statusColor, statusActivity, statusNotice, shownStatus, seenFor, repoTag, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
+import { statusMark, statusPill, statusColor, statusActivity, statusNotice, shownStatus, seenFor, repoTag, ago, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
+import { SAVED_SESSIONS, savedSessionKey, savedSessionRows, savedLiveTerminal, savedResumeRecord, validSavedSession } from "./saved-sessions.js";
 import { renderViewSwitch, initWorkspaceTheme, requestAgentSelection } from "./agent-mode.js";
 import { initWorkspaceControls } from "./workspace-controls.js";
 import { renderTerminalToolbar } from "./terminal-dock.js";
@@ -126,6 +127,11 @@ export default class Agents extends View {
     this.outside = []; // see readOutside
     this.readOutside(cx);
     cx.timer.every(OUTSIDE_EVERY, (cx) => { if (window().active) this.readOutside(cx); });
+    this.saved = [];
+    this.savedLimit = SAVED_SESSIONS.pageSize;
+    this.savedPending = new Map();
+    this.readSaved(cx);
+    cx.timer.every(45000, (cx) => { if (window().active && !narrow()) this.readSaved(cx); });
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
     // When each finished agent was looked at (ms), for Seen (lib/ui.js), and the state each
@@ -364,6 +370,98 @@ export default class Agents extends View {
     });
   }
 
+  // Read-only recent history. This is deliberately not shared as AGENT_INFO or
+  // AGENT_ORDER: stored conversations do not become live cards or residents.
+  readSaved(cx) {
+    if (this.readingSaved) return;
+    for (const [key, until] of this.savedPending) if (until <= Date.now()) this.savedPending.delete(key);
+    this.readingSaved = true;
+    cx.spawn(async (cx) => {
+      try {
+        const r = await exec("python3", ["-I", `${appHome()}/mods/agents-plus/saved.py`]);
+        if (r.code !== 0) throw new Error(r.stderr.trim() || "Saved session lookup failed.");
+        const result = JSON.parse(r.stdout);
+        if (!Array.isArray(result.rows) || !Array.isArray(result.errors)) throw new Error("Invalid saved session list.");
+        this.saved = result.rows.filter(validSavedSession).slice(0, SAVED_SESSIONS.limit);
+        this.savedError = result.errors.filter((error) => typeof error === "string").join(" ");
+      } catch (error) {
+        this.saved = [];
+        this.savedError = String(error.message ?? error);
+      } finally { this.readingSaved = false; cx.notify(); }
+    });
+  }
+
+  resumeSaved(row, cx) {
+    if (!validSavedSession(row)) return;
+    const key = savedSessionKey(row);
+    if ((this.savedPending.get(key) ?? 0) > Date.now()) return;
+    const focusLive = () => {
+      const address = savedLiveTerminal(row, shared(LIVE) ?? {}, terminals());
+      if (address) this.focusAgent({ address });
+      return Boolean(address);
+    };
+    if (focusLive()) return;
+    this.savedPending.set(key, Infinity);
+    this.savedResumeError = null;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        const r = await exec("python3", ["-I", `${appHome()}/mods/agents-plus/saved.py`, "check",
+          JSON.stringify({ agent: row.agent, session: row.session, cwd: row.cwd })]);
+        if (r.code !== 0) throw new Error(r.stderr.trim() || "Could not verify this saved session.");
+        const checked = JSON.parse(r.stdout);
+        if (focusLive()) { this.savedPending.delete(key); return; }
+        if (checked?.running === true) throw new Error("This session is open elsewhere. Close it there, then refresh saved sessions.");
+        if (checked?.running !== false) throw new Error("Could not verify whether this session is running.");
+        if (!validSavedSession(checked.record) || savedSessionKey(checked.record) !== key || checked.record.cwd !== row.cwd)
+          throw new Error("This session changed. Refresh saved sessions first.");
+        const rec = savedResumeRecord(checked.record, shared(KNOWN)?.[""] ?? []);
+        this.resume(rec);
+        // Suppress double clicks while Herdr publishes the new terminal/session.
+        this.savedPending.set(key, Date.now() + 15000);
+        this.readSaved(cx);
+      } catch (error) {
+        this.savedPending.delete(key);
+        this.savedResumeError = String(error.message ?? error);
+      } finally { cx.notify(); }
+    });
+  }
+
+  savedRows(t, all, now) {
+    const rows = savedSessionRows(this.saved, shared(LIVE) ?? {}, this.outside, all, this.savedPending, now);
+    const open = !this.folded.has("saved");
+    const result = [h_flex().id("saved-header").mt(8).pt(8).px(8).h(32).flex_none().gap(6).items_center()
+      .border_t(1).border_color(t.border).text_size(11).text_color(t[SAVED_SESSIONS.color])
+      .cursor_pointer().on_click((_e, cx) => { open ? this.folded.add("saved") : this.folded.delete("saved"); cx.notify(); })
+      .child(div().font_medium().child(SAVED_SESSIONS.label))
+      .child(div().child(String(rows.length))).child(div().flex_1())
+      .child(div().id("saved-refresh").px(4).cursor_pointer().hover((el) => el.text_color(t.foreground))
+        .on_click((_e, cx) => { cx.stop_propagation(); this.savedResumeError = null; this.readSaved(cx); cx.notify(); })
+        .child(this.readingSaved ? "Reading…" : "Refresh"))
+      .when(!open, (el) => el.child(svg("mods/workspace-chrome/chevron-right.svg").size(11)))];
+    if (!open) return result;
+    const message = this.savedResumeError || this.savedError;
+    if (message) result.push(div().id("saved-error").px(8).py(5).text_size(11).text_color(t.muted).child(message));
+    if (!rows.length && !message) result.push(div().px(8).py(5).text_size(11).text_color(t.dim)
+      .child(this.readingSaved ? "Reading saved sessions…" : "No recent saved sessions available."));
+    for (const row of rows.slice(0, this.savedLimit)) {
+      const how = AGENTS[row.agent];
+      result.push(v_flex().id(`saved-${savedSessionKey(row)}`).px(8).py(6).flex_none().gap(3).rounded(8).cursor_pointer()
+        .hover((el) => el.bg(t.hover)).tooltip(`${row.title}\n${row.cwd}\nContinue this same ${how.name} conversation in Herdr.`)
+        .on_click((_e, cx) => this.resumeSaved(row, cx))
+        .child(h_flex().gap(8).items_center()
+          .child(image(how.icon).size(14).flex_none().opacity(0.65))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(row.title))
+          .child(div().text_size(10.5).text_color(t.dim).child(ago(row.updated))))
+        .child(div().pl(22).truncate().text_size(11).text_color(t.dim).child(row.cwd)));
+    }
+    if (rows.length > this.savedLimit) result.push(div().id("saved-more").px(8).py(6).text_size(11).text_color(t.muted).cursor_pointer()
+      .hover((el) => el.bg(t.hover)).on_click((_e, cx) => { this.savedLimit += SAVED_SESSIONS.pageSize; cx.notify(); })
+      .child(`Show more (${Math.min(SAVED_SESSIONS.pageSize, rows.length - this.savedLimit)})`));
+    if (rows.length) result.push(div().px(8).py(4).text_size(10.5).text_color(t.dim).child(`Recent history · up to ${SAVED_SESSIONS.limit} sessions`));
+    return result;
+  }
+
   // One agent outside Herdr, laid out like Herdr's own rows: its icon (a little faded), its
   // worktree's name (or folder) and session title, the app it runs in, its state. Click:
   // that session in Herdr (see the header).
@@ -389,10 +487,12 @@ export default class Agents extends View {
   // the session's, else a new space there. Either way the other app's copy keeps running.
   resume(x) {
     const rec = { agent: x.agent, session: x.session, argv: x.argv, cwd: x.cwd, title: x.title };
-    if (runs(layout(), "spaces-plus")) return run(`spaces-plus.resume@${JSON.stringify(rec)}`);
     if (!AGENTS[rec.agent]) return;
-    const live = (shared(LIVE) ?? {})[rec.session];
+    const mapped = shared(LIVE) ?? {};
+    const live = savedLiveTerminal(rec, mapped, terminals());
     if (live) return run("pane.focus", { terminal: live });
+    // A stale mapping to an exited terminal must not make spaces-plus focus it.
+    if (!mapped[rec.session] && runs(layout(), "spaces-plus")) return run(`spaces-plus.resume@${JSON.stringify(rec)}`);
     const ps = panes();
     const at = (s) => placeOf(s, ps) ?? "";
     const s = spaces().filter((s) => !s.machine && inside(rec.cwd, at(s))).sort((a, b) => at(b).length - at(a).length)[0];
@@ -650,6 +750,8 @@ export default class Agents extends View {
     const rows = collapsed
       ? list.map(row)
       : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : [...g.members.map(row), ...this.outsideRows(g, t, pathIndex, metadata)])]);
+    // Always below all live groups, including Idle; never part of shared order.
+    if (!collapsed) rows.push(...this.savedRows(t, all, now));
 
     profile.counts({ groups: groups.length, rows: rows.length });
     profile.phase("container");
