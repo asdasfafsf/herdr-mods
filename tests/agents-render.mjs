@@ -44,7 +44,7 @@ function splitWorkspaceLayout(share=0.6) {
 function findNode(node,id) {
   return node?.id===id ? node : node?.children?.map(child=>findNode(child,id)).find(Boolean);
 }
-async function environment(data, revision) {
+async function environment(data, revision, store = new Map()) {
   const calls = {}, writes = [], handlers = new Map(), timers = new Map(), tasks = [], commands = [];
   const cloneRead = (key, value) => {
     calls[key] = (calls[key] ?? 0)+1;
@@ -113,7 +113,6 @@ async function environment(data, revision) {
       data.layout.theme = pair; delete data.nativeTheme;
     }
   };
-  const store = new Map();
   const context = vm.createContext({ console, Date: class extends Date { static now() { return now + (data.elapsed ?? 0); } }, localStorage: { getItem:k => store.get(k), setItem:(k,v) => store.set(k,v), removeItem:k => store.delete(k) } });
   const modules = new Map();
   const synthetic = (id, exports) => new vm.SyntheticModule(Object.keys(exports), function() { for(const [k,v] of Object.entries(exports)) this.setExport(k,v); }, {context,identifier:id});
@@ -866,6 +865,57 @@ console.log('Options popover: cards/village dismissal preserves filters and sess
 async function settleSaved(env) { while (env.tasks.length) await Promise.all(env.tasks.splice(0)); }
 const savedId = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const savedRow = (n, agent='codex') => ({agent,session:savedId(n),cwd:"/example/space 'quotes' $(literal)",title:`Saved task ${n}`,updated:n});
+for (const agent of ['claude','codex']) for (const grouped of [false,true]) {
+  const data=fixture(4,grouped);data.outside=[];
+  const store=new Map(),row=savedRow(1,agent),id=`saved-${agent}:${row.session}`;
+  let env=await environment(data,null,store);
+  assert.ok(JSON.stringify(env.render()).includes('saved-header'),'empty history still has an expandable header');
+  data.execHook=async(_program,args)=>{
+    assert.ok(args[1].endsWith('/saved.py') && args.length===2,'fold checks may only read synthetic history');
+    return {code:0,stdout:JSON.stringify({rows:[row],errors:[]})};
+  };
+  const refresh=async()=>{env.instance.readingSaved=false;env.click('saved-refresh');await settleSaved(env);};
+  await refresh();
+  assert.ok(!JSON.stringify(env.render()).includes(id),`${agent}: newly loaded history starts collapsed`);
+  assert.ok(!store.has('saved.expanded'),'initial load and Refresh do not choose a preference');
+  env.click('saved-header');
+  assert.ok(JSON.stringify(env.render()).includes(id),`${agent}: explicit expansion reveals history`);
+  assert.equal(store.get('saved.expanded'),'true');
+  await refresh();
+  assert.ok(JSON.stringify(env.render()).includes(id),'Refresh keeps the explicit expansion');
+  env.timers.get(45000)();await settleSaved(env);
+  assert.ok(JSON.stringify(env.render()).includes(id),'background history refresh keeps the explicit expansion');
+  data.state['agents.sort']=grouped?'priority':'grouped';
+  assert.ok(JSON.stringify(env.render()).includes(id),'sorting keeps the explicit expansion');
+  data.collapsed=true;
+  assert.ok(!JSON.stringify(env.render()).includes('saved-header'),'the narrow rail hides history');
+  data.collapsed=false;
+  assert.ok(JSON.stringify(env.render()).includes(id),'returning from the rail keeps the explicit expansion');
+  assert.ok(!env.writes.some(([key])=>key==='run'),'folding and Refresh issue no host commands');
+  env=await environment(data,null,store);env.instance.saved=[row];
+  assert.ok(JSON.stringify(env.render()).includes(id),'a recreated view restores explicit expansion');
+  env.click('saved-header');
+  assert.ok(!JSON.stringify(env.render()).includes(id),'explicit collapse hides history');
+  assert.equal(store.get('saved.expanded'),'false');
+  await refresh();
+  assert.ok(!JSON.stringify(env.render()).includes(id),'Refresh keeps the explicit collapse');
+  env.timers.get(45000)();await settleSaved(env);
+  assert.ok(!JSON.stringify(env.render()).includes(id),'background history refresh keeps the explicit collapse');
+  assert.equal(store.get('saved.expanded'),'false');
+  assert.ok(!env.writes.some(([key])=>key==='run'),'preference restoration issues no host commands');
+  env=await environment(data,null,store);env.instance.saved=[row];
+  assert.ok(!JSON.stringify(env.render()).includes(id),'a recreated view restores explicit collapse');
+}
+for (const value of ['false','invalid']) {
+  const env=await environment(fixture(0),null,new Map([['saved.expanded',value]]));
+  env.instance.saved=[savedRow(1,'claude'),savedRow(2,'codex'),savedRow(3,'gemini'),savedRow(4,'opencode')];
+  assert.ok(!JSON.stringify(env.render()).includes('Saved task'),'false or malformed preferences stay collapsed');
+  env.click('saved-header');
+  const text=JSON.stringify(env.render());
+  assert.ok(text.includes('saved-claude:') && text.includes('saved-codex:'),'one expansion applies to both supported providers');
+  assert.ok(!text.includes('saved-gemini:') && !text.includes('saved-opencode:'),'unregistered providers remain unsupported');
+}
+console.log('saved history folding: Claude/Codex defaults, explicit choices, refresh, sort, rail and view recreation passed');
 {
   const data=fixture(8);data.outside=[];
   const env=await environment(data,null);
@@ -877,6 +927,7 @@ const savedRow = (n, agent='codex') => ({agent,session:savedId(n),cwd:"/example/
   data.terminals.push({address:'exited',state:'exited'});
   env.instance.outside=[{...savedRow(12),status:'idle',app:'Elsewhere'}];
   env.instance.savedPending.set('codex:'+savedId(11),now+15000);
+  env.render();env.click('saved-header');
   let tree=env.render(), text=JSON.stringify(tree);
   assert.ok(text.indexOf('saved-header')>text.indexOf('sec-1"'),'history follows the live Idle section');
   assert.ok(!text.includes('saved-codex:'+savedId(14)),'attached session excluded');
@@ -988,6 +1039,7 @@ for (const failure of ['running','unknown','changed','invalid','missing','remote
   data.terminals[0].program={agent:false,key:'zsh'};
   data.state['wt.live']={[row.session]:'t0'};
   env.instance.outside=[];env.instance.saved=[row];env.instance.readingSaved=false;
+  env.render();env.click('saved-header');
   assert.ok(JSON.stringify(env.render()).includes('saved-codex:'+row.session),'shell mapping stays in Saved');
   data.execHook=async(_program,args)=>({code:0,stdout:JSON.stringify(args[2]==='check'
     ? {running:false,record:row}
@@ -1015,6 +1067,7 @@ for(const worktrees of [false,true]) {
   const data=fixture(0),env=await environment(data,null);
   env.instance.saved=[{...savedRow(1),origin:'desktop',historyMode:'paginated',handoff:{state:'active',reason:'Writer retained; Idle is not released.'}},
     {...savedRow(2),handoff:{state:'unknown',reason:'Ownership probe failed.'}}];
+  env.render();env.click('saved-header');
   const text=JSON.stringify(env.render());
   assert.ok(text.includes('Writer retained; Idle is not released.')&&text.includes('Ownership probe failed.'));
   assert.ok(text.includes('Codex app')&&text.includes('paginated history'));

@@ -5,7 +5,12 @@ Saved는 priority/grouped 정렬 모두에서 Idle을 포함한 live 그룹 아�
 만들거나 Cards/Village 주민을 추가하지 않는다. Herdr에 붙은 세션과 Outside에 이미
 표시된 세션은 중복하지 않는다.
 
-처음에는 8개, Show more로 최근 60개까지 표시한다. 활성 창의 펼친 sidebar에서
+기본은 접힘이며 헤더에서 명시적으로 선택한 펼침/접힘을 로컬 설정에 저장한다.
+Refresh, 주기적 갱신, 정렬 변경, sidebar 축소/복귀와 view 재생성 뒤에도 선택을 유지한다.
+Claude와 Codex는 같은 Saved 영역과 설정을 사용한다. 다른 provider의 기록은 현재
+지원하지 않는다.
+
+펼치면 처음에는 8개, Show more로 최근 60개까지 표시한다. 활성 창의 펼친 sidebar에서
 45초마다 읽고 Refresh로 갱신한다. active·unknown 기록도 다른 위치에 표시되지 않았다면
 Saved에 남기고 이유를 보여 준다. 목록의 소유권 스냅샷은 실행 허가가 아니다.
 
