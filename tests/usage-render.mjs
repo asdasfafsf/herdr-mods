@@ -30,10 +30,10 @@ function builder(kind = 'div', id) {
 }
 const component = kind => ({ new: id => builder(kind, id) });
 const forbidden = () => { throw new Error('Presentation checks cannot call host actions'); };
-let properties = { mode: 'detail' }, overlay, palette;
+let properties = { mode: 'detail' }, overlay, palette, viewport = { width: 1440, height: 1000 };
 const Type = new Function('View', 'div', 'image', 'svg', 'v_flex', 'h_flex',
   'Accordion', 'AccordionItem', 'AccordionHeader', 'AccordionTrigger', 'AccordionPanel',
-  'props', 'theme', 'openOverlay', 'closeOverlay', 'agoText', 'button', 'exec', 'appHome',
+  'props', 'theme', 'openOverlay', 'closeOverlay', 'agoText', 'button', 'exec', 'appHome', 'window',
   source.replace(/^import .*;\n/gm, '').replace('export default class UsageBar', 'return class UsageBar'))(
   class {}, () => builder(), () => builder('image'), () => builder('svg'),
   () => builder('column'), () => builder('row'), component('accordion'), component('accordion-item'),
@@ -41,7 +41,7 @@ const Type = new Function('View', 'div', 'image', 'svg', 'v_flex', 'h_flex',
   () => properties, () => palette, value => { overlay = value; }, forbidden, time => `age ${time}`,
   // Do not retain or invoke credit-selection or confirmation callbacks.
   (id, label, _fn, _t, options = {}) => builder('button', id).child(label).disabled(Boolean(options.disabled)),
-  forbidden, forbidden);
+  forbidden, forbidden, { viewport_size: () => viewport });
 
 const fixture = JSON.parse(readFileSync('docs/porting/fixtures/usage.json', 'utf8'));
 const credit = { id: 'one', title: 'Bonus reset', status: 'available', grantedAt: 1794500000,
@@ -202,14 +202,73 @@ for (const width of [360, 480, 720, 1200]) for (const [value, marker, label] of 
   assert.ok(op(byId(root, 'usage-refresh'), 'flex_none'));
   handlers.get('usage-pill')();
   assert.equal(overlay.props.mode, 'detail');
-  assert.equal(overlay.width, 380);
-  assert.equal(overlay.height, 528, 'Popup height depends on limits and the summary only');
+  assert.equal(overlay.width, 480);
+  assert.equal(overlay.height, 680, 'Popup leaves room for details, independent of the credit list');
 }
 view.usage = usageWith(cases.find(([name]) => name === 'long-list')[1]);
 tree(view);
 handlers.get('usage-pill')();
-assert.equal(overlay.height, 528, 'A long credit list does not enlarge the popup');
+assert.equal(overlay.height, 680, 'A long credit list does not enlarge the popup');
 console.log('usage rendering: collapsed/open/close/reopen, unknown/zero/count-only/partial/expiry/long list, semantic palettes and 360–1200px descriptions passed');
+
+// Pure layout descriptions: no reader, Refresh, reset selection or execution.
+const longUsage = usageWith(cases.find(([name]) => name === 'long-list')[1]);
+for (const provider of Object.values(longUsage)) {
+  provider.plan = 'An extended plan name with additional provider-specific allowance details';
+  provider.error = 'A long read-only diagnostic describing why this provider could not return a fresh reading.';
+  provider.windows = Array.from({ length: 8 }, (_, i) => ({
+    name: `Allowance ${i + 1} with a long provider-specific name that needs multiple lines`,
+    used: i % 2 ? 100 : 99.5, resets: i % 2 ? 100 : 1893956000,
+  }));
+}
+for (const colors of Object.values(palettes)) for (const [width, height] of [
+  [240, 320], [320, 480], [480, 640], [800, 600], [1440, 1000],
+]) {
+  palette = colors;
+  viewport = { width, height };
+  for (const usage of [{}, { codex: structuredClone(fixture.codex) }, usageWith(summary), longUsage]) {
+    const layoutView = new Type();
+    layoutView.usage = usage;
+    properties = {};
+    if (Object.keys(usage).length) {
+      tree(layoutView);
+      handlers.get('usage-pill')();
+      assert.equal(overlay.width, Math.min(480, width - 32));
+      assert.ok(overlay.height <= height - 32);
+      if (height === 1000) assert.equal(overlay.height, usage === longUsage ? 800 : usage.codex && !usage.claude ? 620 : 680);
+    }
+    properties = { mode: 'detail' };
+    for (const expanded of [false, true]) {
+      layoutView.resetCreditsExpanded = expanded;
+      const root = tree(layoutView), scroll = byId(root, 'usage-detail-scroll');
+      assert.deepEqual(op(root, 'min_w'), [0]);
+      assert.deepEqual(op(root, 'min_h'), [0]);
+      assert.deepEqual(op(root, 'w'), [Math.min(480, width - 32)]);
+      assert.ok(op(root, 'h')[0] <= height - 32);
+      assert.ok(op(root, 'max_w_full') && op(root, 'max_h_full'), 'Root also fits its host overlay');
+      if (Object.keys(usage).length) assert.deepEqual([op(root, 'w')[0], op(root, 'h')[0]], [overlay.width, overlay.height]);
+      assert.ok(byId(root, 'usage-close') && byId(root, 'usage-refresh'));
+      assert.equal(byId(scroll, 'usage-close'), undefined);
+      assert.equal(byId(scroll, 'usage-refresh'), undefined);
+      for (const node of nodes(root).filter(node => typeof op(node, 'child')?.[0] === 'string')) {
+        const label = op(node, 'child')[0];
+        if (/Allowance |extended plan|Couldn't ask|resets in|reset at|Granted |Expires |Expired |longer title|longer description|No usage/.test(label)) {
+          assert.ok(op(node, 'whitespace_normal'), `Text should wrap: ${label}`);
+          assert.equal(op(node, 'truncate'), undefined);
+        }
+        if (label === '100%' || label === 'reset since') assert.ok(op(node, 'flex_none'), 'Provider figures must not shrink');
+      }
+      if (usage.codex) {
+        const control = byId(root, 'reset-credits-control');
+        assert.equal(op(control, 'h'), undefined, 'Disclosure can grow when its labels wrap');
+        assert.ok(op(control, 'flex_wrap'));
+      }
+      if (!expanded && usage.codex) assertCollapsed(root);
+    }
+  }
+}
+viewport = { width: 1440, height: 1000 };
+console.log('usage layout: 3 palettes × 5 viewports × 4 data sets × collapsed/expanded, long provider text, fixed actions and 620–800px sizing passed');
 
 // Native eager-element checks only: temporary modules and synthetic data, never
 // installed. No layout, account calls, reset selection/redemption or real sessions.
@@ -239,6 +298,15 @@ export default class Probe extends Usage {
 }
 `);
         check(`${themeName}/${name}/${expanded}`);
+      }
+      for (const expanded of [false, true]) {
+        writeFileSync(join(directory, 'main.js'), `
+import Usage from './usage.js';
+export default class Probe extends Usage {
+  init(_props,cx){this.usage=${JSON.stringify(longUsage)};this.resetCreditsExpanded=${expanded};this.resetCreditsFocus=cx.focus_handle();}
+}
+`);
+        check(`${themeName}/long-provider-text/${expanded}`);
       }
       // Use the same native view at each width without opening a real popup.
       writeFileSync(join(directory, 'synthetic-herdr.js'), readFileSync(join(directory, 'synthetic-herdr.js'), 'utf8').replace("mode:'detail'", "mode:'bar'"));

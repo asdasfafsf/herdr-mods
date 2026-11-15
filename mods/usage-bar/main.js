@@ -26,6 +26,19 @@ const resetCount = (summary) => Number.isInteger(summary?.availableCount) && sum
 const resetCountLabel = (count) => count === null ? "Unavailable" : `${count} available`;
 const resetCreditTip = (summary) => `Reset credits: ${resetCountLabel(resetCount(summary))}${resetCount(summary) !== null && Number.isFinite(summary?.updated) ? ` (as of ${agoText(summary.updated)})` : ""}`;
 
+// Leave room for expanded details without sizing the popup to the credit list.
+// GPUI's drawable viewport is in logical pixels, like overlay dimensions.
+const detailSize = (usage) => {
+  const parts = AGENTS.filter(([key]) => usage[key]);
+  const count = parts.reduce((n, [key]) => n + usage[key].windows.length, 0);
+  const viewport = window.viewport_size();
+  const height = Math.max(620, Math.min(800, 192 + parts.length * 56 + count * 76 + (usage.codex ? 72 : 0)));
+  return {
+    width: Math.min(480, Math.max(1, viewport.width - 32)),
+    height: Math.min(height, Math.max(1, viewport.height - 32)),
+  };
+};
+
 const when = (s) => {
   if (!s) return "";
   const d = new Date(s * 1000), now = new Date();
@@ -147,7 +160,7 @@ export default class UsageBar extends View {
     // the reset count stays pinned at the trailing edge, even in a narrow block.
     return h_flex().id("usage-pill").min_w(0).max_w(Math.max(100, (this.width ?? 720) - 116)).h(20).px(9).rounded(6).bg(t.hover).hover((s) => s.bg(t.selected)).gap(10).items_center().cursor_pointer()
       // Size for the collapsed summary, never for a potentially long credit list.
-      .on_click(() => openOverlay({ mod: "usage-bar", kind: "popup", width: 380, height: Math.min(680, 130 + parts.length * 44 + count * 62 + (u.codex ? 62 : 0)), props: { mode: "detail", usage: this.usage } }))
+      .on_click(() => openOverlay({ mod: "usage-bar", kind: "popup", ...detailSize(this.usage ?? {}), props: { mode: "detail", usage: this.usage } }))
       .child(h_flex().id("usage-limits").min_w(0).overflow_x_scroll().gap(10).items_center()
         .tooltip("Scroll horizontally for more limits; click for details")
         .children(parts.flatMap(([k, name, icon], i) => [...(i ? [div().w(1).h(12).flex_none().bg(t.border)] : []), this.item(k, name, icon, u[k], t, compact, narrow)])))
@@ -159,30 +172,32 @@ export default class UsageBar extends View {
 
   renderDetail(t) {
     const u = this.usage ?? {};
+    const size = detailSize(u);
     const bar = (w) => {
       const pct = passed(w) ? 0 : Math.max(0, Math.min(100, w.used));
-      return v_flex().gap(4)
-        .child(h_flex().justify_between().text_size(11.5)
-          .child(div().text_color(t.muted).child(w.name))
-          .child(div().text_color(this.tone(w, t)).child(passed(w) ? "reset since" : `${Math.round(w.used)}%`)))
-        .child(div().h(5).w_full().rounded(3).bg(t.hover).child(div().h_full().w(`${pct}%`).rounded(3).bg(this.tone(w, t))))
-        .when(Boolean(w.resets), (el) => el.child(div().text_size(10.5).text_color(t.dim).child(passed(w) ? `reset at ${when(w.resets)}` : `resets in ${until(w.resets)} · ${at(w.resets)}`)));
+      return v_flex().flex_none().min_w(0).gap(6)
+        .child(h_flex().flex_none().min_w(0).gap(10).justify_between().items_start().text_size(12)
+          .child(div().flex_1().min_w(0).whitespace_normal().text_color(t.muted).child(w.name))
+          .child(div().flex_none().text_color(this.tone(w, t)).child(passed(w) ? "reset since" : `${Math.round(w.used)}%`)))
+        .child(div().flex_none().h(5).w_full().rounded(3).bg(t.hover).child(div().h_full().w(`${pct}%`).rounded(3).bg(this.tone(w, t))))
+        .when(Boolean(w.resets), (el) => el.child(div().flex_none().min_w(0).whitespace_normal().text_size(11).text_color(t.dim).child(passed(w) ? `reset at ${when(w.resets)}` : `resets in ${until(w.resets)} · ${at(w.resets)}`)));
     };
-    return v_flex().id("usage-detail").size_full().p(14).gap(14).bg(t.popover).text_size(12.5)
+    return v_flex().id("usage-detail").w(size.width).h(size.height).min_w(0).min_h(0).max_w_full().max_h_full().p(18).gap(18).bg(t.popover).text_size(12.5)
       .child(h_flex().flex_none().items_center().gap(8)
-        .child(div().flex_1().font_semibold().text_color(t.foreground).child("Usage & limits"))
+        .child(div().flex_1().min_w(0).whitespace_normal().font_semibold().text_color(t.foreground).child("Usage & limits"))
         .child(button("usage-close", "Close", () => closeOverlay(P().overlay), t, { disabled: this.resetting })))
-      .child(v_flex().id("usage-detail-scroll").flex_1().min_h(0).overflow_y_scroll().gap(14)
-      .children(AGENTS.filter(([k]) => u[k]).map(([k, name, icon]) => v_flex().flex_none().min_w(0).gap(8)
-        .child(h_flex().gap(7).items_center()
-          .child(image(icon).size(14).flex_none())
-          .child(div().flex_1().font_semibold().text_color(t.foreground).child(`${name}${u[k].plan ? ` · ${u[k].plan}` : ""}`))
-          .child(div().text_size(10.5).text_color(t.dim).child(agoText(u[k].updated))))
+      .child(v_flex().id("usage-detail-scroll").flex_1().min_w(0).min_h(0).overflow_y_scroll().gap(20)
+      .children(AGENTS.filter(([k]) => u[k]).map(([k, name, icon]) => v_flex().flex_none().min_w(0).gap(12)
+        .child(h_flex().flex_none().min_w(0).flex_wrap().gap(7).items_start()
+          .child(h_flex().flex_1().min_w(120).max_w_full().gap(7).items_start()
+            .child(image(icon).size(14).flex_none())
+            .child(div().flex_1().min_w(0).whitespace_normal().font_semibold().text_color(t.foreground).child(`${name}${u[k].plan ? ` · ${u[k].plan}` : ""}`)))
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(agoText(u[k].updated))))
         .children(u[k].windows.map(bar))
         .when(k === "codex", (el) => el.child(this.renderResetCredits(u[k].resetCredits, t)))
         // Why these may be old: the last ask failed (offline, logged out, no answer).
-        .when(Boolean(u[k].error), (el) => el.child(div().text_size(10.5).text_color(t.blocked).child(`Couldn't ask just now: ${u[k].error}`)))))
-      .when(!AGENTS.some(([k]) => u[k]), (el) => el.child(div().text_color(t.dim).child("No usage seen yet: it shows once Claude Code or Codex has run."))))
+        .when(Boolean(u[k].error), (el) => el.child(div().flex_none().min_w(0).whitespace_normal().text_size(11).text_color(t.blocked).child(`Couldn't ask just now: ${u[k].error}`)))))
+      .when(!AGENTS.some(([k]) => u[k]), (el) => el.child(div().flex_none().min_w(0).whitespace_normal().text_color(t.dim).child("No usage seen yet: it shows once Claude Code or Codex has run."))))
       .when(Boolean(this.resetNotice), (el) => el.child(div().whitespace_normal().text_size(11).text_color(this.resetFailed ? t.working : t.accent).child(this.resetNotice)))
       .when(Boolean(this.resetLogPath), (el) => el.child(div().truncate().tooltip(this.resetLogPath).text_size(10.5).text_color(t.dim).child(`Reset log: ${this.resetLogPath}`)))
       .when(this.resetCreditsExpanded && Boolean(this.resetChoice), (el) => el.child(v_flex().p(10).gap(8).rounded(6).bg(t.hover)
@@ -199,7 +214,7 @@ export default class UsageBar extends View {
     const action = expanded ? "Hide details" : "Show details";
     // The native trigger carries expanded semantics but its materializer does
     // not bind focus/key handlers or state styles. Put those on a plain child.
-    const control = h_flex().id("reset-credits-control").w_full().h(44).px(10).items_center().gap(8).rounded(8)
+    const control = h_flex().id("reset-credits-control").w_full().min_w(0).min_h(48).px(12).py(10).flex_wrap().items_center().gap(8).rounded(8)
       .bg(t.hover).border(1).border_color(t.border).cursor_pointer()
       .hover((s) => s.bg(t.selected)).focus((s) => s.border_color(t.accent))
       .when(Boolean(this.resetCreditsFocus), (el) => el.track_focus(this.resetCreditsFocus).tab_stop(true))
@@ -209,7 +224,7 @@ export default class UsageBar extends View {
         cx.stop_propagation();
         if (!event.is_held) this.setResetCreditsExpanded(!this.resetCreditsExpanded, cx);
       })
-      .child(div().flex_1().font_semibold().text_color(t.foreground).child("Reset credits"))
+      .child(div().flex_1().min_w(80).max_w_full().whitespace_normal().font_semibold().text_color(t.foreground).child("Reset credits"))
       .child(div().flex_none().px(6).py(2).rounded(5).bg(t.popover).text_size(11)
         .font_medium().text_color(count > 0 ? t.accent : t.muted).child(resetCountLabel(count)))
       .child(div().flex_none().text_size(10.5).text_color(t.muted).child(action))
@@ -234,23 +249,24 @@ export default class UsageBar extends View {
   renderResetCreditDetails(summary, t) {
     const credits = summary?.credits;
     const date = (s) => s ? new Date(s * 1000).toLocaleString() : "Unknown";
-    return v_flex().id("reset-credits-details").flex_none().gap(8).pb(2)
-      .when(Boolean(summary), (el) => el.child(div().text_size(10.5).text_color(t.dim).child(`As of ${agoText(summary.updated)}`)))
-      .when(!summary, (el) => el.child(div().text_size(11).text_color(t.muted).child("Reset credit information isn't available. Try Refresh.")))
-      .when(summary?.availableCount === 0, (el) => el.child(div().text_size(11).text_color(t.muted).child("No reset credits available.")))
-      .children((credits ?? []).map((credit, i) => v_flex().id(`reset-credit-${credit.id}`).flex_none().p(12).gap(7).rounded(8).bg(t.popover).border(1).border_color(t.border)
-        .child(h_flex().gap(8).items_start()
-          .child(div().flex_1().min_w(0).whitespace_normal().font_medium().text_color(t.foreground).child(credit.title || `Reset credit ${i + 1}`))
+    const detailText = () => div().flex_none().min_w(0).whitespace_normal().text_size(11).line_height(1.4);
+    return v_flex().id("reset-credits-details").flex_none().min_w(0).gap(10).pb(2)
+      .when(Boolean(summary), (el) => el.child(detailText().text_color(t.dim).child(`As of ${agoText(summary.updated)}`)))
+      .when(!summary, (el) => el.child(detailText().text_color(t.muted).child("Reset credit information isn't available. Try Refresh.")))
+      .when(summary?.availableCount === 0, (el) => el.child(detailText().text_color(t.muted).child("No reset credits available.")))
+      .children((credits ?? []).map((credit, i) => v_flex().id(`reset-credit-${credit.id}`).flex_none().min_w(0).p(14).gap(8).rounded(8).bg(t.popover).border(1).border_color(t.border)
+        .child(h_flex().flex_none().min_w(0).flex_wrap().gap(8).items_start()
+          .child(div().flex_1().min_w(120).max_w_full().whitespace_normal().font_medium().text_color(t.foreground).child(credit.title || `Reset credit ${i + 1}`))
           .child(div().flex_none().px(6).py(2).rounded(5).bg(t.hover).text_size(10.5).text_color(t.muted).child(({ available: "Available", redeeming: "Redeeming", redeemed: "Redeemed" })[credit.status] || "Unknown")))
-        .when(Boolean(credit.description), (el) => el.child(div().whitespace_normal().text_size(11).text_color(t.muted).child(credit.description)))
-        .child(div().text_size(10.5).text_color(t.dim).child(`Granted ${date(credit.grantedAt)}`))
-        .child(div().text_size(11).text_color(credit.expiresAt && credit.expiresAt * 1000 <= Date.now() ? t.working : t.muted)
+        .when(Boolean(credit.description), (el) => el.child(detailText().text_color(t.muted).child(credit.description)))
+        .child(detailText().text_color(t.dim).child(`Granted ${date(credit.grantedAt)}`))
+        .child(detailText().text_color(credit.expiresAt && credit.expiresAt * 1000 <= Date.now() ? t.working : t.muted)
           .child(credit.expiresAt ? `${credit.expiresAt * 1000 <= Date.now() ? "Expired" : "Expires"} ${date(credit.expiresAt)}` : "No expiration"))
-        .child(h_flex().justify_end().child(button(`reset-use-${credit.id}`, this.usedCredits?.has(credit.id) ? "Used" : "Use credit", (cx) => {
+        .child(h_flex().flex_none().justify_end().child(button(`reset-use-${credit.id}`, this.usedCredits?.has(credit.id) ? "Used" : "Use credit", (cx) => {
           this.resetChoice = credit; this.resetNotice = null; cx.notify();
         }, t, { disabled: this.resetting || this.reading || credit.status !== "available" || this.usedCredits?.has(credit.id) || Boolean(credit.expiresAt && credit.expiresAt * 1000 <= Date.now()) })))))
-      .when(Boolean(summary?.availableCount) && credits == null, (el) => el.child(div().text_size(11).text_color(t.muted).child("Individual credit details aren't available.")))
-      .when(Array.isArray(credits) && credits.length < (summary?.availableCount ?? 0), (el) => el.child(div().text_size(11).text_color(t.dim).child(`Showing ${credits.length} of ${summary.availableCount} available credits.`)));
+      .when(Boolean(summary?.availableCount) && credits == null, (el) => el.child(detailText().text_color(t.muted).child("Individual credit details aren't available.")))
+      .when(Array.isArray(credits) && credits.length < (summary?.availableCount ?? 0), (el) => el.child(detailText().text_color(t.dim).child(`Showing ${credits.length} of ${summary.availableCount} available credits.`)));
   }
 
   useResetCredit(cx) {
