@@ -45,7 +45,7 @@ export function residentSpacing(view, row, size) {
   if (!shape) {
     const motions = definition.motions?.[name];
     const variants = [definition.sprites?.[name], ...Object.values(motions || {}).map((clip) => definition.sprites?.[clip?.sprite])].filter(Boolean);
-    shape = { geometry: residentGeometry(variants.length ? variants : [{ width: size + 16, height: size }], size),
+    shape = { geometry: residentGeometry(variants.length ? variants : [{ width: size + 16, height: size }], size, definition.villageScale?.[name] ?? 1),
       directions: motions?.directions?.filter((direction) => ["left", "right", "up", "down"].includes(direction)) };
     cache.shapes.set(key, shape);
   }
@@ -198,7 +198,8 @@ export function advanceVillage(view, rows, layout) {
 
 function resident(view, row, actor, layout, t, focusedAddress, geometry) {
   const sprite = agentSprite(view, row, true, actor.facing, actor);
-  const size = layout.size, art = spriteLayout(sprite, size + 16, size, true);
+  const size = layout.size, art = spriteLayout(sprite, size + 16, size, true, geometry.visualScale);
+  const ring = geometry.selection;
   const selected = view.villageSelected === row.id;
   const selectedLabel = row.address && row.address === focusedAddress ? "Active" : "Selected";
   const status = statusLabel(row.status);
@@ -218,7 +219,7 @@ function resident(view, row, actor, layout, t, focusedAddress, geometry) {
     .on_mouse_up("left", (e, cx) => finishDrag(view, e, cx))
     .on_hover((over, cx) => { view.villageHovered = over ? row.id : null; cx.notify(); })
     .on_click((_e, cx) => { finishDrag(view, null, cx); cx.stop_propagation(); if (!consumeDragClick(view, `resident-${row.id}`)) selectVillageResident(view, row, cx); })
-    .when(selected, (el) => el.child(div().id(`village-selection-ring-${row.id}`).absolute().left(8).top(size).w(size).h(14).rounded(50)
+    .when(selected, (el) => el.child(div().id(`village-selection-ring-${row.id}`).absolute().left(ring.left).top(ring.top).w(ring.width).h(ring.height).rounded(50)
       .border(2).border_color(t.accent).bg(t.selected).opacity(0.8)))
     .when(!notice, (el) => el.child(h_flex().id(`village-status-${row.id}`).absolute().left(geometry.status.left).top(geometry.status.top)
       .w(84).h(22).gap(5).items_center().justify_center().rounded(11).bg(t.raised)
