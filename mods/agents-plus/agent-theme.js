@@ -3,7 +3,7 @@ import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { props, panes, focused, shared, setShared } from "herdr";
 import { RESOURCE_PACKS, VIEW_LAYOUTS, packDefinition, residentPool, hasResidents, hasVillage } from "./resource-packs.js";
-import { inAgentMode, agentViewVisible, workspaceTheme } from "./agent-mode.js";
+import { inAgentMode, agentViewVisible, standaloneOverviewCovered, workspaceTheme } from "./agent-mode.js";
 import { finishDrag } from "./drag-layout.js";
 import { frameFacing } from "./sprite-directions.js";
 import { spriteMotion } from "./sprite-motion.js";
@@ -34,7 +34,7 @@ export function initAgentTheme(view, cx) {
     if (pack !== view.pack) { finishDrag(view, null, cx); view.pack = pack; cx.notify(); }
     const presentation = preferredPresentation(view.pack);
     if (view.presentation !== presentation) { finishDrag(view, null, cx); view.presentation = presentation; cx.notify(); }
-    if (inAgentMode() && !agentViewVisible()) { finishDrag(view, null, cx); return; }
+    if (standaloneOverviewCovered() || (inAgentMode() && !agentViewVisible())) { finishDrag(view, null, cx); return; }
     // A slow render is not a hidden pane. In particular, typing or another
     // busy mod may leave a gap longer than 300ms while this tab is still shown.
     if (!inAgentMode()) {

@@ -244,3 +244,19 @@ Light/Chiikawa와 main의 Active 세션으로 복원했고 앱 오류 목록은 
 fresh cwd 변경 거부, shared launch reservation, stale LIVE와 preflight attachment race,
 standalone/위임 resume 실패 전파를 합성 transport 및 임시 파일로 검사한다.
 네이티브 화면과 실제 사용자 대화 왕복은 이 검사 결과에 포함되지 않는다.
+
+## 기존 Agent view 탭과 통합 장면의 중복
+
+기존 standalone `Agent view` 탭은 터미널이 없는 agents-plus mod pane이다.
+통합 workspace의 위 장면이 보일 때 그 pane은 `No terminal in this pane`과
+안내를 표시한다. 탭을 닫거나 native tab tree를 숨기지 않으며, 다른 mod/문서와
+터미널 split은 그대로 유지한다. `Show Agent view here` 또는 Terminal only로
+위 장면을 접으면 기존 overview를 다시 사용할 수 있다.
+
+`agent-empty-states.mjs`는 integrated 속성이 없는 legacy props, Plain/Chiikawa
+Cards/Village, 반복 선택과 ghost/빈 프로젝트/문서 focus, stale resident 선택,
+팩 보존과 split 복귀를 검사한다. `agents-render.mjs --native`는 placeholder와
+Terminal only의 native builder도 검사하지만 실제 앱 화면 검증을 대신하지 않는다.
+`session-handoff.mjs`는 실제 Saved/Outside handler와 공통 resume guard에 합성
+transport를 연결해, 중복 클릭 및 두 spaces-plus 수신자에서도 최대 한 번만
+launch하는지 확인한다. active/unknown ownership은 두 provider 모두 거부해야 한다.

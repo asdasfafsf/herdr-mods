@@ -100,3 +100,61 @@ await assert.rejects(other.namespace.resumeSession({agent:'codex',session:'share
 await first;
 assert.equal(commands.length,1);
 console.log('handoff: providers, fresh cwd, shared reservation, stale LIVE and attachment races passed');
+
+// Race actual Saved/Outside handlers, including command fanout to two copies of
+// spaces-plus. Every transport is synthetic; launch means a recorded host action.
+const agentsSource=readFileSync('mods/agents-plus/main.js','utf8');
+const savedMethod=agentsSource.slice(agentsSource.indexOf('  resumeSaved(row, cx) {'),agentsSource.indexOf('  savedRows(t, all, now) {'));
+const outsideMethod=agentsSource.slice(agentsSource.indexOf('  async resume(x, cx = null) {'),agentsSource.indexOf("  // A section's outside agents"));
+const settings=new vm.SourceTextModule(readFileSync('lib/state.js','utf8'),{context});
+await settings.link(()=>herdr);await settings.evaluate();
+const statuses=new vm.SourceTextModule(readFileSync('lib/agent-status.js','utf8'),{context});
+await statuses.link(()=>settings);await statuses.evaluate();
+const saved=new vm.SourceTextModule(readFileSync('lib/saved-sessions.js','utf8'),{context});
+await saved.link(name=>name==='./resume.js'?module:statuses);await saved.evaluate();
+let raceChecks=0;
+for(const agent of ['codex','claude']) for(const delegated of [false,true]) for(const ownership of ['ready','active','unknown']) {
+  for(const key of Object.keys(state)) delete state[key];
+  terminalRows=[];commands=[];duringProbe=null;
+  const row={agent,session:sid,cwd:'/work',title:'Synthetic session',updated:1,argv:[agent]};
+  result={agent,session:sid,cwd:'/work',state:ownership,reason:ownership};
+  const tasks=[],timers=new Set(),notices=[];
+  const cx={notify(){},spawn(fn){tasks.push(fn(cx));},timer:{every(_ms,fn){timers.add(fn);return {cancel(){timers.delete(fn);}};}}};
+  const spaces=()=>[{id:'work-space',folder:'/work'}];
+  const destinations=[resumeSession,other.namespace.resumeSession].map(guard=>{
+    const Type=new Function('AGENTS','panes','spaces','where','place','run','resumeSession','focusSession',`return class {trees={};git={};${spacesMethod}}`)(
+      AGENTS,()=>[],spaces,()=>'/work',s=>s.folder,host.run,guard,focusSession);
+    return new Type();
+  });
+  const run=(name,args)=>{
+    if(!name.startsWith('spaces-plus.resume@')) return host.run(name,args);
+    const rec=JSON.parse(name.split('@')[1]);
+    for(const destination of destinations) tasks.push(destination.resumeHere(rec).then(
+      ()=>{if(rec.request) state['wt.results']={...state['wt.results'],[rec.request]:{ok:true}};},
+      error=>{if(rec.request) state['wt.results']={...state['wt.results'],[rec.request]:{ok:false,error:error.message}};else notices.push(error.message);},
+    ));
+  };
+  const Type=new Function('d',`const {AGENTS,focusSession,runs,layout,panes,spaces,placeOf,inside,run,shared,RESULTS,notify,resumeSession,
+    validSavedSession,savedSessionKey,savedLiveTerminal,savedResumeRecord,LIVE,KNOWN,terminals,exec,appHome}=d;
+    return class {savedPending=new Map();readSaved(){}focusAgent(){throw Error('unexpected live session');}${savedMethod}${outsideMethod}}`)(
+    {AGENTS,focusSession,resumeSession,runs:module.namespace.runs,layout:()=>delegated?{mod:'spaces-plus'}:{},panes:()=>[],spaces,
+      placeOf:s=>s.folder,inside:(path,dir)=>path===dir||path.startsWith(dir+'/'),run,shared:host.shared,RESULTS:'wt.results',notify:value=>notices.push(value),
+      ...saved.namespace,LIVE:'wt.live',KNOWN:'new-menu.agents',terminals:host.terminals,appHome:host.appHome,
+      exec:async()=>({code:0,stdout:JSON.stringify({running:false,record:row})})});
+  const views=[new Type(),new Type()];
+  for(const view of views) {view.resumeSaved(row,cx);view.resumeSaved(row,cx);}
+  tasks.push(views[0].resume(row),views[1].resume(row));
+  // Let saved checks, destination acknowledgements and timer callbacks settle.
+  for(let tick=0;tick<40;tick++) {await Promise.resolve();for(const timer of [...timers]) timer();}
+  await Promise.all(tasks);
+  const launches=commands.filter(([name])=>['tab.new','space.new'].includes(name));
+  assert.equal(launches.length,ownership==='ready'?1:0,`${agent}/${delegated}/${ownership}: at most one launch across all entry points`);
+  if(launches.length) {
+    assert.equal(launches[0][0],'tab.new');
+    assert.deepEqual(plain(launches[0][1].argv),[agent,agent==='codex'?'resume':'--resume',sid]);
+    await views[0].resume(row);
+    assert.equal(commands.filter(([name])=>['tab.new','space.new'].includes(name)).length,1,'launch-gap repeat cannot launch again');
+  } else assert.ok(notices.length||views.some(view=>view.savedResumeError),'ownership refusal remains visible');
+  raceChecks++;
+}
+console.log(`handoff duplicate-launch races: ${raceChecks} passed (Saved/Outside, standalone/delegated fanout, both providers, ownership refusal)`);

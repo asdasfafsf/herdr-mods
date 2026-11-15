@@ -24,6 +24,14 @@ export function findViewStack(node = layout()) {
 }
 
 export const agentViewVisible = () => workspaceSplit() ? sceneVisible() : findViewStack()?.active === AGENT_VIEW;
+// Legacy overview tabs still belong to the native tab tree. Only their own
+// content yields to the integrated scene; never hide a terminal or another mod.
+export function standaloneOverviewCovered() {
+  if (inAgentMode() || props()?.mode !== "overview") return false;
+  const split = workspaceSplit(), scene = split?.scene;
+  return scene?.content?.mod === "agents-plus" && scene.content.props?.mode === "overview"
+    && scene.content.props?.integrated === true && !scene.hidden && split.sceneShare > 0;
+}
 export const AGENT_SELECTION = "ag.selection";
 export function requestAgentSelection(id, address) {
   if (!agentViewVisible()) return;

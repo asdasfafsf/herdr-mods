@@ -1,7 +1,7 @@
 // One workspace: native divider above the native tab tree. The host owns the
 // drag, terminal focus/input, pane splits and scrollback; no pointer forwarding.
 import { div } from "gpui-kit";
-import { h_flex } from "gpui-base";
+import { h_flex, v_flex } from "gpui-base";
 import { layout, shared, setShared, run, focused, panes, theme } from "herdr";
 import { requestAgentSelection } from "./agent-mode.js";
 
@@ -160,4 +160,18 @@ export function renderTerminalToolbar() {
       .child(pane?.title || (address ? "Terminal" : "Workspace")))
     .child(handleButton("terminal-dock-restore", "↕", "Restore split · double-click the handle", restoreWorkspaceSplit, t))
     .child(handleButton("terminal-dock-toggle", "▾", "Scene only · ⌘⇧J", closeTerminalDock, t));
+}
+
+// The old Agent view tab contains a mod, not a terminal. Keep the tab intact
+// and let Terminal only show it again without selecting or starting a session.
+export function renderOverviewTerminalPlaceholder() {
+  const t = theme();
+  return v_flex().id("terminal-empty-overview").size_full().p(24).gap(8).items_center().justify_center().bg(t.background)
+    .child(div().font_medium().text_color(t.foreground).child("No terminal in this pane"))
+    .child(div().text_size(12).text_color(t.muted).text_center()
+      .child("Agent view is already shown above. Select a terminal tab to see its output here."))
+    .child(div().id("terminal-empty-agent-view").px(10).py(6).rounded(6).text_size(12).text_color(t.foreground)
+      .border(1).border_color(t.border).cursor_pointer().hover((el) => el.bg(t.hover))
+      .on_click((_event, cx) => { cx.stop_propagation(); showWorkspaceTerminal(null); })
+      .child("Show Agent view here"));
 }

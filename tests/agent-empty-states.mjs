@@ -16,7 +16,7 @@ const stack = () => ({ id: 'root', type: 'row', children: [{ id: 'workspace-view
   ] },
 ] }] });
 const find = (node, id) => node?.id === id ? node : node?.children?.map(child => find(child, id)).find(Boolean);
-async function hostFixture({ skin = 'default', presentation = 'cards', agents = [], state = {}, focus = {}, layout = stack(), mode = 'overview', terminals = [] } = {}) {
+async function hostFixture({ skin = 'default', presentation = 'cards', agents = [], state = {}, focus = {}, layout = stack(), mode = 'overview', terminals = [], integrated = true, paneRows = [] } = {}) {
   const handlers = new Map(), calls = [], timers = new Map(), cache = new Map();
   function builder(type) {
     const node = { type, ops: [] };
@@ -46,8 +46,8 @@ async function hostFixture({ skin = 'default', presentation = 'cards', agents = 
   const host = {
     notify() {},
     agents: () => structuredClone(agents), terminals: () => structuredClone(terminals),
-    panes: () => agents.map(a => ({ id: a.pane, terminal: a.address, tab: a.tab, title: a.title, program: a.program })),
-    spaces: () => [], focused: () => focus, props: () => ({ mode, integrated: true }),
+    panes: () => [...paneRows, ...agents.map(a => ({ id: a.pane, terminal: a.address, tab: a.tab, title: a.title, program: a.program }))],
+    spaces: () => [], focused: () => focus, props: () => ({ mode, ...(integrated == null ? {} : { integrated }) }),
     layout: () => layout, layouts: () => [], window: () => ({ active: true }),
     shared: key => structuredClone(shared[key]), setShared: (key, value) => { shared[key] = structuredClone(value); },
     theme: () => new Proxy({}, { get: () => '#56789a' }),
@@ -65,7 +65,7 @@ async function hostFixture({ skin = 'default', presentation = 'cards', agents = 
     exec: () => { throw new Error('No process or session command is permitted in empty-state tests'); },
     readTextFile: async () => '{}', writeTextFile: async () => { throw new Error('No configuration writes permitted'); },
   };
-  const local = new Map();
+  const local = new Map([['overview.presentation', presentation]]);
   const context = vm.createContext({ console, Date: class extends Date { static now() { return now; } },
     localStorage: { getItem: key => local.get(key), setItem: (key, value) => local.set(key, value), removeItem: key => local.delete(key) } });
   const synthetic = (name, values) => new vm.SyntheticModule(Object.keys(values), function () { for (const [key, value] of Object.entries(values)) this.setExport(key, value); }, { context, identifier: name });
@@ -96,7 +96,7 @@ async function hostFixture({ skin = 'default', presentation = 'cards', agents = 
   view.init({}, cx); view.outside = [];
   const render = () => { handlers.clear(); return JSON.parse(JSON.stringify(view.render(cx))); };
   const click = id => { assert.ok(handlers.has(id), `missing recovery/navigation control ${id}`); handlers.get(id)({}, cx); };
-  return { view, render, click, calls, shared, layout, helper: helper.namespace,
+  return { view, render, click, calls, shared, layout, tick: ms => timers.get(ms)?.(cx), helper: helper.namespace,
     overview: cache.get(resolve(modRoot, 'overview.js')).namespace,
     workspace: cache.get(resolve(modRoot, 'workspace-controls.js')).namespace };
 }
@@ -108,6 +108,62 @@ async function check(name, fn) {
 }
 for (const [skin, presentation] of [['default', 'cards'], ['chiikawa', 'cards'], ['chiikawa', 'village']]) {
   const options = { skin, presentation }, prefix = `${skin}/${presentation}`;
+  for (const legacyIntegrated of [false, null]) await check(`${prefix}: legacy overview (integrated=${legacyIntegrated}) in the dock is an empty terminal pane`, async () => {
+    const layout = stack(), agents = [session('one', 'working'), session('two', 'idle')];
+    const paneRows = [{ pane: 'legacy', tab: 'legacy-tab', mod: 'agents-plus', title: 'Agent view' },
+      { pane: 'document', tab: 'legacy-tab', mod: 'markdown' },
+      { pane: 'terminal-split', tab: 'legacy-tab', terminal: 'other-terminal' }];
+    const focus = { pane: 'legacy', tab: 'legacy-tab' };
+    const original = JSON.stringify({ layout, paneRows });
+    const integrated = await hostFixture({ ...options, layout, agents, focus, paneRows });
+    const legacy = await hostFixture({ ...options, layout, agents, focus, paneRows, integrated: legacyIntegrated });
+    for (let selection = 0; selection < 3; selection++) {
+      const scene = JSON.stringify(integrated.render()), dock = JSON.stringify(legacy.render());
+      assert.match(scene, /overview-one/);
+      assert.match(dock, /No terminal in this pane/);
+      assert.doesNotMatch(dock, /overview-one|overview-two|village-scene|"agent-view"/);
+      assert.equal(legacy.view.visibleOverviewRows?.length ?? 0, 0);
+    }
+    assert.equal(JSON.stringify({ layout, paneRows }), original, 'other mod/document/terminal panes and the legacy tab are preserved');
+    assert.deepEqual(legacy.calls, [], 'selecting the empty pane never opens, focuses or closes anything');
+    const clock = legacy.view.themeClock;
+    legacy.tick(50);
+    assert.equal(legacy.view.themeClock, clock, 'the duplicate scene does not animate behind the placeholder');
+    const look = JSON.stringify(legacy.shared);
+    legacy.click('terminal-empty-agent-view');
+    assert.equal(find(layout, 'agent-scene').size.weight, 0);
+    assert.match(JSON.stringify(legacy.render()), /overview-one/, 'Terminal only keeps the standalone overview usable');
+    integrated.workspace.workspaceCommand('toggle_view');
+    assert.match(JSON.stringify(legacy.render()), /No terminal in this pane/, 'restoring the split restores the empty pane');
+    assert.equal(legacy.shared['ag.resourcePack'], JSON.parse(look)['ag.resourcePack']);
+    assert.ok(legacy.calls.every(([name]) => name === 'layout.resize'), 'only the explicit presentation action resizes the layout');
+  });
+  await check(`${prefix}: standalone overview remains available without a visible integrated scene`, async () => {
+    for (const variant of ['standalone', 'hidden', 'terminal-only', 'other-mod']) {
+      const layout = variant === 'standalone' ? { id: 'standalone', content: { tab: 'active' } } : stack();
+      const scene = find(layout, 'agent-scene');
+      if (variant === 'hidden') scene.hidden = true;
+      if (variant === 'terminal-only') { scene.size.weight = 0; find(layout, 'agent-terminal-dock').size.weight = 1; }
+      if (variant === 'other-mod') scene.content = { mod: 'markdown' };
+      const env = await hostFixture({ ...options, layout, agents: [session('one', 'working')], integrated: false });
+      assert.match(JSON.stringify(env.render()), /overview-one/);
+      assert.deepEqual(env.calls, []);
+    }
+  });
+  await check(`${prefix}: leaving a selected resident for an empty or mod pane never opens a fallback`, async () => {
+    const focus = { terminal: 'one', pane: 'pane-one', tab: 'tab-one' };
+    const env = await hostFixture({ ...options, agents: [session('one', 'working')], focus });
+    env.render(); env.tick(250);
+    assert.equal(env.view.villageSelected, 'one');
+    env.shared['ag.selection'] = { id: 'one', address: 'one', sequence: 1, at: now };
+    delete focus.terminal;
+    for (const target of ['legacy-overview', 'document', 'empty-project', 'ghost']) {
+      focus.pane = target; focus.tab = `${target}-tab`;
+      for (let repeat = 0; repeat < 3; repeat++) { env.tick(250); env.render(); }
+      assert.equal(env.view.villageSelected, null);
+      assert.deepEqual(env.calls, [], `${target}: no fallback pane, focus or agent launch`);
+    }
+  });
   await check(`${prefix}: no optional shared state and no sessions`, async () => {
     const env = await hostFixture({ ...options, focus: null }), output = JSON.stringify(env.render());
     assert.equal(env.overview.agentViewRows().length, 0);

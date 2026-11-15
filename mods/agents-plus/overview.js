@@ -14,10 +14,10 @@ import { spriteLayout } from "./sprite-layout.js";
 import { spriteArt } from "./sprite-art.js";
 import { agentEmptyState, renderAgentEmptyState } from "./agent-empty-state.js";
 import { renderVillage, villageDetails, dragViewport } from "./village.js";
-import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, findViewStack, AGENT_SELECTION } from "./agent-mode.js";
+import { openAgentMode, leaveAgentMode, inAgentMode, agentViewVisible, standaloneOverviewCovered, findViewStack, AGENT_SELECTION } from "./agent-mode.js";
 import { selectVillageResident } from "./village-chat.js";
 import { initSessionControls, renderInlinePermission, sessionState } from "./session-controls.js";
-import { hasTerminalDock, openTerminalDock, COMPOSER, noteSceneSize } from "./terminal-dock.js";
+import { hasTerminalDock, openTerminalDock, COMPOSER, noteSceneSize, renderOverviewTerminalPlaceholder } from "./terminal-dock.js";
 
 const STATES = STATUS_FILTERS;
 const SOURCES = [["all", "All sources"], ["herdr", "Herdr"], ["outside", "Outside Herdr"]];
@@ -224,6 +224,10 @@ function agentCard(view, row, t, focusedAddress) {
 }
 
 export function renderAgentView(view) {
+  if (standaloneOverviewCovered()) {
+    view.visibleOverviewRows = [];
+    return renderOverviewTerminalPlaceholder();
+  }
   const t = agentTheme(theme(), view.pack), now = Date.now();
   // Repainting GIFs must not reread every live session on every animation frame.
   if (!hasResidents(view.pack) || !view.overviewRows || now - view.overviewRowsAt > 2000 || view.overviewOutside !== view.outside) {

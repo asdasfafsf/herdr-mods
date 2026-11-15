@@ -33,6 +33,14 @@ function fixture(count, grouped = false, collapsed = false, depth = 1) {
 function workspaceLayout(active='main') {
   return {id:'root',type:'row',children:[{id:'sidebar',size:{px:268}},{id:'workspace-views',type:'stack',active,children:[{id:'main',type:'block',content:{tab:'active',pane:{gap:8}}},{id:'agent-world',type:'block',content:{mod:'agents-plus',props:{mode:'overview',integrated:true}}}]}]};
 }
+function splitWorkspaceLayout(share=0.6) {
+  return {id:'workspace-views',type:'column',children:[
+    {id:'agent-scene',type:'block',size:{weight:share},content:{mod:'agents-plus',props:{mode:'overview',integrated:true}}},
+    {id:'agent-terminal-dock',type:'column',size:{weight:1-share},children:[
+      {id:'agent-terminal-surface',type:'column',children:[{id:'main',type:'block',content:{tab:'active'}}]},
+    ]},
+  ]};
+}
 function findNode(node,id) {
   return node?.id===id ? node : node?.children?.map(child=>findNode(child,id)).find(Boolean);
 }
@@ -1016,7 +1024,7 @@ console.log('saved history: below Idle, bounded pages, dedupe, independent resid
 if (process.argv.includes('--native')) {
   const failures=[];
   let checked=0, baselineInterrupted=0;
-  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-cards-narrow'],[4,1,'chiikawa-approval']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
+  for (const [count,depth,mode] of [[40,1,'sidebar'],[200,1,'sidebar'],[120,5,'sidebar'],[40,1,'overview'],[200,1,'overview'],[40,1,'chiikawa'],[200,1,'chiikawa'],[40,1,'chiikawa-cards'],[4,1,'chiikawa-cards-narrow'],[4,1,'chiikawa-approval'],[0,1,'dock-placeholder'],[4,1,'chiikawa-dock-placeholder'],[4,1,'dock-terminal-only']]) for (const revision of process.argv.includes('--baseline-native') ? ['HEAD'] : before ? [before,null] : [null]) {
     if (process.argv.includes('--overview-only') && mode === 'sidebar') continue;
     if (revision && mode !== 'sidebar') continue;
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
@@ -1030,6 +1038,11 @@ if (process.argv.includes('--native')) {
       if (has('mods/agents-plus/render-profile.js'))
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
+      if (mode.includes('dock-')) {
+        data.layout=splitWorkspaceLayout(mode==='dock-terminal-only'?0:0.6);
+        data.focused={pane:'legacy',tab:'legacy-tab'};
+        data.panes.push({pane:'legacy',tab:'legacy-tab',mod:'agents-plus',title:'Agent view'});
+      }
       data.saved = !revision && mode === 'sidebar' ? Array.from({length:12},(_,i)=>savedRow(i+1)) : [];
       if (mode==='chiikawa-cards-narrow') {
         data.panes[0].title='A long session title for a narrow card with a readable project and branch';
@@ -1040,7 +1053,7 @@ const data=${JSON.stringify(data)};
 const copy=x=>JSON.parse(JSON.stringify(x??null));
 export const agents=()=>copy(data.agents), terminals=()=>copy(data.terminals), spaces=()=>copy(data.spaces), panes=()=>copy(data.panes);
 export const shared=k=>copy(data.state[k]), setShared=(k,v)=>{data.state[k]=v}, setAgentOrder=()=>{};
-export const focused=()=>({agent:'t0',terminal:'t0',tab:'b0'}), layout=()=>({id:'sidebar',size:{px:268}}), layouts=()=>['main'], props=()=>({mode:'${mode.startsWith('chiikawa')?'overview':mode}'}), window=()=>({active:true});
+export const focused=()=>data.focused??({agent:'t0',terminal:'t0',tab:'b0'}), layout=()=>data.layout??({id:'sidebar',size:{px:268}}), layouts=()=>['main'], props=()=>({mode:'${mode.startsWith('chiikawa')||mode.includes('dock-')?'overview':mode}'}), window=()=>({active:true});
 export const settings=()=>({theme:'paper',dark:false});
 export const nextCommand=()=>new Promise(()=>{});
 export const themes=()=>[{name:'paper',light:true},{name:'herdr-chiikawa',light:true},{name:'graphite',light:false},{name:'atom-one-dark',light:false}];

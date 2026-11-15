@@ -35,7 +35,7 @@ const modules = new Map([
   ['gpui-kit', stub({ div: builder, image: path => builder('image', path), svg: path => builder('svg', path) })],
   ['gpui-base', stub({ h_flex: builder, v_flex: builder, Scrollbar: { vertical: builder } })],
   ['herdr', stub({ props: () => ({ integrated: true }), panes: () => [], focused: () => ({}), shared: key => key === 'ag.resourcePack' ? 'chiikawa' : 'village', setShared() {}, run() {} })],
-  ['./agent-mode.js', stub({ inAgentMode: () => true, agentViewVisible: () => visible, applyModeTheme() {}, workspaceTheme: () => 'chiikawa' })],
+  ['./agent-mode.js', stub({ inAgentMode: () => true, agentViewVisible: () => visible, standaloneOverviewCovered: () => false, applyModeTheme() {}, workspaceTheme: () => 'chiikawa' })],
   ['./overview-header.js', stub({ overviewHeader() {} })],
   ['./ui.js', stub({ button() {}, statusColor() {}, statusMark() {}, statusInfo: () => ({}), statusLabel() {}, statusNotice: row => ['done', 'blocked'].includes(row.status) ? { attention: true, label: row.status, text: 'Read me' } : null })],
   ['./village-chat.js', stub({ selectVillageResident() {}, renderVillageChat() {} })],

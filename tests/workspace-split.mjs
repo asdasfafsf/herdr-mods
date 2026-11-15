@@ -48,7 +48,7 @@ const host = {
 const imports = {
   herdr: host,
   'gpui-kit': { div: () => element('div') },
-  'gpui-base': { h_flex: () => element('h_flex') },
+  'gpui-base': { h_flex: () => element('h_flex'), v_flex: () => element('v_flex') },
   './agent-mode.js': { requestAgentSelection() {} },
 };
 const cache = new Map();
