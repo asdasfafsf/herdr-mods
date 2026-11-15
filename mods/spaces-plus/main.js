@@ -16,7 +16,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, focused, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, agents, appHome, readTextFile, notify, home, settings } from "herdr";
 // How sessions are found and resumed: lib/resume.js in the repo, copied here by install.sh.
-import { AGENTS, agentKind, resumeArgv, sessionOf } from "./resume.js";
+import { AGENTS, agentKind, resumeArgv, resumeSession, focusSession, sessionOf } from "./resume.js";
 import { createWorktree, removeWorktree, cleanupCandidates, repoOf as repoAt, git as gitIn } from "./worktree.js";
 import { META, TREES, SLEEP, SORT, LIVE, SEEN, LINK_TEMPLATE, AGENT_INFO, REPO_COLORS, OPTION_DEFS, option, setOption, setRepoColor, resetRepoColors, ackDone, metaKey, metaOf, dropMeta, answer } from "./state.js";
 import { statusMark, shownStatus, spaceFill, REPO_PALETTE, ago } from "./ui.js";
@@ -612,7 +612,18 @@ export default class Spaces extends View {
         // First: after a reload the old build stops here, instead of acting on it too.
         cx.notify();
         if (c === "open" && target) { this.openPath(target); continue; }
-        if (c === "resume" && target) { try { this.resumeHere(JSON.parse(target)); } catch {} continue; }
+        if (c === "resume" && target) {
+          let rec;
+          try { rec = JSON.parse(target); } catch { continue; }
+          cx.spawn(async () => {
+            try { await this.resumeHere(rec); if (rec.request) answer(rec.request, { ok: true }); }
+            catch (error) {
+              if (rec.request) answer(rec.request, { ok: false, error: String(error.message ?? error) });
+              else notify({ title: "Cannot resume session", body: String(error.message ?? error), level: "warning" });
+            }
+          });
+          continue;
+        }
         if (c === "go" && target) { const s = this.spaceAt(target); s ? run("space.select", { id: s.id }) : this.openPath(target); continue; }
         if (c === "meta" && target) { try { this.editMeta(JSON.parse(target)); } catch {} continue; }
         if (c === "sleep" && target?.startsWith("{")) {
@@ -836,12 +847,11 @@ export default class Spaces extends View {
 
   // An agent session in Herdr (agents-plus, for one running elsewhere): if a Herdr terminal
   // runs it already (shared "wt.live", kept by wt-restore), go there; else resume it as it
-  // was started, as Claude Code and Codex allow even while it runs elsewhere: a new tab in
-  // the space showing its folder, or a new space there (it nests under its repo).
-  resumeHere(rec) {
-    const live = (shared(LIVE) ?? {})[rec.session];
-    if (live) return run("pane.focus", { terminal: live });
-    if (!AGENTS[rec.agent]) return;
+  // was started after its current client releases it: a new tab in the space showing
+  // its folder, or a new space there (it nests under its repo).
+  async resumeHere(rec) {
+    if (focusSession(rec)) return;
+    if (!AGENTS[rec.agent]) throw new Error("No session adapter is registered for this agent.");
     const ps = panes();
     const inside = (p, dir) => Boolean(p) && (p === dir || p.startsWith(`${dir}/`));
     // Its checkout (the deepest holding its folder), and the space showing that checkout; a
@@ -851,10 +861,13 @@ export default class Spaces extends View {
       ? spaces().find((x) => !x.machine && this.git[where(x, ps)]?.top === checkout)
       : spaces().filter((x) => !x.machine && inside(rec.cwd, place(x, ps))).sort((a, b) => place(b, ps).length - place(a, ps).length)[0];
     const name = rec.title ? rec.title.slice(0, 28) : undefined;
-    if (s) {
-      run("space.select", { id: s.id });
-      run("tab.new", { space: s.id, folder: rec.cwd, argv: resumeArgv(rec), ...(name ? { name } : {}) });
-    } else run("space.new", { folder: rec.cwd, argv: resumeArgv(rec) });
+    return resumeSession(rec, (argv) => {
+      if (s) {
+        run("space.select", { id: s.id });
+        return run("tab.new", { space: s.id, folder: rec.cwd, argv, ...(name ? { name } : {}) });
+      }
+      return run("space.new", { folder: rec.cwd, argv });
+    }, "spaces-plus");
   }
 
   // Sleep, as Orca's: note which agent session each terminal of this worktree's space runs

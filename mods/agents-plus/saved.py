@@ -17,7 +17,8 @@ sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)),
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib")]
 from agentfiles import (CLAUDE_PROJECTS, CODEX_SESSIONS, claude_registry,
                         claude_transcript, codex_metadata, codex_names,
-                        codex_session_id, json_lines, prompt_title, text_of)
+                        codex_session_id, codex_session_kind, codex_session_meta, json_lines, prompt_title, text_of)
+from session_handoff import inspect_session
 
 LIMIT = 60
 CANDIDATES = 300  # Per provider; never parse the full transcript history on a timer.
@@ -140,7 +141,7 @@ def codex_rows(paths=None, index=None):
     # The current index gives rename/resume --cd precedence over the original header.
     if paths is None:
         records = [record for record in index.values() if not record.get("archived")
-                   and record.get("source") in (None, "cli")]
+                   and codex_session_kind(record) not in ("subagent", "exec")]
         indexed_paths = [record["rollout_path"] for record in records if isinstance(record.get("rollout_path"), str)]
         # Old CLI versions may have no SQLite index. This enumerates file names,
         # but parses at most CANDIDATES transcripts and bounded excerpts of each.
@@ -158,38 +159,38 @@ def codex_rows(paths=None, index=None):
     for path in dict.fromkeys(paths):
         if not os.path.isfile(path):
             continue
-        meta, first = None, None
+        meta, first = codex_session_meta(path), None
         for item in objects(path, size=EXCERPT):
             payload = item.get("payload") or {}
             if not isinstance(payload, dict):
                 continue
-            if item.get("type") == "session_meta" and meta is None:
-                meta = payload  # A fork's copied original header is not its identity.
             if item.get("type") == "response_item" and payload.get("role") == "user":
                 first = first or prompt_title(text_of(payload.get("content")))
             if meta and first:
                 break
-        if not meta or meta.get("source") not in (None, "cli"):
+        if not meta:
             continue
         sid = meta.get("id") or meta.get("session_id")
         if not isinstance(sid, str) or not UUID.fullmatch(sid):
             continue
-        current = index.get(sid, {})
-        if current.get("archived") or current.get("source") not in (None, "cli"):
+        if codex_session_id(path) and codex_session_id(path) != sid:
             continue
+        current = index.get(sid, {})
+        origin = codex_session_kind(current, meta)
+        if current.get("archived") or origin not in ("cli", "desktop", "editor"):
+            continue
+        history = current.get("history_mode") or meta.get("history_mode")
         found = row("codex", sid, current.get("cwd") or meta.get("cwd"),
-                    names.get(sid) or current.get("name") or first or current.get("title"),
+                    names.get(sid) or current.get("name") or current.get("title") or first,
                     current.get("updated_at") or modified(path))
         if found:
-            yield found
+            yield {**found, "origin": origin, "historyMode": history}
 
 
 def recent():
     live, errors = live_sessions()
     rows = []
     for agent, discover in (("claude", claude_rows), ("codex", codex_rows)):
-        if agent in errors:
-            continue
         try:
             rows.extend(discover())
         except (OSError, ValueError, TypeError):
@@ -197,8 +198,16 @@ def recent():
     unique = {}
     for item in sorted(rows, key=lambda item: item["updated"], reverse=True):
         key = (item["agent"], item["session"])
-        if key not in live:
-            unique.setdefault(key, item)
+        # A busy or uncheckable record is still saved history. Show the reason;
+        # this snapshot never authorizes a later launch.
+        reason = errors.get(item["agent"])
+        active = key in live
+        item["handoff"] = {
+            "state": "unknown" if reason else "active" if active else "unchecked",
+            "reason": reason or ("This session has a writer in another client. Idle does not mean released."
+                                 if active else "Ownership will be checked when opened."),
+        }
+        unique.setdefault(key, item)
     return {"rows": list(unique.values())[:LIMIT], "errors": list(errors.values())}
 
 
@@ -224,10 +233,13 @@ def check(record):
         raise ValueError("This saved session is no longer available to resume.")
     if current["cwd"] != cwd:
         raise ValueError("This session's folder changed. Refresh saved sessions first.")
-    live, errors = live_sessions()
-    if agent in errors:
-        raise ValueError(errors[agent])
-    return {"running": (agent, sid) in live, "record": current}
+    status = inspect_session(agent, sid)
+    if status.get("cwd") and status["cwd"] != cwd:
+        raise ValueError("This session's folder changed. Refresh saved sessions first.")
+    if status["state"] not in ("ready", "active"):
+        raise ValueError(status.get("reason") or "Session ownership is not confirmed.")
+    # Preserve the original check contract, adding the provider's explanation.
+    return {"running": status["state"] == "active", "record": current, "handoff": status}
 
 
 if __name__ == "__main__":

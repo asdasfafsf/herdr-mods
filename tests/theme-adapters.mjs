@@ -48,6 +48,7 @@ async function hostFixture({ skin = 'fixture-garden', native = 'graphite', prese
   shared['ag.presentation'] = presentation;
   let nativeTheme = native;
   const host = {
+    notify() {},
     agents: () => structuredClone(agents), terminals: () => structuredClone(terminals),
     panes: () => agents.map(a => ({ id: a.pane, terminal: a.address, tab: a.tab, title: a.title, program: a.program })),
     spaces: () => [], focused: () => focus, props: () => ({ mode, integrated }),

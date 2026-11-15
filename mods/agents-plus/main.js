@@ -9,15 +9,14 @@
 // with news gets a second line: what a working agent is doing, what a waiting one asks to
 // run, the first line of a finished one's answer (activity.py); hovering says its repo and
 // branch (on the row too when two read the same). Clicking one opens that session in Herdr (spaces-plus's resume: a Herdr
-// terminal already running it, else resumed as it was started; the other app's copy keeps
-// running, as Claude Code and Codex allow).
+// terminal already running it, else resumed after the current client releases it).
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, appHome } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout, exec, appHome, notify } from "herdr";
 // How sessions are resumed: lib/resume.js in the repo, copied here by install.sh.
-import { resumeArgv, AGENTS, runs } from "./resume.js";
-import { TREES, META, LIVE, KNOWN, AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
+import { resumeSession, focusSession, AGENTS, runs } from "./resume.js";
+import { TREES, META, LIVE, KNOWN, RESULTS, AGENT_INFO, AGENT_ORDER, outsideAgentId, ACKED, ackDone, setIfChanged, option, setOption, OPTION_DEFS, OPTIONS, REPO_COLORS } from "./state.js";
 import { inside, placeOf } from "./places.js";
 import { statusMark, statusPill, statusColor, statusActivity, statusNotice, shownStatus, seenFor, repoTag, ago, AGENT_STATUSES, STATUS_RANK } from "./ui.js";
 import { SAVED_SESSIONS, savedSessionKey, savedSessionRows, savedLiveTerminal, savedResumeRecord, validSavedSession } from "./saved-sessions.js";
@@ -394,13 +393,13 @@ export default class Agents extends View {
   resumeSaved(row, cx) {
     if (!validSavedSession(row)) return;
     const key = savedSessionKey(row);
-    if ((this.savedPending.get(key) ?? 0) > Date.now()) return;
     const focusLive = () => {
       const address = savedLiveTerminal(row, shared(LIVE) ?? {}, terminals());
       if (address) this.focusAgent({ address });
       return Boolean(address);
     };
     if (focusLive()) return;
+    if ((this.savedPending.get(key) ?? 0) > Date.now()) return;
     this.savedPending.set(key, Infinity);
     this.savedResumeError = null;
     cx.notify();
@@ -408,15 +407,15 @@ export default class Agents extends View {
       try {
         const r = await exec("python3", ["-I", `${appHome()}/mods/agents-plus/saved.py`, "check",
           JSON.stringify({ agent: row.agent, session: row.session, cwd: row.cwd })]);
-        if (r.code !== 0) throw new Error(r.stderr.trim() || "Could not verify this saved session.");
-        const checked = JSON.parse(r.stdout);
         if (focusLive()) { this.savedPending.delete(key); return; }
-        if (checked?.running === true) throw new Error("This session is open elsewhere. Close it there, then refresh saved sessions.");
+        if (r.code !== 0) throw new Error(r.stderr?.trim() || "Could not verify this saved session.");
+        const checked = JSON.parse(r.stdout);
+        if (checked?.running === true) throw new Error(checked.handoff?.reason || "This session has a writer in another client. Idle does not mean released.");
         if (checked?.running !== false) throw new Error("Could not verify whether this session is running.");
         if (!validSavedSession(checked.record) || savedSessionKey(checked.record) !== key || checked.record.cwd !== row.cwd)
           throw new Error("This session changed. Refresh saved sessions first.");
         const rec = savedResumeRecord(checked.record, shared(KNOWN)?.[""] ?? []);
-        this.resume(rec);
+        await this.resume(rec, cx);
         // Suppress double clicks while Herdr publishes the new terminal/session.
         this.savedPending.set(key, Date.now() + 15000);
         this.readSaved(cx);
@@ -446,14 +445,18 @@ export default class Agents extends View {
       .child(this.readingSaved ? "Reading saved sessions…" : "No recent saved sessions available."));
     for (const row of rows.slice(0, this.savedLimit)) {
       const how = AGENTS[row.agent];
+      const origin = row.origin === "desktop" ? "Codex app" : row.origin === "editor" ? "Codex editor" : how.name;
+      const availability = row.handoff?.reason || "Ownership will be checked when opened.";
       result.push(v_flex().id(`saved-${savedSessionKey(row)}`).px(8).py(6).flex_none().gap(3).rounded(8).cursor_pointer()
-        .hover((el) => el.bg(t.hover)).tooltip(`${row.title}\n${row.cwd}\nContinue this same ${how.name} conversation in Herdr.`)
+        .hover((el) => el.bg(t.hover)).tooltip(`${row.title}\n${row.cwd}\n${origin}${row.historyMode ? ` · ${row.historyMode} history` : ""}\n${availability}\nContinue the same conversation only after its current writer releases it.`)
         .on_click((_e, cx) => this.resumeSaved(row, cx))
         .child(h_flex().gap(8).items_center()
           .child(image(how.icon).size(14).flex_none().opacity(0.65))
           .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(row.title))
           .child(div().text_size(10.5).text_color(t.dim).child(ago(row.updated))))
-        .child(div().pl(22).truncate().text_size(11).text_color(t.dim).child(row.cwd)));
+        .child(div().pl(22).truncate().text_size(11).text_color(t.dim).child(row.cwd))
+        .when(["active", "unknown"].includes(row.handoff?.state), el => el.child(
+          div().pl(22).text_size(11).text_color(t.muted).child(availability))));
     }
     if (rows.length > this.savedLimit) result.push(div().id("saved-more").px(8).py(6).text_size(11).text_color(t.muted).cursor_pointer()
       .hover((el) => el.bg(t.hover)).on_click((_e, cx) => { this.savedLimit += SAVED_SESSIONS.pageSize; cx.notify(); })
@@ -471,7 +474,7 @@ export default class Agents extends View {
     const name = meta.name || (checkout ?? x.cwd).split("/").pop();
     // A Codex daemon owns several sessions in one PID; keep their UI identities apart.
     return h_flex().id(`out-${x.agent}-${x.session ?? x.pid}`).px(8).h(30).flex_none().rounded(8).items_center().gap(9).cursor_pointer()
-      .hover((s) => s.bg(t.hover)).tooltip(`${x.title}\n${x.cwd}\nRunning in ${x.app}. Click to continue it in Herdr.`)
+      .hover((s) => s.bg(t.hover)).tooltip(`${x.title}\n${x.cwd}\nRunning in ${x.app}. Continuing here requires its current writer to release the session. Idle does not mean released; Herdr checks ownership on click.`)
       .on_click(() => this.resume(x))
       .child(image(OUTSIDE_ICON[x.agent] ?? "icons/shell.svg").w(16).h(16).flex_none().opacity(0.6))
       .child(h_flex().flex_1().min_w(0).gap(5).items_center()
@@ -484,21 +487,42 @@ export default class Agents extends View {
   // Continue an outside agent's session in Herdr. With the worktrees bundle shown
   // (spaces-plus in the layout), it decides where: a Herdr terminal already on it, else a
   // tab in that worktree's space. Without it, here: a tab in the space whose folder holds
-  // the session's, else a new space there. Either way the other app's copy keeps running.
-  resume(x) {
+  // the session's, else a new space there, after a shared ownership preflight.
+  async resume(x, cx = null) {
     const rec = { agent: x.agent, session: x.session, argv: x.argv, cwd: x.cwd, title: x.title };
     if (!AGENTS[rec.agent]) return;
-    const mapped = shared(LIVE) ?? {};
-    const live = savedLiveTerminal(rec, mapped, terminals());
-    if (live) return run("pane.focus", { terminal: live });
-    // A stale mapping to an exited terminal must not make spaces-plus focus it.
-    if (!mapped[rec.session] && runs(layout(), "spaces-plus")) return run(`spaces-plus.resume@${JSON.stringify(rec)}`);
+    if (focusSession(rec)) return;
+    if (runs(layout(), "spaces-plus")) {
+      if (!cx) return run(`spaces-plus.resume@${JSON.stringify(rec)}`);
+      // Await the destination's fresh preflight, including failures. The host
+      // command dispatch alone does not acknowledge either preflight or launch.
+      return new Promise((resolve, reject) => {
+        const request = `saved-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        let polls = 0;
+        const wait = cx.timer.every(100, () => {
+          const result = shared(RESULTS)?.[request];
+          if (!result && ++polls < 300) return;
+          wait.cancel();
+          if (result?.ok === true) resolve();
+          else reject(new Error(result?.error || "No resume acknowledgement from Herdr. Refresh sessions before retrying."));
+        });
+        try { run(`spaces-plus.resume@${JSON.stringify({ ...rec, request })}`); }
+        catch (error) { wait.cancel(); reject(error); }
+      });
+    }
     const ps = panes();
     const at = (s) => placeOf(s, ps) ?? "";
     const s = spaces().filter((s) => !s.machine && inside(rec.cwd, at(s))).sort((a, b) => at(b).length - at(a).length)[0];
     const name = rec.title ? rec.title.slice(0, 28) : undefined;
-    if (s) { run("space.select", { id: s.id }); run("tab.new", { space: s.id, folder: rec.cwd, argv: resumeArgv(rec), ...(name ? { name } : {}) }); }
-    else run("space.new", { folder: rec.cwd, argv: resumeArgv(rec) });
+    try {
+      await resumeSession(rec, (argv) => {
+        if (s) { run("space.select", { id: s.id }); return run("tab.new", { space: s.id, folder: rec.cwd, argv, ...(name ? { name } : {}) }); }
+        return run("space.new", { folder: rec.cwd, argv });
+      }, "agents-plus");
+    } catch (error) {
+      if (cx) throw error;
+      notify({ title: "Cannot resume session", body: String(error.message ?? error), level: "warning" });
+    }
   }
 
   // A section's outside agents, after Herdr's own, the most recently changed first.

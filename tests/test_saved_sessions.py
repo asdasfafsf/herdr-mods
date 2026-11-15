@@ -14,6 +14,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 import agentfiles
+import session_handoff as handoff
 
 spec = importlib.util.spec_from_file_location("saved_history", ROOT / "mods/agents-plus/saved.py")
 saved = importlib.util.module_from_spec(spec)
@@ -40,6 +41,8 @@ class SavedSessionsTests(unittest.TestCase):
             self.stack.enter_context(patch.object(module, "CODEX_SESSIONS", str(self.sessions)))
         self.stack.enter_context(patch.object(saved, "codex_metadata", side_effect=lambda **kw: self.index.copy()))
         self.stack.enter_context(patch.object(saved, "codex_names", return_value={}))
+        self.ownership = self.stack.enter_context(patch.object(saved, "inspect_session", side_effect=lambda agent, session: {
+            "agent": agent, "session": session, "state": "ready", "cwd": str(self.cwd)}))
         self.probe = self.stack.enter_context(patch.object(saved, "live_sessions", return_value=(set(), {})))
         # Any accidental real process launch is a test failure.
         self.stack.enter_context(patch.object(subprocess, "run", side_effect=AssertionError("real process")))
@@ -73,13 +76,16 @@ class SavedSessionsTests(unittest.TestCase):
         self.assertEqual([path.read_bytes() for path in paths], before)
         self.assertEqual(result["errors"], [])
 
-    def test_running_sessions_and_unknown_ownership_are_excluded(self):
+    def test_running_sessions_and_unknown_ownership_remain_visible_with_reasons(self):
         self.claude(1); self.codex(2)
         self.probe.return_value = ({("codex", sid(2))}, {})
-        self.assertEqual([r["agent"] for r in saved.recent()["rows"]], ["claude"])
+        rows = saved.recent()["rows"]
+        self.assertEqual([r["agent"] for r in rows], ["codex", "claude"])
+        self.assertEqual(rows[0]["handoff"]["state"], "active")
         self.probe.return_value = (set(), {"claude": "Ownership unknown"})
         result = saved.recent()
-        self.assertEqual([r["agent"] for r in result["rows"]], ["codex"])
+        self.assertEqual([r["agent"] for r in result["rows"]], ["codex", "claude"])
+        self.assertEqual(result["rows"][1]["handoff"], {"state": "unknown", "reason": "Ownership unknown"})
         self.assertEqual(result["errors"], ["Ownership unknown"])
 
     def test_malformed_missing_and_internal_records_do_not_hide_valid_rows(self):
@@ -134,12 +140,14 @@ class SavedSessionsTests(unittest.TestCase):
                 self.assertFalse(checked["running"])
                 self.assertEqual(checked["record"]["session"], sid(number))
                 self.assertNotIn("argv", checked["record"])
-                self.probe.return_value = ({(agent, sid(number))}, {})
+                self.ownership.side_effect = None
+                self.ownership.return_value = {"state": "active", "cwd": str(self.cwd), "reason": "Writer retained"}
                 self.assertTrue(saved.check(request)["running"])
-                self.probe.return_value = (set(), {agent: "Ownership unknown"})
+                self.assertEqual(saved.check(request)["handoff"]["reason"], "Writer retained")
+                self.ownership.return_value = {"state": "unknown", "reason": "Ownership unknown"}
                 with self.assertRaisesRegex(ValueError, "Ownership unknown"):
                     saved.check(request)
-                self.probe.return_value = (set(), {})
+                self.ownership.return_value = {"state": "ready", "cwd": str(self.cwd)}
         self.assertEqual([path.read_bytes() for path in paths], before)
 
     def test_check_rejects_invalid_missing_moved_and_archived_sessions(self):
@@ -194,11 +202,44 @@ class SavedSessionsTests(unittest.TestCase):
                 self.assertEqual(running, set())
                 self.assertIn("claude", errors)
 
-    def test_native_and_subagent_sources_wait_for_compatibility_adapter(self):
+    def test_native_editor_legacy_and_internal_history_share_adapter_rules(self):
         self.codex(1, source="vscode")
-        self.codex(2, source="app-server")
-        self.codex(3, source={"subagent": "review"})
-        self.assertEqual(saved.recent()["rows"], [])
+        app = self.codex(2, source="vscode", originator="codex_work_desktop", history_mode="paginated")
+        # Paginated history need not contain response items in the rollout.
+        app.write_text(app.read_text().splitlines()[0] + "\n")
+        self.index[sid(2)] = {"rollout_path": str(app), "title": "App design conversation", "history_mode": "paginated"}
+        self.codex(3, source={"subagent": "review"}, originator="Codex Desktop")
+        self.codex(4, source=json.dumps({"subagent": "review"}), originator="Codex Desktop")
+        self.codex(5, source="vscode", attached_thread_parent_id=sid(2))
+        self.codex(6, source="exec")
+        self.codex(7, source=None)  # Supported legacy CLI header.
+        self.codex(8, source=None, originator="future-client", history_mode="paginated")
+        rows = {r["session"]: r for r in saved.recent()["rows"]}
+        self.assertEqual(set(rows), {sid(1), sid(2), sid(7)})
+        self.assertEqual(rows[sid(1)]["origin"], "editor")
+        self.assertEqual(rows[sid(2)]["origin"], "desktop")
+        self.assertEqual(rows[sid(2)]["historyMode"], "paginated")
+        self.assertEqual(rows[sid(2)]["title"], "App design conversation")
+        # Exercise the real exact adapter for the records that discovery admits.
+        with patch.object(saved, "inspect_session", wraps=handoff.inspect_session), \
+             patch.object(handoff, "CODEX_HOME", str(self.base / "codex")), \
+             patch.object(handoff, "codex_metadata", side_effect=lambda **kw: self.index.copy()), \
+             patch.object(handoff, "codex_rollout", side_effect=lambda session: next(self.sessions.rglob(f"*{session}.jsonl"))), \
+             patch.object(handoff.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, "", "")):
+            for rec in rows.values():
+                self.assertFalse(saved.check(rec)["running"])
+            with patch.object(handoff.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "123\n", "")):
+                self.assertTrue(saved.check(rows[sid(2)])["running"])
+            with patch.object(handoff.subprocess, "run", side_effect=subprocess.TimeoutExpired("lsof", 3)):
+                with self.assertRaises(ValueError):
+                    saved.check(rows[sid(2)])
+
+    def test_fresh_adapter_cwd_change_rejects_stale_row(self):
+        self.codex(1)
+        self.ownership.side_effect = None
+        self.ownership.return_value = {"state": "ready", "cwd": str(self.base)}
+        with self.assertRaisesRegex(ValueError, "folder changed"):
+            saved.check({"agent": "codex", "session": sid(1), "cwd": str(self.cwd)})
 
 
 if __name__ == "__main__":

@@ -133,32 +133,90 @@ def codex_rollout_of(pid):
 
 def codex_rollout(session):
     """A Codex session's rollout file, by its id, or None."""
-    record = codex_metadata().get(session)
+    record = codex_metadata(session=session).get(session)
     if record and os.path.isfile(record.get("rollout_path") or ""):
         return record["rollout_path"]
     hits = glob.glob(os.path.join(CODEX_SESSIONS, "*", "*", "*", f"rollout-*{session}.jsonl"))
     return hits[0] if hits else None
 
 
-def codex_metadata(limit=None, sessions=None):
-    """Current names/cwd from Codex's index, read-only; old installs fall back to JSONL."""
+def codex_metadata(limit=None, sessions=None, *, session=None):
+    """Read-only index with bounded/exact queries and optional schema columns.
+
+    Preserve saved-history's positional (limit, sessions) API and the native
+    adapter's positional string ID, as well as explicit session= requests.
+    """
+    if isinstance(limit, str) and session is None:
+        session, limit = limit, None
     try:
         database = os.path.join(CODEX_HOME, "state_5.sqlite")
         with closing(sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=1)) as connection:
             connection.row_factory = sqlite3.Row
-            query = "SELECT id,cwd,title,name,rollout_path,source,updated_at,archived FROM threads"
+            columns = {r[1] for r in connection.execute("PRAGMA table_info(threads)")}
+            wanted = ("id", "cwd", "title", "name", "rollout_path", "source", "updated_at", "archived",
+                      "originator", "thread_source", "history_mode", "attached_thread_parent_id")
+            selected = [name for name in wanted if name in columns]
+            if "id" not in selected:
+                return {}
+            query = "SELECT " + ",".join(selected) + " FROM threads"
             params = ()
-            if sessions is not None:
+            if session is not None:
+                query += " WHERE id=?"
+                params = (session,)
+            elif sessions is not None:
+                sessions = tuple(sessions)
                 if not sessions:
                     return {}
                 query += " WHERE id IN (" + ",".join("?" for _ in sessions) + ")"
-                params = tuple(sessions)
+                params = sessions
             elif limit is not None:
-                query += " WHERE archived = 0 ORDER BY updated_at DESC LIMIT ?"
+                if "archived" in columns:
+                    query += " WHERE archived = 0"
+                query += " ORDER BY " + ("updated_at DESC," if "updated_at" in columns else "") + "id LIMIT ?"
                 params = (max(0, int(limit)),)
             return {r["id"]: dict(r) for r in connection.execute(query, params)}
     except (OSError, sqlite3.Error):
         return {}
+
+
+def codex_session_meta(path):
+    """Read only the first header, never mistake a fork's copied header for its identity."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            item = json.loads(f.readline(2 * 1024 * 1024))
+        payload = item.get("payload")
+        return payload if item.get("type") == "session_meta" and isinstance(payload, dict) else {}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def codex_session_kind(record, meta=None):
+    """Recorded client origin, NOT the current writer. vscode alone is not desktop proof.
+
+    Resume can update originator; this describes available metadata, not immutable
+    creation provenance. Internal children take precedence over every client label.
+    """
+    records = [record or {}, meta or {}]
+    sources = []
+    for rec in records:
+        source = rec.get("source")
+        if isinstance(source, str) and source.lstrip().startswith("{"):
+            try:
+                source = json.loads(source)
+            except ValueError:
+                pass
+        if ((isinstance(source, dict) and "subagent" in source)
+                or rec.get("attached_thread_parent_id")):
+            return "subagent"
+        sources.append(source)
+    source = next((s for s in sources if s is not None), None)
+    if source in (None, "cli", "vscode") and any(r.get("originator") in ("codex_work_desktop", "Codex Desktop") for r in records):
+        return "desktop"
+    # Older CLI headers omitted source. Paginated history alone is not desktop
+    # evidence and an unrecognized modern origin must not inherit this fallback.
+    if source is None and meta and (meta.get("id") or meta.get("session_id")) and not any(r.get("originator") or r.get("history_mode") for r in records):
+        return "cli"
+    return {"cli": "cli", "vscode": "editor", "exec": "exec"}.get(source, "unknown") if isinstance(source, str) else "unknown"
 
 
 def codex_running(session):

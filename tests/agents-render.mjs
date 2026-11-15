@@ -74,6 +74,7 @@ async function environment(data, revision) {
   }
   const theme = Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5'].map(k => [k, '#123456']));
   const host = {
+    notify: value => writes.push(['notify', value]),
     nextCommand: () => new Promise(()=>{}),
     themes: () => ['paper','herdr-chiikawa','graphite','ink','moss','atom-one-dark'].map(name=>({name,light:['paper','herdr-chiikawa'].includes(name)})),
     agents: () => cloneRead('agents', data.agents), terminals: () => cloneRead('terminals', data.terminals), panes: () => cloneRead('panes', data.panes), spaces: () => cloneRead('spaces', data.spaces),
@@ -86,6 +87,13 @@ async function environment(data, revision) {
   const runHost = host.run;
   host.run = (...args) => {
     runHost(...args);
+    if (args[0].startsWith('spaces-plus.resume@')) {
+      const rec=JSON.parse(args[0].split('@')[1]);
+      if(rec.request && data.resumeReply !== false) {
+        data.state['wt.results']={...data.state['wt.results'],[rec.request]:data.resumeReply ?? {ok:true}};
+        queueMicrotask(()=>timers.get(100)?.());
+      }
+    }
     if (['layout.show','layout.hide','layout.resize'].includes(args[0])) {
       const node=findNode(data.layout,args[1].id);
       if(node) { if(args[0]==='layout.resize') node.size=args[1].weight == null ? {px:args[1].px} : {weight:args[1].weight}; else node.hidden=args[0]==='layout.hide'; }
@@ -122,7 +130,7 @@ async function environment(data, revision) {
   await main.evaluate();
   const instance = new main.namespace.default();
   let runTasks=false;
-  const cx = {spawn(fn){if(runTasks) tasks.push(fn(cx));},timer:{every(ms,handler){timers.set(ms,()=>handler(cx));}},notify(){},stop_propagation(){},focus_handle(){return {};}};
+  const cx = {spawn(fn){if(runTasks) tasks.push(fn(cx));},timer:{every(ms,handler){timers.set(ms,()=>handler(cx));return {cancel(){timers.delete(ms);}};}},notify(){},stop_propagation(){},focus_handle(){return {};}};
   instance.init({},cx); instance.outside=data.outside;
   runTasks=true;
   instance.activity=Object.fromEntries(data.agents.map(a=>[a.address,{doing:'Editing example',said:'Example result'}]));
@@ -857,6 +865,7 @@ const savedRow = (n, agent='codex') => ({agent,session:savedId(n),cwd:"/example/
   env.instance.saved=Array.from({length:14},(_,i)=>savedRow(i+1));
   env.instance.saved.push({...savedRow(14),title:'older duplicate',updated:0},null,{...savedRow(30),session:'--last'});
   data.state['wt.live']={[savedId(14)]:'t0',[savedId(13)]:'exited'};
+  data.terminals[0].program={agent:true,key:'codex'};
   data.terminals.push({address:'exited',state:'exited'});
   env.instance.outside=[{...savedRow(12),status:'idle',app:'Elsewhere'}];
   env.instance.savedPending.set('codex:'+savedId(11),now+15000);
@@ -891,6 +900,7 @@ for (const agent of ['claude','codex']) for (const worktrees of [false,true]) {
   data.state['new-menu.agents']={'':[{key:agent,installed:true,run:launch}]};
   data.execHook=async(_program,args)=>({code:0,stdout:JSON.stringify(args[2]==='check'
     ? {running:false,record:{...row,argv:['sh','-c','evil'],prompt:'do not submit',fork:true}}
+    : args[1].endsWith('/session_handoff.py') ? {agent,session:row.session,state:'ready',cwd:row.cwd}
     : {rows:[],errors:[]})});
   env.instance.resumeSaved(row,env.cx);env.instance.resumeSaved(row,env.cx);
   await settleSaved(env);
@@ -904,7 +914,7 @@ for (const agent of ['claude','codex']) for (const worktrees of [false,true]) {
     assert.equal(rec.prompt,undefined);assert.equal(rec.fork,undefined);
     // Use the same shared resume implementation as spaces-plus.
     const context=vm.createContext({});
-    const host=new vm.SyntheticModule(['exec','readTextFile','home','appHome'],function(){for(const key of ['exec','readTextFile','home','appHome'])this.setExport(key,()=>{});},{context});
+    const host=new vm.SyntheticModule(['exec','readTextFile','home','appHome','shared','setShared','terminals','run'],function(){for(const key of ['exec','readTextFile','home','appHome','shared','setShared','terminals','run'])this.setExport(key,()=>{});},{context});
     const resume=new vm.SourceTextModule(readFileSync(resolve(root,'lib/resume.js'),'utf8'),{context});
     await resume.link(()=>host);await resume.evaluate();
     argv=Array.from(resume.namespace.resumeArgv(rec));
@@ -931,6 +941,7 @@ for (const failure of ['running','unknown','changed','invalid','missing','remote
 {
   const data=fixture(1),env=await environment(data,null),row=savedRow(1);
   env.instance.readingSaved=false;
+  data.terminals[0].program={agent:true,key:'codex'};
   data.state['wt.live']={[row.session]:'t0'};
   env.instance.resumeSaved(row,env.cx);
   assert.equal(env.commands.length,0,'already attached goes directly to its pane');
@@ -940,20 +951,63 @@ for (const failure of ['running','unknown','changed','invalid','missing','remote
   env.instance.resumeSaved(row,env.cx);await settleSaved(env);
   assert.ok(env.writes.some(([key,args])=>key==='run'&&args[0]==='pane.focus'));
   assert.ok(!env.writes.some(([key,args])=>key==='run'&&args[0]==='space.new'),'attachment racing with check is focused');
+  env.writes.length=0;delete data.state['wt.live'][row.session];
+  data.execHook=async()=>{data.state['wt.live'][row.session]='t0';return {code:1,stderr:'Ownership probe failed'};};
+  env.instance.resumeSaved(row,env.cx);await settleSaved(env);
+  assert.ok(env.writes.some(([key,args])=>key==='run'&&args[0]==='pane.focus'),'attachment wins even over failed saved check');
+  assert.equal(env.instance.savedResumeError,null);
 }
 {
   const data=fixture(0),env=await environment(data,null),row=savedRow(1);
   env.instance.readingSaved=false;
   data.layout={mod:'spaces-plus'};data.state['wt.live']={[row.session]:'dead'};data.terminals=[{address:'dead',state:'exited'}];
-  data.execHook=async(_program,args)=>({code:0,stdout:JSON.stringify(args[2]==='check'?{running:false,record:row}:{rows:[],errors:[]})});
+  data.execHook=async(_program,args)=>({code:0,stdout:JSON.stringify(args[2]==='check'?{running:false,record:row}:args[1].endsWith('/session_handoff.py')?{agent:row.agent,session:row.session,state:'ready',cwd:row.cwd}:{rows:[],errors:[]})});
   env.instance.resumeSaved(row,env.cx);await settleSaved(env);
-  assert.ok(env.writes.some(([key,args])=>key==='run'&&args[0]==='space.new'),'stale mapping cannot focus exited terminal via spaces-plus');
+  assert.ok(env.writes.some(([key,args])=>key==='run'&&args[0].startsWith('spaces-plus.resume@')),'stale mapping is handled by the shared guard in spaces-plus');
   data.execHook=async()=>({code:0,stdout:JSON.stringify({rows:[null,...Array.from({length:80},(_,i)=>savedRow(i))],errors:['Provider unavailable']})});
   env.instance.readSaved(env.cx);await settleSaved(env);
   assert.equal(env.instance.saved.length,60);assert.equal(env.instance.savedError,'Provider unavailable');
   data.execHook=async()=>({code:0,stdout:'{bad'});
   env.instance.readSaved(env.cx);await settleSaved(env);
   assert.equal(env.instance.saved.length,0);assert.ok(env.instance.savedError);
+}
+// A terminal that returned to a shell is neither an attachment nor a reason
+// to hide its saved history. Use the real Saved -> common guard path.
+{
+  const data=fixture(1),env=await environment(data,null),row=savedRow(1);
+  data.terminals[0].program={agent:false,key:'zsh'};
+  data.state['wt.live']={[row.session]:'t0'};
+  env.instance.outside=[];env.instance.saved=[row];env.instance.readingSaved=false;
+  assert.ok(JSON.stringify(env.render()).includes('saved-codex:'+row.session),'shell mapping stays in Saved');
+  data.execHook=async(_program,args)=>({code:0,stdout:JSON.stringify(args[2]==='check'
+    ? {running:false,record:row}
+    : args[1].endsWith('/session_handoff.py') ? {agent:row.agent,session:row.session,state:'ready',cwd:row.cwd}
+    : {rows:[],errors:[]})});
+  env.instance.resumeSaved(row,env.cx);await settleSaved(env);
+  assert.ok(!env.writes.some(([key,args])=>key==='run'&&args[0]==='pane.focus'));
+  assert.ok(env.writes.some(([key,args])=>key==='run'&&args[0]==='space.new'));
+}
+// Fresh common-guard failures must reach the saved error and clear pending,
+// including failures returned asynchronously by the worktrees destination.
+for(const worktrees of [false,true]) {
+  const data=fixture(0),env=await environment(data,null),row=savedRow(1);
+  env.instance.readingSaved=false;env.instance.saved=[row];
+  if(worktrees) {data.layout={mod:'spaces-plus'};data.resumeReply={ok:false,error:'Writer acquired during handoff'};}
+  data.execHook=async(_program,args)=>({code:0,stdout:JSON.stringify(args[2]==='check'
+    ? {running:false,record:row}
+    : {agent:row.agent,session:row.session,state:'active',reason:'Writer acquired during handoff'})});
+  env.instance.resumeSaved(row,env.cx);await settleSaved(env);
+  assert.equal(env.instance.savedResumeError,'Writer acquired during handoff');
+  assert.equal(env.instance.savedPending.size,0);
+  assert.ok(!env.writes.some(([key,args])=>key==='run'&&['space.new','tab.new'].includes(args[0])));
+}
+{
+  const data=fixture(0),env=await environment(data,null);
+  env.instance.saved=[{...savedRow(1),origin:'desktop',historyMode:'paginated',handoff:{state:'active',reason:'Writer retained; Idle is not released.'}},
+    {...savedRow(2),handoff:{state:'unknown',reason:'Ownership probe failed.'}}];
+  const text=JSON.stringify(env.render());
+  assert.ok(text.includes('Writer retained; Idle is not released.')&&text.includes('Ownership probe failed.'));
+  assert.ok(text.includes('Codex app')&&text.includes('paginated history'));
 }
 console.log('saved history: below Idle, bounded pages, dedupe, independent residents, safe Claude/Codex payloads and check failures passed');
 

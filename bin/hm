@@ -589,7 +589,7 @@ def cmd_resume(o, sid):
         rec = find_session(sid)
     if not o.get("fork"):
         need("spaces-plus", "worktrees")
-        do(f"spaces-plus.resume@{json.dumps(rec, ensure_ascii=False)}")
+        ask("resume", rec)
         return print(f"resuming {rec['agent']} {rec['session']} in {rec['cwd']}")
     open_fork(rec["agent"], rec["session"], rec["cwd"])
     print(f"forked {rec['agent']} {rec['session']} in {rec['cwd']}")

@@ -23,13 +23,13 @@ NODE_TESTS = (
     "workspace-split.mjs", "village-motion.mjs", "drag-layout.mjs",
     "resident-assignment.mjs", "sprite-layout.mjs", "sprite-directions.mjs",
     "resident-assets.mjs", "theme-contrast.mjs", "village-composer.mjs",
-    "session-controls.mjs", "sidebar-labels.mjs",
+    "session-controls.mjs", "sidebar-labels.mjs", "session-handoff.mjs", "session-parity.mjs",
 )
 PYTHON_TESTS = (
     "test_agent_bundle_matrix.py", "test_agent_themes.py",
     "test_workspace_views.py", "test_install_recovery.py",
     "test_agent_workspace_runner.py",
-    "test_saved_sessions.py",
+    "test_saved_sessions.py", "test_session_handoff.py", "test_codex_sessions.py", "test_activity_sessions.py",
 )
 GENERATORS = ("build-agent-themes.mjs", "build-sprite-directions.mjs", "build-sprite-atlases.mjs")
 

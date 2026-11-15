@@ -236,3 +236,11 @@ Light/Chiikawa와 main의 Active 세션으로 복원했고 앱 오류 목록은 
 정의가 있는 주민은 Kurimanju뿐이고 다른 주민은 기본 동작을 사용하므로,
 실제 이동용 artwork 보강이 다음 시각 개선이다. 로컬 native 빌드의 갱신·복구
 절차와 적용 여부 진단을 묶으면 다음 앱 업데이트에서도 유지하기 쉬워진다.
+
+## 세션 통합 회귀 검사
+
+기본 runner는 saved history, provider handoff, Codex/activity discovery, session parity도
+포함한다. Saved의 native/editor/legacy 분류와 paginated metadata, active/unknown 설명,
+fresh cwd 변경 거부, shared launch reservation, stale LIVE와 preflight attachment race,
+standalone/위임 resume 실패 전파를 합성 transport 및 임시 파일로 검사한다.
+네이티브 화면과 실제 사용자 대화 왕복은 이 검사 결과에 포함되지 않는다.
