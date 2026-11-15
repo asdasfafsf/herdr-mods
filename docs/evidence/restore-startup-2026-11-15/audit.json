@@ -1,0 +1,665 @@
+{
+  "at": "2026-11-15T09:38:46.827Z",
+  "head": "63436487bda18f02124b9c3d1d8c212bfbbd3c53",
+  "main_sha256": "ec1294ebd863ad3a77da7b0158f7c8dab3cc748ebea51bc93926cdf4cb345726",
+  "timelines": [
+    {
+      "clock": "synthetic; zero transport duration",
+      "same_core": false,
+      "offset_ms": 0,
+      "settle_ms": 20000,
+      "poll_ms": 5000,
+      "phases": [
+        {
+          "uptime_ms": 0,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 5000,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 10000,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 15000,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 20000,
+          "phase": "ready"
+        }
+      ],
+      "offers": [
+        {
+          "uptime_ms": 20000,
+          "candidates": 1
+        }
+      ]
+    },
+    {
+      "clock": "synthetic; zero transport duration",
+      "same_core": false,
+      "offset_ms": 1000,
+      "settle_ms": 20000,
+      "poll_ms": 5000,
+      "phases": [
+        {
+          "uptime_ms": 1000,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 6000,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 11000,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 16000,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 21000,
+          "phase": "ready"
+        }
+      ],
+      "offers": [
+        {
+          "uptime_ms": 21000,
+          "candidates": 1
+        }
+      ]
+    },
+    {
+      "clock": "synthetic; zero transport duration",
+      "same_core": false,
+      "offset_ms": 19999,
+      "settle_ms": 20000,
+      "poll_ms": 5000,
+      "phases": [
+        {
+          "uptime_ms": 19999,
+          "phase": "waiting"
+        },
+        {
+          "uptime_ms": 24999,
+          "phase": "ready"
+        }
+      ],
+      "offers": [
+        {
+          "uptime_ms": 24999,
+          "candidates": 1
+        }
+      ]
+    },
+    {
+      "clock": "synthetic; zero transport duration",
+      "same_core": false,
+      "offset_ms": 20000,
+      "settle_ms": 20000,
+      "poll_ms": 5000,
+      "phases": [
+        {
+          "uptime_ms": 20000,
+          "phase": "ready"
+        }
+      ],
+      "offers": [
+        {
+          "uptime_ms": 20000,
+          "candidates": 1
+        }
+      ]
+    }
+  ],
+  "same_core": {
+    "clock": "synthetic; zero transport duration",
+    "same_core": true,
+    "offset_ms": 60000,
+    "settle_ms": 20000,
+    "poll_ms": 5000,
+    "phases": [
+      {
+        "uptime_ms": 60000,
+        "phase": "complete"
+      }
+    ],
+    "offers": []
+  },
+  "live": {
+    "measurement": "read-only current-machine commands, sequential; no restart",
+    "batches": [
+      {
+        "kind": "look",
+        "elapsed_ms": 2747.022,
+        "identified": 9,
+        "unresolved": 0,
+        "core_pid": 3847,
+        "core_start_ms": 1794733340272,
+        "calls": [
+          {
+            "stage": "hc.server",
+            "elapsed_ms": 5.668,
+            "code": 0
+          },
+          {
+            "stage": "hc.ls",
+            "elapsed_ms": 5.5,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.808,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.886,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.88,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.846,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.776,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.354,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.9,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.472,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.781,
+            "code": 0
+          },
+          {
+            "stage": "ps.foreground",
+            "elapsed_ms": 54.383,
+            "code": 0
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 1072.992,
+            "code": 0,
+            "source": "unique-title-cwd"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 567.789,
+            "code": 0,
+            "source": "unique-title-cwd"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 140.467,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 141.651,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 144.817,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 140.942,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 138.712,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 144.642,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 145.403,
+            "code": 0,
+            "source": "open-file"
+          }
+        ]
+      },
+      {
+        "kind": "look",
+        "elapsed_ms": 3975.826,
+        "identified": 9,
+        "unresolved": 0,
+        "core_pid": 3847,
+        "core_start_ms": 1794733340272,
+        "calls": [
+          {
+            "stage": "hc.server",
+            "elapsed_ms": 4.167,
+            "code": 0
+          },
+          {
+            "stage": "hc.ls",
+            "elapsed_ms": 4.602,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.901,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.015,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.464,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.125,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.788,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.257,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.478,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.997,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.978,
+            "code": 0
+          },
+          {
+            "stage": "ps.foreground",
+            "elapsed_ms": 54.249,
+            "code": 0
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 2120.006,
+            "code": 0,
+            "source": "unique-title-cwd"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 704.7,
+            "code": 0,
+            "source": "unique-title-cwd"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 154.753,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 154.607,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 148.849,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 144.825,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 140.984,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 150.203,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 156.662,
+            "code": 0,
+            "source": "open-file"
+          }
+        ]
+      },
+      {
+        "kind": "look",
+        "elapsed_ms": 2782.245,
+        "identified": 9,
+        "unresolved": 0,
+        "core_pid": 3847,
+        "core_start_ms": 1794733340272,
+        "calls": [
+          {
+            "stage": "hc.server",
+            "elapsed_ms": 5.596,
+            "code": 0
+          },
+          {
+            "stage": "hc.ls",
+            "elapsed_ms": 4.156,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.075,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.706,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.883,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.518,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.378,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.679,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 4.742,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.861,
+            "code": 0
+          },
+          {
+            "stage": "hc.get",
+            "elapsed_ms": 3.834,
+            "code": 0
+          },
+          {
+            "stage": "ps.foreground",
+            "elapsed_ms": 52.868,
+            "code": 0
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 1004.677,
+            "code": 0,
+            "source": "unique-title-cwd"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 601.63,
+            "code": 0,
+            "source": "unique-title-cwd"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 148.197,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 143.871,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 149.088,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 158.043,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 153.602,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 158.701,
+            "code": 0,
+            "source": "open-file"
+          },
+          {
+            "stage": "codex.identity",
+            "elapsed_ms": 163.059,
+            "code": 0,
+            "source": "open-file"
+          }
+        ]
+      },
+      {
+        "kind": "absent_codex_scan",
+        "elapsed_ms": 504.427,
+        "found": false,
+        "calls": [
+          {
+            "stage": "codex.runningElsewhere",
+            "elapsed_ms": 503.673,
+            "code": 0
+          }
+        ]
+      },
+      {
+        "kind": "absent_codex_scan",
+        "elapsed_ms": 488.499,
+        "found": false,
+        "calls": [
+          {
+            "stage": "codex.runningElsewhere",
+            "elapsed_ms": 488.162,
+            "code": 0
+          }
+        ]
+      },
+      {
+        "kind": "absent_codex_scan",
+        "elapsed_ms": 488.104,
+        "found": false,
+        "calls": [
+          {
+            "stage": "codex.runningElsewhere",
+            "elapsed_ms": 487.76,
+            "code": 0
+          }
+        ]
+      }
+    ],
+    "hashes": [
+      {
+        "name": "main.js",
+        "checkout_sha256": "ec1294ebd863ad3a77da7b0158f7c8dab3cc748ebea51bc93926cdf4cb345726",
+        "installed_sha256": "ec1294ebd863ad3a77da7b0158f7c8dab3cc748ebea51bc93926cdf4cb345726"
+      },
+      {
+        "name": "resume.js",
+        "checkout_sha256": "d4564da6833b83a7e3e03dbf9020f0b194ad834749d51c52573198c4b46ab332",
+        "installed_sha256": "d4564da6833b83a7e3e03dbf9020f0b194ad834749d51c52573198c4b46ab332"
+      },
+      {
+        "name": "codex_live.py",
+        "checkout_sha256": "719aedfa77a821a2c63ea3940010a655ecf36bdca41d3f86bf21540afdd7895f",
+        "installed_sha256": "719aedfa77a821a2c63ea3940010a655ecf36bdca41d3f86bf21540afdd7895f"
+      },
+      {
+        "name": "agentfiles.py",
+        "checkout_sha256": "8f4650bac5eb6770a724e78b8b90a49294798dda34d4678679c6d7f1636946d6",
+        "installed_sha256": "8f4650bac5eb6770a724e78b8b90a49294798dda34d4678679c6d7f1636946d6"
+      }
+    ],
+    "offers": [
+      {
+        "at": "2026-11-15T09:02:41.473193+00:00",
+        "recorded": 6,
+        "offered": 5,
+        "seconds_since_core_start": 21.201
+      }
+    ],
+    "codex_processes": 15,
+    "orca_processes": 0,
+    "background_process_snapshot": [
+      {
+        "pid": 24371,
+        "ppid": 1,
+        "cpu_ps_percent": 47,
+        "rss_kib": 27808,
+        "name": "StorageManagementService"
+      },
+      {
+        "pid": 24594,
+        "ppid": 1,
+        "cpu_ps_percent": 45.5,
+        "rss_kib": 26496,
+        "name": "ApplicationsStorageExtension"
+      },
+      {
+        "pid": 3831,
+        "ppid": 1,
+        "cpu_ps_percent": 38.5,
+        "rss_kib": 623120,
+        "name": "Herdr"
+      },
+      {
+        "pid": 19166,
+        "ppid": 12497,
+        "cpu_ps_percent": 20.6,
+        "rss_kib": 748384,
+        "name": "Brave Browser Helper (Aperitif Renderer)"
+      },
+      {
+        "pid": 405,
+        "ppid": 1,
+        "cpu_ps_percent": 19.7,
+        "rss_kib": 237504,
+        "name": "WindowServer"
+      },
+      {
+        "pid": 918,
+        "ppid": 1,
+        "cpu_ps_percent": 15.4,
+        "rss_kib": 4531008,
+        "name": "OrbStack Helper"
+      },
+      {
+        "pid": 12510,
+        "ppid": 12497,
+        "cpu_ps_percent": 7.8,
+        "rss_kib": 215808,
+        "name": "Brave Browser Helper (Aperitif)"
+      },
+      {
+        "pid": 519,
+        "ppid": 1,
+        "cpu_ps_percent": 7,
+        "rss_kib": 25696,
+        "name": "mDNSResponder"
+      },
+      {
+        "pid": 413,
+        "ppid": 1,
+        "cpu_ps_percent": 6.2,
+        "rss_kib": 28144,
+        "name": "runningboardd"
+      },
+      {
+        "pid": 420,
+        "ppid": 1,
+        "cpu_ps_percent": 3.7,
+        "rss_kib": 85136,
+        "name": "coreaudiod"
+      },
+      {
+        "pid": 12511,
+        "ppid": 12497,
+        "cpu_ps_percent": 3.5,
+        "rss_kib": 103760,
+        "name": "Brave Browser Helper (Aperitif)"
+      },
+      {
+        "pid": 879,
+        "ppid": 1,
+        "cpu_ps_percent": 2.3,
+        "rss_kib": 19824,
+        "name": "gamepolicyd"
+      }
+    ],
+    "session_index_bytes": 5508
+  }
+}
