@@ -43,7 +43,7 @@ KCD 계정으로 로그인해야 받을 수 있는 사내 레포다. Herdr 앱(`
    | `agents` | `agents` 블록을 `agents-plus` 로 바꾼다 |
    | `chiikawa` | 없음(테마 파일만 설치) |
    | `palette` | 없음(단축키로 연다) |
-   | `restore` | 화면에 안 보이는 floating 블록 `wt-restore` 추가 |
+   | `restore` | 시작 확인·세션 복원 중 진행 상태를 표시하는 floating 블록 `wt-restore` 추가 |
    | `usage` | 하단바(`workspace-status`)를 `status-row` 로 감싸 왼쪽에 720px `usage-bar` 블록 추가 |
    | `notify` | 화면에 안 보이는 floating 블록 `mac-notify` 추가 |
 
@@ -235,6 +235,7 @@ git pull && ./install.sh      # 설치했던 번들을 다시 적는다
 | `wt.meta` | worktree-plus·wt-menu·spaces-plus | 체크아웃별(`[machine, path]` JSON 키) `{ name, branch, base, link, pr, comment, agent, created, archived }` |
 | `wt.trees` | spaces-plus → picker-plus·agents-plus·hm | space 가 열린 레포별 체크아웃 `{ path, branch, main, space, sleeping }` |
 | `wt.live` | wt-restore → spaces-plus·agents-plus | `{ 세션 id: 터미널 주소 }` |
+| `wt.restoreProgress` | wt-restore | 복원 확인 단계와 실제 요청 큐의 처리 수·전체 수·결과. 에이전트 상태와 별개이며 에이전트 준비 완료를 뜻하지 않음 |
 | `wt.sleep` | spaces-plus·wt-menu | 잠든 워크트리와 깨울 때 이어 열 세션 |
 | `wt.repos` | worktree-plus | 레포별 setup·복사 패턴 |
 | `wt.sort` | wt-menu → spaces-plus | 워크트리 정렬 |

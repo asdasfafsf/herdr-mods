@@ -2,6 +2,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const restoreText = readFileSync('mods/wt-restore/main.js', 'utf8');
+const progressSource = readFileSync('mods/wt-restore/progress.js', 'utf8');
+const Progress = new Function(progressSource.slice(progressSource.indexOf('export class RestoreProgress'), progressSource.indexOf('export function progressText')).replace('export class RestoreProgress', 'return class RestoreProgress'))();
+let restoreState;
+const progress = new Progress(() => restoreState, value => { restoreState = value; });
 const methods = restoreText.slice(restoreText.indexOf('  // Record health transitions'), restoreText.indexOf('  initDialog('));
 let pending;
 const cx = { spawn(fn) { pending = fn(cx); }, notify() {}, timer: { after() {} } };
@@ -9,13 +13,13 @@ const old = JSON.stringify({core:{pid:1,start:0},sessions:{t1:{session:'old'}}})
 const now = {core:{pid:2,start:100000},uptime:60000,sessions:{t2:{session:'new',address:'t2'}},unresolved:[]};
 let disk = old, fail = true, readFails = false, auto = false, writes = 0, offers = 0, resumed = 0, live, previous = null;
 const health = [];
-const Type = new Function('look','exec','LAST_FILE','PREV_FILE','SETTLE','readTextFile','localStorage','LAST','sameRun','restorable','offer','writeTextFile','setShared','LIVE','notify','appHome', `return class {${methods}}`)(
+const Type = new Function('look','exec','LAST_FILE','PREV_FILE','SETTLE','readTextFile','localStorage','LAST','sameRun','restorable','offer','writeTextFile','setShared','LIVE','notify','appHome','shared','RESTORE_PROGRESS','progress','logRestore', `let polling = false; return class {${methods}}`)(
  async()=>now, async()=>({code:0}), ()=>'/restore', ()=>'/previous', 20000,
  async(path)=>{if(path==='/previous')return previous;if(readFails)throw Error('read unavailable');return disk;},
  {getItem:(key)=>key==='auto' && auto ? '1' : null}, 'last', (a,b)=>a?.pid===b?.pid, async()=>[{session:'old'}],
  async(list)=>{if(!list.length)return;if(auto)resumed++;else offers++;},
  async(path,value,expected)=>{if(path==='/previous'){assert.equal(expected,previous);previous=value;return;}writes++;if(fail)throw Error('disk unavailable');assert.equal(expected,disk);disk=value;},
- (_key,value)=>{live=value;}, 'live', ()=>{}, ()=>'/app');
+ (_key,value)=>{live=value;}, 'live', ()=>{}, ()=>'/app', () => restoreState, 'restore-progress', progress, async()=>{});
 // A core younger than SETTLE still reports what it saved before starting: no offer, no write.
 now.uptime=5000;
 const young = new Type();young.health=async()=>{};young.log=async()=>{};
@@ -47,7 +51,7 @@ view.savedText=old;fail=true;
 view.tick(cx);await pending;assert.equal(writes,before+1);assert.equal(view.savedText,old);
 
 // Automatic continuation also runs at most once while saving keeps failing.
-readFails=false;auto=true;disk=old;
+readFails=false;auto=true;disk=old;restoreState=null;
 const automatic=new Type();automatic.health=async()=>{};automatic.log=async()=>{};
 automatic.tick(cx);await pending;automatic.tick(cx);await pending;
 assert.equal(resumed,1);assert.equal(automatic.savedText,old);assert.equal(offers,1);

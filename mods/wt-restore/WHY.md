@@ -16,6 +16,14 @@ core 가 내려갔다 오면 터미널이 같은 주소로 마지막 폴더의 �
 - 새 core 는 뜬 직후 잠깐 터미널을 재부팅 전 저장 상태(foreground 에 claude, 옛 pid)로 보여준 뒤에야 셸을 다시 띄운다. 그 사이에 판단하면 모든 세션이 "아직 실행 중"으로 보여 아무것도 묻지 않고, 다음 확인에서 기록까지 덮어써 복구할 길이 사라졌다(2026-11-14 재부팅에서 실제 발생). 그래서 core 가 20초(`SETTLE`) 돌기 전에는 판단도 기록도 하지 않고, foreground 는 그 pid 가 지금 그 에이전트를 실행할 때만 센다. Claude 의 `~/.claude/sessions/<pid>.json` 도 재부팅 뒤 pid 가 다른 프로그램에 재사용될 수 있어 명령줄까지 확인한다.
 - core 가 바뀌면 멈춘 run 의 기록을 `~/.herdr/restore/previous.json` 에 따로 남긴다. `hm restore`(`wt-restore.ask`)는 앞으로 묻게 하고, 그 기록 중 지금 어디서도 안 도는 세션을 다시 묻는다. 안내마다 기록 수·안내 수·뺀 이유(터미널 주소만)를 `hm logs --restore` 에 `offer` 로 남긴다.
 - `wt.live`(세션 id → 터미널): 사이드바·Agents 가 이미 떠 있는 세션으로 가게.
+- 시작 확인·20초 대기·복원 요청 진행을 기존 floating 블록에 표시한다. 확인 중에는 전체 수를 추측하지 않으며, 실제 복원 목록이 정해진 뒤에만 처리 수/전체 수를 표시한다. 평상시 5초 기록 조회는 조용히 유지한다.
+- `hc send` 성공은 요청 전달, `tab.new`는 확인되지 않은 열기 요청이다. 에이전트 준비 완료라고 표시하지 않는다. 작업별 예외는 해당 요청을 미확인으로 기록하고 재시도하지 않으며, 나머지 선택된 세션은 한 번씩 계속 처리한다. 없는 공간·거부·미확인 결과는 부분/실패로 표시한다.
+- 대화상자 중복 제출과 실행 중 복원 중복을 막고, 공유된 `wt.restoreProgress.offeredCore`로 저장 재시도·화면 재생성 때 같은 자동 복원을 반복하지 않는다. 진행 생산자가 닫히거나 스크립트가 교체되면 남은 큐를 재생하지 않고 중단으로 표시하며, 이미 전송 중이던 요청은 결과를 추측하지 않는다. 완료·실패·중단은 spinner 없이 표시하고 기존 기록 타이머로 약 10–15초 뒤 숨긴다.
+- 복원 배치마다 `restore` 진단 이벤트를 남긴다. 요청 결과(`send_accepted`, `send_rejected`, `tab_dispatched_unconfirmed`, `missing_space`, `request_threw`), 주소·agent·종료 코드와 합계를 기록한다. 목록은 100개로 제한하고 생략 수를 남긴다. 제목·cwd·세션 ID·명령·대화 내용은 기록하지 않는다.
+
+## 진행 상태 검증
+
+`node --experimental-vm-modules tests/restore-progress.mjs`는 실제 생산 코드를 격리된 host fixture로 실행한다. 지연된 발견·20초 대기·빈 목록·직렬 처리·작업별 예외 뒤 나머지 처리·닫기/새로고침·중복 제출·저장 실패를 다룬다. `node tests/restore-progress-preview.mjs --native`는 생산 renderer만 가져온 임시 preview를 생성하고 native builder로 검사한다. preview는 `Preview - no sessions started`라고 표시하며, 복원 코드나 세션 명령을 포함하지 않는다. 실제 앱/코어 재시작과 실제 세션 복원을 검증한 것은 아니다.
 
 ## 공유 서버에서 필요한 보완
 Codex TUI는 rollout을 직접 열지 않을 수 있어 기존 PID→열린 파일 방식으로는 복원 기록에서 빠졌다. 직접 열린 rollout이 없으면 현재 SQLite 인덱스·이름 기록에서 전체 터미널 제목과 cwd가 유일하게 일치하고 실제 열린 writer lock이 있는 세션만 저장한다. PID→세션의 공식 연결은 아니므로 이름이 중복·생략되거나 인덱스 형식이 달라지면 식별하지 않는다. 최신 세션이나 cwd만으로 추측하지 않는다.

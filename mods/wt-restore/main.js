@@ -3,7 +3,7 @@
 //
 // Herdr keeps spaces, tabs and panes through that, but a lost terminal comes back as a
 // shell in its last folder, with the same address, and its program is never run again.
-// So this copy, floating in the layout with nothing to show (see mod.json), looks every
+// So this copy, floating in the layout with restore progress (see mod.json), looks every
 // EVERY ms at which terminals run an agent and keeps, per terminal address: the agent,
 // its session id, how it was started (argv) and where (cwd, space, tab). Claude Code's
 // session id comes from the file every running claude keeps (~/.claude/sessions/<pid>.json),
@@ -36,10 +36,15 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { hc, exec, readTextFile, writeTextFile, home, appHome, props, openOverlay, closeOverlay, theme, spaces, notify, run, nextCommand, setShared } from "herdr";
+import { hc, exec, readTextFile, writeTextFile, home, appHome, props, openOverlay, closeOverlay, theme, spaces, notify, run, nextCommand, shared, setShared } from "herdr";
 // How sessions are found and resumed: lib/resume.js in the repo, copied here by install.sh.
 import { AGENTS, agentKind, resumeArgv, sessionOf } from "./resume.js";
-import { LIVE } from "./state.js";
+import { LIVE, RESTORE_PROGRESS } from "./state.js";
+import { RestoreProgress, renderProgress, progressText } from "./progress.js";
+
+const progress = new RestoreProgress(() => shared(RESTORE_PROGRESS), value => setShared(RESTORE_PROGRESS, value));
+let polling = false; // one discovery loop even when a layout has multiple copies
+let producers = 0;
 
 const EVERY = 5000;
 const AUTO = "auto"; // localStorage: "1" restores without asking
@@ -163,34 +168,89 @@ async function restorable(last, now, skipped = []) {
 
 // Starts each again: typed into its terminal's shell, in its folder; a terminal that's
 // gone gets a new tab in its space (if the space is still there).
+async function logRestore(channel, problem) {
+  try {
+    const r = await exec("python3", ["-I", `${appHome()}/mods/wt-restore/diagnostics.py`, appHome(), JSON.stringify({ channel, problem })]);
+    if (r.code !== 0) throw new Error("restore diagnostic write failed");
+  } catch { console.warn("wt-restore: diagnostic log unavailable"); }
+}
+
 export async function restore(list) {
-  let done = 0;
-  for (const rec of list) {
-    const argv = resumeArgv(rec, rec.go ? CONTINUE : null);
-    if (!rec.gone) {
-      const r = await hc(["send", rec.address, `cd ${quote(rec.cwd)} && ${argv.map(quote).join(" ")}`]);
-      if (r.code === 0) done++;
-    } else if (spaces().some((s) => s.id === rec.space)) {
-      run("tab.new", { space: rec.space, folder: rec.cwd, argv, name: rec.title.slice(0, 28) || undefined });
-      done++;
+  if (shared(RESTORE_PROGRESS)?.phase === "restoring") return false;
+  if (!list.length) return false;
+  const id = progress.begin("restoring", { total: list.length });
+  let processed = 0, sent = 0, dispatched = 0, failed = 0, unknown = 0, detail = "", phase = "interrupted";
+  const outcomes = [];
+  try {
+    for (const rec of list) {
+      // Closing/reloading the producer invalidates its queue. An already sent
+      // request may finish, but no remaining request is silently replayed.
+      if (!progress.owns(id)) return false;
+      progress.update(id, { inFlight: 1 });
+      let result, code;
+      try {
+        const argv = resumeArgv(rec, rec.go ? CONTINUE : null);
+        if (!rec.gone) {
+          const r = await hc(["send", rec.address, `cd ${quote(rec.cwd)} && ${argv.map(quote).join(" ")}`]);
+          code = r.code;
+          if (r.code === 0) { sent++; result = "send_accepted"; }
+          else { failed++; result = "send_rejected"; detail = "Some opening requests failed. Check the sessions before trying again."; }
+        } else if (spaces().some((s) => s.id === rec.space)) {
+          run("tab.new", { space: rec.space, folder: rec.cwd, argv, name: rec.title.slice(0, 28) || undefined });
+          dispatched++; // fire-and-forget: never claim the tab or agent is ready
+          result = "tab_dispatched_unconfirmed";
+        } else {
+          failed++;
+          result = "missing_space";
+          detail = "A session's workspace is no longer open.";
+        }
+      } catch {
+        failed++;
+        unknown++;
+        result = "request_threw"; // may have reached the shell; do not retry it
+        detail = "An opening request could not be confirmed. Check that session before trying again.";
+      }
+      if (outcomes.length < 100) outcomes.push({ address: rec.address, agent: rec.agent, result, ...(code === undefined ? {} : { code }) });
+      processed++;
+      if (!progress.update(id, { processed, sent, dispatched, failed, unknown, inFlight: 0, detail })) return false;
     }
+    phase = failed ? sent + dispatched ? "partial" : "failed" : "complete";
+    progress.finish(id, phase);
+    const text = progressText(shared(RESTORE_PROGRESS));
+    notify({ title: text.title, body: text.detail, level: failed ? "warning" : "info", timeout: 5000 });
+    return true;
+  } finally {
+    // One bounded event per batch, even when a request throws. No titles, cwd,
+    // session IDs, argv, prompts or raw command output enter the diagnostic log.
+    await logRestore("restore", { total: list.length, processed, sent, dispatched, failed, unknown,
+      phase, notAttempted: list.length - processed, outcomes, omitted: processed - outcomes.length });
   }
-  notify({ title: done === list.length ? `Restored ${done} session${done === 1 ? "" : "s"}` : `Restored ${done} of ${list.length} sessions`, level: done ? "success" : "warning", timeout: 5000 });
 }
 
 // Restores the list at once if "Restore without asking" was ticked, else asks in the dialog.
 async function offer(list) {
-  if (!list.length) return;
+  if (!list.length) {
+    const id = progress.begin("checking", { total: 0 });
+    progress.finish(id, "complete");
+    return;
+  }
   if (localStorage.getItem(AUTO) === "1") await restore(list);
-  else openOverlay({ mod: "wt-restore", kind: "dialog", modal: true, width: 520, height: Math.min(560, 190 + list.length * 46), props: { mode: "dialog", sessions: list } });
+  else {
+    const id = progress.begin("ready", { total: list.length });
+    try { openOverlay({ mod: "wt-restore", kind: "dialog", modal: true, width: 520, height: Math.min(560, 190 + list.length * 46), props: { mode: "dialog", sessions: list, progressId: id, progressOwner: progress.owner } }); }
+    catch (error) { progress.finish(id, "failed", { detail: "Could not open the restore dialog." }); throw error; }
+  }
 }
 
 export default class WtRestore extends View {
   init(_props, cx) {
     if (props()?.mode === "dialog") return this.initDialog(cx);
+    this.producer = true;
+    producers++;
     this.busy = false;
+    this.checkId = progress.startup();
     this.tick(cx);
-    cx.timer.every(EVERY, (cx) => this.tick(cx));
+    cx.timer.every(EVERY, (cx) => { progress.expire(); this.tick(cx); });
     // Key commands. The loop touches its cx each time round, so a reload's old build stops
     // at its next command instead of answering it too.
     cx.spawn(async (cx) => {
@@ -207,16 +267,25 @@ export default class WtRestore extends View {
   // `ask`: from now on ask before restoring, and offer again what the last core restart
   // stopped (PREV_FILE) that runs nowhere now (one restored since is left out).
   async askAgain() {
+    if (polling || shared(RESTORE_PROGRESS)?.phase === "restoring") {
+      notify({ title: shared(RESTORE_PROGRESS)?.phase === "restoring" ? "Session restore is already running" : "Session check is already running",
+        body: "Please wait for it to finish, then try again.", level: "info", timeout: 5000 });
+      return;
+    }
+    polling = true;
+    const id = progress.begin("checking");
     let list = [];
     try {
       const prev = JSON.parse((await readTextFile(PREV_FILE())) ?? "null");
       if (prev) list = await restorable(prev, await look());
+      if (this.closed || !progress.owns(id)) return;
+      await offer(list);
     } catch (error) {
+      progress.finish(id, "failed", { detail: "Could not check saved sessions. Try again later." });
       notify({ title: "Could not read the stopped sessions", body: String(error.message ?? error).slice(0, 160), level: "warning", timeout: 6000 });
       return;
-    }
-    if (list.length) await offer(list);
-    else notify({ title: "No stopped sessions to restore", body: "Herdr will ask before restoring sessions after the next restart.", level: "info", timeout: 5000 });
+    } finally { polling = false; }
+    if (!list.length) notify({ title: "No stopped sessions to restore", body: "Herdr will ask before restoring sessions after the next restart.", level: "info", timeout: 5000 });
   }
 
   // Record health transitions outside the restore file; do not store conversation content.
@@ -233,22 +302,25 @@ export default class WtRestore extends View {
 
   // One line in diagnostics/restore.jsonl (hm logs --restore), without a toast.
   async log(channel, problem) {
-    try {
-      const r = await exec("python3", ["-I", `${appHome()}/mods/wt-restore/diagnostics.py`, appHome(), JSON.stringify({ channel, problem })]);
-      if (r.code !== 0) throw new Error("restore diagnostic write failed");
-    } catch { console.warn("wt-restore: diagnostic log unavailable"); }
+    await logRestore(channel, problem);
   }
 
   // One look; offer restoration once per runtime transition, independent of save retries.
   // A core younger than SETTLE still shows its terminals as saved before it started (see the
   // header): nothing is decided or written yet, so the previous run's record stays as it was.
   tick(cx) {
-    if (this.busy) return;
+    if (this.busy || polling || this.closed || !progress.current() || shared(RESTORE_PROGRESS)?.phase === "restoring") return;
     this.busy = true;
+    polling = true;
     cx.spawn(async () => {
       try {
         const now = await look();
-        if (now.uptime < SETTLE) return;
+        if (this.closed || !progress.current()) return;
+        if (now.uptime < SETTLE) {
+          if (this.checkId != null) progress.update(this.checkId, { phase: "waiting" });
+          return;
+        }
+        if (this.checkId != null) progress.update(this.checkId, { phase: "checking" });
         let last = null;
         if (this.savedText === undefined) {
           const directory = await exec("mkdir", ["-p", LAST_FILE().replace(/\/[^/]+$/, "")]);
@@ -257,18 +329,26 @@ export default class WtRestore extends View {
           if (this.savedText == null) this.savedText = null;
         }
         try { last = JSON.parse(this.savedText ?? localStorage.getItem(LAST) ?? "null"); } catch {}
-        if (last && !sameRun(last.core, now.core) && !sameRun(this.offeredCore, now.core)) {
+        if (this.closed || !progress.current()) return;
+        if (last && !sameRun(last.core, now.core) && !sameRun(this.offeredCore, now.core) && !sameRun(shared(RESTORE_PROGRESS)?.offeredCore, now.core)) {
+          this.checkId = progress.begin("checking");
           const skipped = [];
           const list = await restorable(last, now, skipped);
+          if (this.closed || !progress.owns(this.checkId)) return;
           this.offeredCore = now.core; // Do not repeat a prompt/auto-resume when disk retries fail.
+          progress.update(this.checkId, { offeredCore: now.core });
           // Keep the run that stopped (last.json is overwritten below), for `ask` to offer again.
           if (Object.keys(last.sessions ?? {}).length) {
             try { await writeTextFile(PREV_FILE(), JSON.stringify(last), await readTextFile(PREV_FILE())); }
             catch (error) { await this.log("previous", { reason: String(error.message ?? error).slice(0, 240) }); }
           }
           await this.log("offer", { recorded: Object.keys(last.sessions ?? {}).length, offered: list.length, skipped });
+          if (this.closed || !progress.owns(this.checkId)) return;
           await offer(list);
         }
+        // Only the initial check is visible. Ordinary recording polls stay quiet.
+        if (this.checkId != null && progress.owns(this.checkId)) progress.finish(this.checkId, "complete", { total: 0 });
+        this.checkId = null;
         // Written only when it changed (a session started, ended or changed state).
         const record = JSON.stringify({ core: now.core, sessions: now.sessions });
         try {
@@ -289,8 +369,10 @@ export default class WtRestore extends View {
         if (text !== this.liveText) { this.liveText = text; setShared(LIVE, live); }
         await this.health("poll", null);
       } catch (error) {
+        if (this.checkId != null) progress.finish(this.checkId, "failed", { detail: "Could not check saved sessions. Retrying on the next check." });
+        this.checkId = null;
         await this.health("poll", { reason: String(error.message ?? error).slice(0, 240) });
-      } finally { this.busy = false; }
+      } finally { this.busy = false; polling = false; }
     });
   }
 
@@ -302,14 +384,31 @@ export default class WtRestore extends View {
     this.handle.focus();
   }
 
-  close() {
+  dismissDialog() {
+    this.dismissed = true;
+    const p = props();
+    if (!this.submitted && p.progressOwner === progress.owner) progress.finish(p.progressId, "cancelled");
     closeOverlay(props().overlay);
   }
 
+  close() {
+    if (props()?.mode === "dialog") {
+      this.dismissed = true;
+      const p = props();
+      if (!this.submitted && p.progressOwner === progress.owner) progress.finish(p.progressId, "cancelled");
+    } else {
+      this.closed = true;
+      if (this.producer) { producers--; this.producer = false; }
+      if (!producers) progress.interrupt();
+    }
+  }
+
   go() {
+    if (this.submitted || this.dismissed) return;
     const list = (props().sessions ?? []).filter((s) => this.picked.has(s.address)).map((s) => ({ ...s, go: this.goOn.has(s.address) }));
     if (this.auto) localStorage.setItem(AUTO, "1");
-    this.close();
+    this.submitted = list.length > 0;
+    this.dismissDialog();
     if (list.length) restore(list);
   }
 
@@ -328,7 +427,7 @@ export default class WtRestore extends View {
     };
     return v_flex().id("wt-restore").track_focus(this.handle)
       .on_key_down((e, cx) => {
-        if (e.key === "escape") this.close();
+        if (e.key === "escape") this.dismissDialog();
         else if (e.key === "enter") this.go();
         else return;
         cx.stop_propagation();
@@ -366,7 +465,7 @@ export default class WtRestore extends View {
           .child(this.check(this.auto, t)).child("Restore without asking next time"))
         .child(div().flex_1())
         .child(div().id("wr-no").px(12).h(30).flex().items_center().rounded(6).cursor_pointer().text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground))
-          .on_click(() => this.close()).child("Not now"))
+          .on_click(() => this.dismissDialog()).child("Not now"))
         .child(div().id("wr-yes").px(14).h(30).flex().items_center().rounded(6).cursor_pointer().bg(t.solid).text_color(t.solid_foreground)
           .when(this.picked.size === 0, (el) => el.opacity(0.5))
           .on_click(() => this.go()).child(`Restore${this.picked.size ? ` ${this.picked.size}` : ""}`)));
@@ -374,6 +473,9 @@ export default class WtRestore extends View {
 
   render(cx) {
     if (props()?.mode === "dialog") return this.renderDialog(theme());
-    return div().id("wt-restore");
+    return renderProgress(shared(RESTORE_PROGRESS), theme(), () => {
+      const state = shared(RESTORE_PROGRESS);
+      if (state) setShared(RESTORE_PROGRESS, { ...state, hidden: true });
+    });
   }
 }

@@ -23,7 +23,7 @@ NODE_TESTS = (
     "workspace-split.mjs", "village-motion.mjs", "drag-layout.mjs",
     "resident-assignment.mjs", "sprite-layout.mjs", "sprite-directions.mjs",
     "resident-assets.mjs", "theme-contrast.mjs", "village-composer.mjs",
-    "session-controls.mjs", "sidebar-labels.mjs", "session-handoff.mjs", "session-parity.mjs",
+    "session-controls.mjs", "sidebar-labels.mjs", "session-handoff.mjs", "session-parity.mjs", "restore-progress.mjs",
 )
 PYTHON_TESTS = (
     "test_agent_bundle_matrix.py", "test_agent_themes.py",
