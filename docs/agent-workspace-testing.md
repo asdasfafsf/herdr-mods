@@ -7,7 +7,7 @@
 python3 scripts/test-agent-workspace.py
 ```
 
-선택한 테스트 22개를 실행하고 각 검사의 PASS/FAIL, 종료 코드, 실행 시간,
+선택한 테스트 23개를 실행하고 각 검사의 PASS/FAIL, 종료 코드, 실행 시간,
 명령, 커밋, 변경 중인 파일 목록을 임시 리포트 폴더에 남긴다.
 마지막에 출력되는 `summary.txt`와 `report.json`, 개별 `.log`를 확인한다.
 하나라도 실패하면 runner도 0이 아닌 종료 코드를 반환한다.
@@ -70,8 +70,19 @@ generator는 항상 `--check`로 실행한다. timeout/중단 시 해당 fixture
 그룹을 종료하고 임시 홈을 정리하며, 그때까지의 로그는 리포트 폴더에 남긴다.
 
 리포트에는 native 시나리오 7개를 각각 별도 suite로 중복 계산하지 않는다.
-예를 들어 `--native --repeat 3`의 `66 passed`는 고정 검사 22개 × 3회를 뜻한다.
+예를 들어 `--native --repeat 3`의 `69 passed`는 고정 검사 23개 × 3회를 뜻한다.
 개별 assertion 개수와 native 시나리오 결과는 각 로그에서 확인한다.
+
+### Saved-session history fixtures
+
+`test_saved_sessions.py` uses temporary Claude/Codex transcripts and a read-only
+SQLite fixture. It checks external history, bounded reads, current names/folders,
+archived/internal exclusions, malformed/missing files and fail-closed process
+ownership. `agents-render.mjs` checks the section after Idle, pagination, live
+deduplication, no village residents, click-time revalidation and exact-session
+Claude/Codex resume payloads with a synthetic host. Neither test resumes a real
+conversation. The optional native sidebar fixture includes saved rows; this
+feature's actual app validation is a separate integration step.
 
 ### 주민 간격 회귀 검사
 

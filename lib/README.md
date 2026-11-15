@@ -6,6 +6,7 @@ mod 는 자기 폴더 밖을 import 할 수 없어서, `install.sh` 가 이 파�
 |---|---|---|
 | `worktree.js` | 워크트리 만들기(`createWorktree`)·지우기(`removeWorktree`)·정리 후보(`cleanupCandidates`), 그 규칙(위치·base·PR·파일 복사·setup·브랜치 정리), `wt.meta`·`wt.repos` | worktree-plus(버튼·정리 창), spaces-plus(`hm new` 의 create@) |
 | `resume.js` | 돌던 Claude·Codex 세션 찾기와 처음 띄운 옵션 그대로 이어 열기·fork(`AGENTS`), 레이아웃에 mod 가 떠 있는지(`runs`) | spaces-plus, wt-restore, agents-plus, picker-plus, wt-sessions |
+| `saved-sessions.js` | Saved history validation, live-session deduplication, bounded presentation and safe resume payloads; history never publishes live status or residents | agents-plus |
 | `project.js` | 프로젝트 추가: clone(`cloneRepo`, 새 space 의 터미널에서)·새 프로젝트(`createProject`)·기본 부모 폴더 | project-add(창), spaces-plus(`hm clone`·`hm project`) |
 | `state.js` | mod 끼리 주고받는 공유 데이터의 키 이름과 모양(`META`, `TREES`, `SLEEP`, `RESULTS`, `AGENT_INFO` …), 워크트리 정보 읽기·쓰기(`metaKey`·`metaOf`·`setMeta`·`dropMeta`), 에이전트 요청에 답하기(`answer`), 바뀔 때만 쓰기(`setIfChanged`). 키는 문자열로 쓰지 말고 여기 이름으로 | 거의 모든 mod, lib/worktree.js·project.js |
 | `ui.js` | 에이전트 상태 표시(`statusMark`, 자리가 있을 땐 글자까지 `statusPill`: 사이드바·Agents 목록·⌘P 가 같은 모양), 색 알약(`pill`), 창 아래 버튼(`button`, `footer`), 몇 분 전(`ago`, `agoText`) | spaces-plus, agents-plus, picker-plus, worktree-plus, wt-menu, wt-sessions, project-add, usage-bar |

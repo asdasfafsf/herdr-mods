@@ -845,6 +845,118 @@ console.log('Options popover: cards/village dismissal preserves filters and sess
   console.log('profile writer: no render I/O, overlap suppression and retry passed');
 }
 
+// Saved history: a separate sidebar section, exact-session continuation only.
+// Every exec/run below is the synthetic host; no real conversation is opened.
+async function settleSaved(env) { while (env.tasks.length) await Promise.all(env.tasks.splice(0)); }
+const savedId = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const savedRow = (n, agent='codex') => ({agent,session:savedId(n),cwd:"/example/space 'quotes' $(literal)",title:`Saved task ${n}`,updated:n});
+{
+  const data=fixture(8);data.outside=[];
+  const env=await environment(data,null);
+  env.instance.readingSaved=false;
+  env.instance.saved=Array.from({length:14},(_,i)=>savedRow(i+1));
+  env.instance.saved.push({...savedRow(14),title:'older duplicate',updated:0},null,{...savedRow(30),session:'--last'});
+  data.state['wt.live']={[savedId(14)]:'t0',[savedId(13)]:'exited'};
+  data.terminals.push({address:'exited',state:'exited'});
+  env.instance.outside=[{...savedRow(12),status:'idle',app:'Elsewhere'}];
+  env.instance.savedPending.set('codex:'+savedId(11),now+15000);
+  let tree=env.render(), text=JSON.stringify(tree);
+  assert.ok(text.indexOf('saved-header')>text.indexOf('sec-1"'),'history follows the live Idle section');
+  assert.ok(!text.includes('saved-codex:'+savedId(14)),'attached session excluded');
+  assert.ok(text.includes('saved-codex:'+savedId(13)),'exited terminal mapping is not a live session');
+  assert.ok(!text.includes('saved-codex:'+savedId(12)),'outside session excluded');
+  assert.ok(!text.includes('saved-codex:'+savedId(11)),'opening session excluded');
+  assert.equal((text.match(/"saved-codex:/g)||[]).length,8,'first page bounded');
+  assert.ok(!data.state['ag.order'].some(id=>id.startsWith('saved')),'history not published as live order');
+  assert.ok(!text.includes('older duplicate'));
+  env.click('saved-more'); text=JSON.stringify(env.render());
+  assert.equal((text.match(/"saved-codex:/g)||[]).length,11,'next page shows remaining unique entries');
+  assert.ok(text.indexOf('saved-codex:'+savedId(13))<text.indexOf('saved-codex:'+savedId(10)),'newest first');
+  env.click('saved-header');assert.ok(!JSON.stringify(env.render()).includes('saved-codex:'),'history folds independently');
+  env.click('saved-header');
+  data.state['agents.sort']='grouped';text=JSON.stringify(env.render());
+  assert.ok(text.indexOf('saved-header')>text.indexOf('out-codex-'),'history also follows grouped activity');
+  data.props={mode:'overview',skin:'chiikawa'};
+  const residents=env.overview.agentViewRows(env.instance.outside);
+  assert.ok(residents.every(row=>!row.id.startsWith('saved')),'history never creates village residents');
+}
+for (const agent of ['claude','codex']) for (const worktrees of [false,true]) {
+  const data=fixture(0);data.outside=[];
+  if(worktrees) data.layout={mod:'spaces-plus'};
+  const row=savedRow(1,agent),env=await environment(data,null);
+  env.instance.readingSaved=false;env.instance.saved=[row];
+  const launch=agent==='codex'
+    ? ['/opt/codex','resume','--last','--model','chosen','--cd','/wrong','--image','/old.png','-C/also-wrong','-i/old-attachment','old-id','old prompt']
+    : ['/opt/claude','--continue','--resume','old-id','--fork-session','--model','chosen','old prompt'];
+  data.state['new-menu.agents']={'':[{key:agent,installed:true,run:launch}]};
+  data.execHook=async(_program,args)=>({code:0,stdout:JSON.stringify(args[2]==='check'
+    ? {running:false,record:{...row,argv:['sh','-c','evil'],prompt:'do not submit',fork:true}}
+    : {rows:[],errors:[]})});
+  env.instance.resumeSaved(row,env.cx);env.instance.resumeSaved(row,env.cx);
+  await settleSaved(env);
+  const runs=env.writes.filter(([key])=>key==='run').map(([,args])=>args);
+  assert.equal(runs.length,1,`${agent}: duplicate click opens once`);
+  let argv;
+  if(worktrees){
+    assert.ok(runs[0][0].startsWith('spaces-plus.resume@'));
+    const rec=JSON.parse(runs[0][0].split('@')[1]);
+    assert.equal(rec.session,row.session);assert.equal(rec.cwd,row.cwd);
+    assert.equal(rec.prompt,undefined);assert.equal(rec.fork,undefined);
+    // Use the same shared resume implementation as spaces-plus.
+    const context=vm.createContext({});
+    const host=new vm.SyntheticModule(['exec','readTextFile','home','appHome'],function(){for(const key of ['exec','readTextFile','home','appHome'])this.setExport(key,()=>{});},{context});
+    const resume=new vm.SourceTextModule(readFileSync(resolve(root,'lib/resume.js'),'utf8'),{context});
+    await resume.link(()=>host);await resume.evaluate();
+    argv=Array.from(resume.namespace.resumeArgv(rec));
+  }else{
+    assert.equal(runs[0][0],'space.new');assert.equal(runs[0][1].folder,row.cwd);
+    argv=Array.from(runs[0][1].argv);
+  }
+  assert.deepEqual(argv,agent==='codex'?['/opt/codex','resume','--model','chosen',row.session]:['/opt/claude','--model','chosen','--resume',row.session]);
+  assert.equal(env.commands[0][0],'python3');
+  assert.deepEqual(JSON.parse(env.commands[0][1].at(-1)),{agent,session:row.session,cwd:row.cwd},'only identity sent to read-only check');
+}
+for (const failure of ['running','unknown','changed','invalid','missing','remote','parse']) {
+  const data=fixture(0),env=await environment(data,null),row=savedRow(1);
+  env.instance.readingSaved=false;env.instance.saved=[row];
+  if(failure==='remote') data.state['new-menu.agents']={'':[{key:'codex',installed:true,run:['codex','--remote','server']}]};
+  data.execHook=async()=>({code:failure==='missing'?1:0,stderr:'Gone',stdout:failure==='parse'?'invalid':JSON.stringify({
+    running:failure==='running'?true:failure==='unknown'?null:false,
+    record:failure==='changed'?{...row,session:savedId(2)}:failure==='invalid'?null:row})});
+  env.instance.resumeSaved(row,env.cx);await settleSaved(env);
+  assert.equal(env.writes.filter(([key])=>key==='run').length,0,`${failure}: no resume command`);
+  assert.ok(env.instance.savedResumeError);
+  assert.equal(env.instance.savedPending.size,0,'failed checks can be retried explicitly');
+}
+{
+  const data=fixture(1),env=await environment(data,null),row=savedRow(1);
+  env.instance.readingSaved=false;
+  data.state['wt.live']={[row.session]:'t0'};
+  env.instance.resumeSaved(row,env.cx);
+  assert.equal(env.commands.length,0,'already attached goes directly to its pane');
+  assert.ok(env.writes.some(([key,args])=>key==='run'&&args[0]==='pane.focus'&&args[1].terminal==='t0'));
+  env.writes.length=0;delete data.state['wt.live'][row.session];
+  data.execHook=async()=>{data.state['wt.live'][row.session]='t0';return {code:0,stdout:JSON.stringify({running:true,record:row})};};
+  env.instance.resumeSaved(row,env.cx);await settleSaved(env);
+  assert.ok(env.writes.some(([key,args])=>key==='run'&&args[0]==='pane.focus'));
+  assert.ok(!env.writes.some(([key,args])=>key==='run'&&args[0]==='space.new'),'attachment racing with check is focused');
+}
+{
+  const data=fixture(0),env=await environment(data,null),row=savedRow(1);
+  env.instance.readingSaved=false;
+  data.layout={mod:'spaces-plus'};data.state['wt.live']={[row.session]:'dead'};data.terminals=[{address:'dead',state:'exited'}];
+  data.execHook=async(_program,args)=>({code:0,stdout:JSON.stringify(args[2]==='check'?{running:false,record:row}:{rows:[],errors:[]})});
+  env.instance.resumeSaved(row,env.cx);await settleSaved(env);
+  assert.ok(env.writes.some(([key,args])=>key==='run'&&args[0]==='space.new'),'stale mapping cannot focus exited terminal via spaces-plus');
+  data.execHook=async()=>({code:0,stdout:JSON.stringify({rows:[null,...Array.from({length:80},(_,i)=>savedRow(i))],errors:['Provider unavailable']})});
+  env.instance.readSaved(env.cx);await settleSaved(env);
+  assert.equal(env.instance.saved.length,60);assert.equal(env.instance.savedError,'Provider unavailable');
+  data.execHook=async()=>({code:0,stdout:'{bad'});
+  env.instance.readSaved(env.cx);await settleSaved(env);
+  assert.equal(env.instance.saved.length,0);assert.ok(env.instance.savedError);
+}
+console.log('saved history: below Idle, bounded pages, dedupe, independent residents, safe Claude/Codex payloads and check failures passed');
+
 // Optional native GPUI smoke/limit check with the SAME synthetic data. No live app
 // state is read, and these temporary mods are never installed in the user's layout.
 if (process.argv.includes('--native')) {
@@ -854,12 +966,13 @@ if (process.argv.includes('--native')) {
     const directory=mkdtempSync(resolve(tmpdir(),'herdr-agents-bench-'));
     try {
       const read=file=>revision ? execFileSync('git',['show',`${revision}:${file}`],{cwd:root,encoding:'utf8'}) : readFileSync(resolve(root,file),'utf8');
-      for (const name of ['state','ui','agent-status','resume','places']) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
+      for (const name of ['state','ui','agent-status','resume','places',...(!revision ? ['saved-sessions'] : [])]) writeFileSync(resolve(directory,`${name}.js`),read(`lib/${name}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       writeFileSync(resolve(directory,'agents.js'),read('mods/agents-plus/main.js').replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision) for (const file of ['overview','overview-header','agent-theme','theme-assets','pack-chiikawa','resource-packs','resource-pack-state','themes','legacy-theme','agent-mode','theme-contrast','village','village-spacing','village-chat','session-controls','approval-providers','terminal-dock','workspace-controls','composer','drag-layout','sprite-directions','resident-assignment','sprite-layout','sprite-art','sprite-motion','agent-empty-state']) writeFileSync(resolve(directory,`${file}.js`),read(`mods/agents-plus/${file}.js`).replaceAll('from "herdr"','from "./mock-herdr.js"'));
       if (!revision || execFileSync('git',['ls-tree',revision,'mods/agents-plus/render-profile.js'],{cwd:root,encoding:'utf8'}).trim())
         writeFileSync(resolve(directory,'render-profile.js'),read('mods/agents-plus/render-profile.js'));
       const data=fixture(count,false,false,depth);
+      data.saved = !revision && mode === 'sidebar' ? Array.from({length:12},(_,i)=>savedRow(i+1)) : [];
       if (mode==='chiikawa-cards-narrow') {
         data.panes[0].title='A long session title for a narrow card with a readable project and branch';
         data.state['ag.info']={t3:{doing:'Please review the full build command before approving this request.',at:now}};
@@ -876,14 +989,15 @@ export const themes=()=>[{name:'paper',light:true},{name:'herdr-chiikawa',light:
 export const theme=()=>Object.fromEntries(['foreground','solid','solid_foreground','muted','dim','raised','hover','input','chrome','border','working','blocked','done','idle','accent','selected','ansi5','popover','background'].map(k=>[k,'#123456']));
 export const run=()=>{},openOverlay=()=>{},closeOverlay=()=>{},exec=async()=>({code:0,stdout:'[]'}),appHome=()=>'/example/app',home=()=>'/example',readTextFile=async()=>'{}',writeTextFile=async()=>{};
 export const outside=data.outside;
+export const saved=data.saved;
 `);
       writeFileSync(resolve(directory,'main.js'),`
 import Agents from './agents.js';
-import { outside } from './mock-herdr.js';
+import { outside, saved } from './mock-herdr.js';
 import { InputState } from 'gpui-base';
 ${!revision ? "import { selectVillageResident } from './village-chat.js';\nimport { agentViewRows } from './overview.js';" : ''}
 export default class Probe extends Agents {
- init(_props,cx) { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={};
+ init(_props,cx) { this.folded=new Set();this.outside=outside;this.changed={};this.seen={};this.raw=new Map();this.pendingPins=[];this.migratingPins=new Set();this.activity={};this.saved=saved;this.savedLimit=8;this.savedPending=new Map();
    if ('${mode}'!=='sidebar') {this.input=InputState.new({value:''});this.handle=cx.focus_handle();this.statusFilter='all';this.sourceFilter='all';this.pack='${mode.startsWith('chiikawa')?'chiikawa':'default'}';this.presentation='${mode.startsWith('chiikawa-cards')?'cards':'village'}';this.themeClock=0;this.width=${mode.endsWith('-narrow')?360:1100};}
    ${!revision ? `if ('${mode}'==='chiikawa' && ${count}===40) {selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t0'),cx);this.villageFilters=true;}
    if ('${mode}'==='chiikawa-approval') { selectVillageResident(this,agentViewRows(outside).find(row=>row.id==='t3'),cx); const chat=this.villageChats.get('t3');chat.request={address:'t3',text:'Run unit tests?\\n› 1. Yes\\n  2. No',fingerprint:'fixture',choices:[{number:1,label:'Yes',selected:true},{number:2,label:'No'}]}; }` : ''} }
